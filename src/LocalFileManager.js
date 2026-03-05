@@ -77,5 +77,36 @@ export const LocalFileManager = {
             console.error('Error eliminando:', error);
             return false;
         }
+    },
+
+    /**
+     * Guarda datos de texto como Letras o Acordes offline
+     * @param {string} songId El ID de la canción
+     * @param {string} type 'lyrics' o 'chords'
+     * @param {string} text El texto a guardar
+     */
+    saveTextLocal: async (songId, type, text) => {
+        try {
+            const key = `text_${type}_${songId}`;
+            await localAudioStore.setItem(key, text);
+            console.log(`[STORAGE] Texto offline guardado: ${key}`);
+            return true;
+        } catch (error) {
+            console.error('[STORAGE] Error guardando texto offline:', error);
+            return false;
+        }
+    },
+
+    /**
+     * Recupera texto de Letras o Acordes estando offline
+     */
+    getTextLocal: async (songId, type) => {
+        try {
+            const key = `text_${type}_${songId}`;
+            return await localAudioStore.getItem(key);
+        } catch (error) {
+            console.error('[STORAGE] Error recuperando texto offline:', error);
+            return null;
+        }
     }
 };

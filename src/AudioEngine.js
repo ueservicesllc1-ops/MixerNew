@@ -2,45 +2,64 @@ class AudioEngine {
     constructor() {
         /** @type {AudioContext} */
         this.ctx = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: 'interactive' // DAW-level low latency
+            latencyHint: 'interactive'
         });
 
-        this.tracks = new Map(); // Stores track info, gain node, panner, spatial info
+        this.tracks = new Map();
         this.masterGain = this.ctx.createGain();
         this.masterGain.connect(this.ctx.destination);
 
         this.isPlaying = false;
         this.startTime = 0;
         this.pausePosition = 0;
+        this.tempoRatio = 1.0;
+        this.pitchSemitones = 0; // 0 = original key, +1 = half-step up, -1 = half-step down
 
-        this.onProgress = null; // Callback for UI time updates
+        this.onProgress = null;
         this._updater = null;
+
+        // SoundTouch Worklet Module loading state
+        this.workletLoaded = false;
     }
 
     async init() {
         if (this.ctx.state === 'suspended') {
             await this.ctx.resume();
         }
+        if (!this.workletLoaded) {
+            try {
+                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
+                this.workletLoaded = true;
+                console.log("SoundTouchWorklet loaded successfully.");
+            } catch (err) {
+                console.error("Failed to load soundtouch-worklet.js", err);
+            }
+        }
     }
 
     // Creates a complete channel strip per buffer
-    addTrack(id, audioBuffer) {
+    // rawArrayBuffer: the original compressed bytes (WAV/MP3) — used for tempo shift via Audio element
+    addTrack(id, audioBuffer, rawArrayBuffer = null) {
         const gainNode = this.ctx.createGain();
-        const pannerNode = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : this.ctx.createPanner();
+        const pannerNode = this.ctx.createStereoPanner
+            ? this.ctx.createStereoPanner()
+            : this.ctx.createPanner();
 
-        // AnalyserNode for VU meter LEDs — high frequency refresh
+        // AnalyserNode for VU meter LEDs
         const analyser = this.ctx.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.75;
 
-        // Signal chain: Source -> Panner -> Gain -> Analyser -> Master
+        // Signal chain: Source → Panner → Gain → Analyser → Master
         pannerNode.connect(gainNode);
         gainNode.connect(analyser);
         analyser.connect(this.masterGain);
 
         this.tracks.set(id, {
             buffer: audioBuffer,
+            rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
             source: null,
+            soundtouchNode: null, // Holds the AudioWorkletNode
             gain: gainNode,
             panner: pannerNode,
             analyser: analyser,
@@ -56,7 +75,6 @@ class AudioEngine {
         if (!t || !t.analyser) return 0;
         const data = new Uint8Array(t.analyser.frequencyBinCount);
         t.analyser.getByteTimeDomainData(data);
-        // Compute RMS
         let sum = 0;
         for (let i = 0; i < data.length; i++) {
             const norm = (data[i] - 128) / 128;
@@ -67,53 +85,73 @@ class AudioEngine {
 
     clearTracks() {
         this.stop();
-        for (const [id, track] of this.tracks.entries()) {
-            if (track.source) {
-                try { track.source.stop(); track.source.disconnect(); } catch (e) { }
-            }
+        for (const [, track] of this.tracks.entries()) {
+            this._cleanupSource(track);
             track.gain.disconnect();
             track.panner.disconnect();
         }
         this.tracks.clear();
     }
 
+    _cleanupSource(track) {
+        if (track.source) {
+            try { track.source.stop(); } catch (e) { }
+            try { track.source.disconnect(); } catch (e) { }
+            track.source = null;
+        }
+        if (track.soundtouchNode) {
+            try { track.soundtouchNode.disconnect(); } catch (e) { }
+            track.soundtouchNode = null;
+        }
+    }
+
     _applyStates() {
         let isAnySolo = false;
-        for (const [id, track] of this.tracks.entries()) {
+        for (const [, track] of this.tracks.entries()) {
             if (track.solo) isAnySolo = true;
         }
-
-        for (const [id, track] of this.tracks.entries()) {
+        for (const [, track] of this.tracks.entries()) {
             let finalGain = track.volume;
             if (track.muted) finalGain = 0;
             if (isAnySolo && !track.solo) finalGain = 0;
-
-            // Apply smoothly to avoid clicks (JUCE style ramp)
             track.gain.gain.setTargetAtTime(finalGain, this.ctx.currentTime, 0.015);
         }
     }
 
     setTrackVolume(id, vol) {
         const t = this.tracks.get(id);
-        if (t) {
-            t.volume = vol;
-            this._applyStates();
-        }
+        if (t) { t.volume = vol; this._applyStates(); }
     }
 
     setTrackMute(id, val) {
         const t = this.tracks.get(id);
-        if (t) {
-            t.muted = val;
-            this._applyStates();
-        }
+        if (t) { t.muted = val; this._applyStates(); }
     }
 
     setTrackSolo(id, val) {
         const t = this.tracks.get(id);
-        if (t) {
-            t.solo = val;
-            this._applyStates();
+        if (t) { t.solo = val; this._applyStates(); }
+    }
+
+    // ── Master Tempo / Pitch ────────────────────────────────────────────────
+    setTempo(ratio) {
+        this.tempoRatio = ratio;
+        this._updateWorkletParams();
+    }
+
+    setPitch(semitones) {
+        this.pitchSemitones = semitones;
+        this._updateWorkletParams();
+    }
+
+    _updateWorkletParams() {
+        for (const [, track] of this.tracks.entries()) {
+            if (track.soundtouchNode) {
+                const tempoParam = track.soundtouchNode.parameters.get('tempo');
+                const pitchParam = track.soundtouchNode.parameters.get('pitchSemitones');
+                if (tempoParam) tempoParam.value = this.tempoRatio;
+                if (pitchParam) pitchParam.value = this.pitchSemitones;
+            }
         }
     }
 
@@ -121,18 +159,34 @@ class AudioEngine {
         if (this.isPlaying) return;
         this._applyStates();
 
+        const syncTime = this.ctx.currentTime + 0.08;
         this.startTime = this.ctx.currentTime - this.pausePosition;
 
-        // Schedule all sources to start at the exact same atomic clock tick
-        const syncTime = this.ctx.currentTime + 0.05; // 50ms buffer for thread locking
+        for (const [, track] of this.tracks.entries()) {
+            this._cleanupSource(track);
 
-        for (const [id, track] of this.tracks.entries()) {
-            // Re-create sources (they are single-use in WebAudio)
             const source = this.ctx.createBufferSource();
             source.buffer = track.buffer;
-            source.connect(track.panner);
 
-            source.start(syncTime, this.pausePosition);
+            if (this.workletLoaded) {
+                // ── SOUNDTOUCH AUDIO WORKLET NODE ──
+                const stNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
+
+                // Initialize parameters
+                const tempoParam = stNode.parameters.get('tempo');
+                const pitchParam = stNode.parameters.get('pitchSemitones');
+                if (tempoParam) tempoParam.value = this.tempoRatio;
+                if (pitchParam) pitchParam.value = this.pitchSemitones;
+
+                source.connect(stNode);
+                stNode.connect(track.panner);
+                track.soundtouchNode = stNode;
+            } else {
+                // Flashback to normal buffer if worklet failed to load
+                source.connect(track.panner);
+            }
+
+            source.start(syncTime, Math.max(0, this.pausePosition));
             track.source = source;
         }
 
@@ -143,32 +197,33 @@ class AudioEngine {
     pause() {
         if (!this.isPlaying) return;
 
-        for (const [id, track] of this.tracks.entries()) {
-            if (track.source) {
-                track.source.stop();
-                track.source.disconnect();
-                track.source = null;
-            }
+        // Calculate pause position based on elapsed time and tempo
+        this.pausePosition = this.pausePosition + (this.ctx.currentTime - this.startTime) * this.tempoRatio;
+
+        for (const [, track] of this.tracks.entries()) {
+            this._cleanupSource(track);
         }
 
-        // Record where we left off
-        this.pausePosition = this.ctx.currentTime - this.startTime;
         this.isPlaying = false;
-
         if (this._updater) cancelAnimationFrame(this._updater);
     }
+
 
     stop() {
         this.pause();
         this.pausePosition = 0;
         if (this.onProgress) this.onProgress(0);
+        // Cleanup all media elements fully
+        for (const [, track] of this.tracks.entries()) this._cleanupSource(track);
     }
 
     _startRAF() {
         const update = () => {
             if (this.isPlaying && this.onProgress) {
-                const currentPos = this.ctx.currentTime - this.startTime;
-                this.onProgress(currentPos);
+                // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
+                const realElapsed = this.ctx.currentTime - this.startTime;
+                const pseudoPosition = this.pausePosition + (realElapsed * this.tempoRatio);
+                this.onProgress(pseudoPosition);
             }
             if (this.isPlaying) {
                 this._updater = requestAnimationFrame(update);

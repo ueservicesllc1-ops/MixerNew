@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── SETLISTS: solo el dueño puede leer/escribir sus propios setlists
+    match /setlists/{setlistId} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == resource.data.userId;
+
+      // Permitir crear si el userId del documento coincide con el usuario autenticado
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ── SONGS: cualquier usuario autenticado puede leer el catálogo, pero solo el dueño puede modificar
+    match /songs/{songId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null
+                    && request.resource.data.userId == request.auth.uid;
+    }
+
+    // ── LYRICS: solo usuarios autenticados, vinculadas a canciones del usuario
+    match /lyrics/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── CHORDS: solo usuarios autenticados
+    match /chords/{doc} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
