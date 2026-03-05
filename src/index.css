@@ -1,0 +1,429 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f7f9fa;
+  /* Light grey background like Prime */
+  color: #333333;
+  --primary-cyan: #00bcd4;
+  --transport-blue: #00d2d3;
+  --danger-red: #ff5252;
+  --warning-yellow: #ffb142;
+  --fader-bg: #e0e0e0;
+  --track-bg: #fdfdfd;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-height: 100vh;
+  width: 100vw;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+}
+
+.multitrack-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+/* TOP TRANSPORT BAR */
+.transport-bar {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: white;
+  padding: 8px 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.master-fader-mini {
+  width: 150px;
+  height: 40px;
+  background: var(--transport-blue);
+  border-radius: 8px;
+  margin-right: auto;
+}
+
+.controls-group {
+  display: flex;
+  gap: 8px;
+}
+
+.transport-btn {
+  background: #f0f0f0;
+  border: none;
+  width: 45px;
+  height: 45px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #555;
+  transition: 0.2s;
+}
+
+.transport-btn.play {
+  background: var(--transport-blue);
+  color: white;
+}
+
+.transport-btn.play:hover {
+  background: #00b8b8;
+}
+
+.transport-btn.stop {
+  background: #dcdcdc;
+}
+
+.audio-info {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  font-weight: 600;
+  color: #666;
+  font-size: 0.9rem;
+  background: #f0f0f0;
+  padding: 10px 20px;
+  border-radius: 8px;
+}
+
+/* WAVEFORM AREA */
+.waveform-section {
+  width: 100%;
+  height: 70px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+}
+
+
+
+/* MAIN CONTENT SPLIT */
+.main-content {
+  display: flex;
+  flex: 1;
+  gap: 10px;
+  overflow: hidden;
+  /* For scrolling grid */
+}
+
+/* MIXER GRID */
+.mixer-grid {
+  flex: 7;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 8px;
+  overflow: hidden;
+  padding: 4px;
+  align-content: stretch;
+}
+
+.channel-strip {
+  background: var(--track-bg);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.channel-name {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #333;
+  margin-bottom: 8px;
+  text-align: center;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+/* FADER TALL STYLE */
+.fader-stack {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 6px;
+  margin-bottom: 10px;
+  width: 100%;
+}
+
+/* The visual meter filling up */
+.meter-bg {
+  width: 8px;
+  height: 100%;
+  background: #eee;
+  border-radius: 4px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.meter-fill {
+  width: 100%;
+  background: #2ed573;
+  border-radius: 4px;
+  transition: height 0.1s;
+}
+
+/* Custom Range Input disguised as giant block */
+.fader-container {
+  position: relative;
+  width: 45px;
+  height: 100%;
+  background: var(--fader-bg);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.fader-color-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background: var(--primary-cyan);
+  pointer-events: none;
+}
+
+.fader {
+  appearance: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-90deg);
+  width: 100%;
+  /* Dynamic — set by JS binding or CSS variable */
+  height: 45px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.fader::-webkit-slider-thumb {
+  appearance: none;
+  width: 1px;
+  /* Hidden thumb, the real visual is fader-color-fill */
+  height: 45px;
+  background: transparent;
+}
+
+/* MUTE SOLO BUTTONS */
+.btn-group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+
+.channel-btn {
+  width: 35px;
+  height: 35px;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  background: white;
+  color: #888;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.channel-btn.m.active {
+  background: var(--danger-red);
+  color: white;
+  border-color: var(--danger-red);
+}
+
+.channel-btn.s.active {
+  background: var(--warning-yellow);
+  color: white;
+  border-color: var(--warning-yellow);
+}
+
+/* SIDEBAR RIGHT */
+.sidebar {
+  flex: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 300px;
+}
+
+.setlist-panel,
+.pad-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.setlist-panel {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pad-panel {
+  height: 180px;
+}
+
+/* RESPONSIVE TRICKS */
+@media (max-width: 900px) {
+  .multitrack-layout {
+    padding: 5px;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .fader-stack {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .audio-info {
+    font-size: 0.7rem;
+    padding: 5px 10px;
+    gap: 8px;
+  }
+
+  .transport-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .mixer-grid {
+    grid-template-columns: repeat(5, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 6px;
+  }
+
+  .channel-btn {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+/* SETLIST SLIDE-OUT DRAWER */
+.drawer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 1000;
+}
+
+.drawer-overlay.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.setlist-drawer {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 350px;
+  height: 100vh;
+  background: white;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+  transition: right 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 1001;
+  padding: 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.setlist-drawer.open {
+  right: 0;
+}
+
+.library-drawer {
+  position: fixed;
+  top: 0;
+  right: -550px;
+  width: 500px;
+  height: 100vh;
+  background: white;
+  box-shadow: -5px 0 15px rgba(0, 0, 0, 0.1);
+  transition: right 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  z-index: 1001;
+  padding: 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-drawer.open {
+  right: 0;
+}
+
+.btn-setlist {
+  background: var(--transport-blue);
+  color: white;
+  border: none;
+  padding: 5px 15px;
+  border-radius: 5px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.btn-setlist:hover {
+  background: #00b8b8;
+}
+
+.setlist-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setlist-item-card {
+  border: 1px solid #eee;
+  padding: 15px;
+  border-radius: 8px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.setlist-item-card:hover {
+  border-color: var(--transport-blue);
+  background: white;
+}
+
+.setlist-item-card h4 {
+  margin: 0 0 5px 0;
+  color: #333;
+}
