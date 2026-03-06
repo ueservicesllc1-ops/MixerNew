@@ -1361,8 +1361,8 @@ export default function Multitrack() {
             </div>
 
             <div className="main-content">
-                {/* MAIN STAGE (Mixer or Tab Content) - Takes 70% on desktop */}
-                <div style={{ flex: 7, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                {/* MAIN STAGE (Mixer or Tab Content) */}
+                <div className="main-stage-wrapper">
                     {loading ? (
                         <div style={{ display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
                             <div className="loader"></div>
@@ -1492,7 +1492,7 @@ export default function Multitrack() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="mixer-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                <div className="mixer-wrapper">
                                     <Mixer tracks={tracks} />
                                 </div>
                             )}

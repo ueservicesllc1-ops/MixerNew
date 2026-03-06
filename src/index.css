@@ -280,19 +280,50 @@ body.dark-mode .tab-btn.active {
   flex: 1;
   gap: 10px;
   overflow: hidden;
-  /* For scrolling grid */
+  /* Evita scroll del contenedor principal */
+  min-height: 0;
 }
 
-/* MIXER GRID */
-.mixer-grid {
-  flex: 7;
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: 8px;
+.main-stage-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   overflow: hidden;
-  padding: 4px;
-  align-content: stretch;
+  height: 100%;
+}
+
+.mixer-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mixer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-auto-rows: 1fr;
+  /* Por defecto llena el alto disponible */
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px;
+  height: 100%;
+  box-sizing: border-box;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Scrollbar estética para el mixer */
+.mixer-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mixer-grid::-webkit-scrollbar-thumb {
+  background: rgba(19, 181, 182, 0.4);
+  border-radius: 10px;
 }
 
 .channel-strip {
@@ -301,11 +332,19 @@ body.dark-mode .tab-btn.active {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 10px 8px;
+  padding: 12px 6px;
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--border-subtle);
   min-height: 0;
   box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.2s;
+}
+
+.channel-strip:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.08);
 }
 
 .channel-strip.special-track {
@@ -718,16 +757,31 @@ body.dark-mode .channel-btn.s.active {
   box-shadow: 0 0 6px rgba(19, 181, 182, 0.2);
 }
 
-/* SIDEBAR RIGHT - Original Layout Restored */
+/* SIDEBAR RIGHT - Base width for Tablets */
 .sidebar {
-  flex: 3 !important;
-  /* Original ratio (approx 30%) */
-  display: flex !important;
-  flex-direction: column !important;
+  width: 360px;
+  /* Ancho ideal para iPads */
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  min-width: 300px;
   overflow: hidden;
   height: 100%;
+}
+
+/* WIDER SIDEBAR - Only for Large Monitors (Web) */
+@media (min-width: 1401px) {
+  .sidebar {
+    width: 600px;
+    /* Vuelve a ser ancho en PC */
+  }
+}
+
+/* Hide sidebar fixed state ONLY on small Phones */
+@media (max-width: 1000px) {
+  .sidebar {
+    display: none !important;
+  }
 }
 
 .setlist-panel {
@@ -764,94 +818,121 @@ body.dark-mode .pads-panel {
   border-color: rgba(255, 255, 255, 0.05);
 }
 
-/* RESPONSIVE TRICKS */
-@media (max-width: 900px) {
+/* RESPONSIVE TRICKS - Segemented Mobile / Tablet / Desktop */
+
+/* TABLET & WEB MODE (iPad Pro, iPad Air, Desktops) - Multi-row Grid, Vertical Scroll, Visible sidebar 600px */
+@media (min-width: 1001px) {
+  .main-stage-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .mixer-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)) !important;
+    grid-auto-rows: 48% !important;
+    /* Forzar que cada fila ocupe casi la mitad, limitando a 2 filas visibles */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100% !important;
+    flex: 1 !important;
+    padding: 10px;
+    gap: 15px !important;
+  }
+
+  .channel-strip {
+    min-width: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 !important;
+  }
+}
+
+/* MOBILE MODE (iPhone, S20, Small Tablets) - Single Line, Horizontal Scroll, NO Sidebar */
+@media (max-width: 1000px) {
   .multitrack-layout {
     padding: 4px;
   }
 
-  .transport-bar {
-    gap: 6px;
-    padding: 6px 8px;
-    border-radius: 8px;
-  }
-
-  .sidebar {
-    display: none;
-  }
-
-  .mobile-only-flex {
-    display: flex !important;
-  }
-
-  .desktop-only {
-    display: none !important;
-  }
-
-  .fader-stack {
+  .main-stage-wrapper {
     flex: 1;
-    min-height: 0;
-  }
-
-  .audio-info {
-    font-size: 0.65rem;
-    padding: 4px 6px;
-    gap: 6px;
-    flex-shrink: 1;
-    min-width: 0;
-  }
-
-  .song-name-display {
-    max-width: 80px;
-    padding-left: 8px;
-    font-size: 0.65rem;
-  }
-
-  .transport-btn {
-    width: 32px;
-    height: 32px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
   }
 
   .mixer-grid {
-    display: flex;
-    flex-direction: row;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    /* Enable horizontal scrolling */
-    overflow-y: hidden;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     gap: 12px;
-    padding: 0 10px 12px 0;
-    /* Extra right/bottom padding to avoid cutoff */
+    padding: 10px 10px 20px;
+    flex: 1 !important;
+    height: 100% !important;
+    min-height: 0;
     -webkit-overflow-scrolling: touch;
-    align-items: stretch;
-    flex: 1;
-    width: 100%;
-    scrollbar-width: thin;
-    /* For Firefox */
-  }
-
-  /* Custom scrollbar for webkit browsers */
-  .mixer-grid::-webkit-scrollbar {
-    height: 6px;
-  }
-
-  .mixer-grid::-webkit-scrollbar-thumb {
-    background: rgba(19, 181, 182, 0.4);
-    border-radius: 10px;
   }
 
   .channel-strip {
-    min-width: 75px;
-    /* Slightly wider for better touch */
-    max-width: 80px;
-    flex-shrink: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    min-width: 125px !important;
+    max-width: 140px !important;
+    flex: 0 0 auto !important;
+    height: 100% !important;
+  }
+}
+
+@media (max-height: 550px) {
+  .mixer-grid {
+    flex: 1 !important;
+    gap: 8px !important;
+    height: 100% !important;
   }
 
-  .channel-name {
-    font-size: 0.65rem;
+  .waveform-section {
+    height: 25px !important;
+  }
+
+  .transport-bar {
+    padding: 3px 8px !important;
+    gap: 6px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .audio-info {
+    font-size: 0.6rem !important;
+    padding: 2px 6px !important;
+  }
+
+  .transport-btn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .tab-bar {
+    padding: 3px !important;
+  }
+
+  .tab-btn {
+    padding: 4px 0 !important;
+    font-size: 0.65rem !important;
+  }
+
+  .setlist-drawer,
+  .library-drawer,
+  .settings-drawer {
+    width: 300px !important;
+    /* No tapar toda la pantalla en landscape */
+  }
+
+  .setlist-drawer:not(.open),
+  .settings-drawer:not(.open),
+  .library-drawer:not(.open) {
+    right: -300px !important;
   }
 }
 
@@ -1606,20 +1687,13 @@ body.dark-mode .pad-ms-btn {
 @media (max-width: 768px) {
   .main-content {
     flex-direction: column !important;
-    overflow-y: auto !important;
+    overflow: hidden !important;
+    /* Corregido: no debe tener scroll vertical el contenedor */
   }
 
   .mixer-grid {
-    display: flex !important;
-    flex-direction: row !important;
-    overflow-x: auto !important;
-    overflow-y: hidden !important;
-    gap: 12px;
-    padding: 10px 10px 20px;
     flex: 1 !important;
-    /* Let it fill the main-content space */
-    -webkit-overflow-scrolling: touch;
-    scroll-snap-type: none !important;
+    height: 100% !important;
   }
 
   .multitrack-layout {
@@ -1637,16 +1711,6 @@ body.dark-mode .pad-ms-btn {
     overflow: hidden !important;
   }
 
-  .channel-strip {
-    min-width: 100px !important;
-    max-width: 100px !important;
-    flex-shrink: 0 !important;
-    height: 100% !important;
-    padding: 10px 4px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: center !important;
-  }
 
   .fader-stack {
     gap: 6px !important;
