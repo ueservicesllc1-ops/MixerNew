@@ -1664,10 +1664,31 @@ body.dark-mode .pad-ms-btn {
   }
 
   .tab-content-area {
-    flex: none !important;
-    width: 100% !important;
-    min-height: 500px !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 9999 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
     padding: 10px !important;
+    box-sizing: border-box !important;
+  }
+
+  .setlist-drawer,
+  .library-drawer,
+  .settings-drawer {
+    width: 100vw !important;
+  }
+
+  .setlist-drawer:not(.open),
+  .settings-drawer:not(.open) {
+    right: -100vw !important;
+  }
+
+  .library-drawer:not(.open) {
+    right: -100vw !important;
   }
 
   .control-group {
