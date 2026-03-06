@@ -33,7 +33,7 @@ export default function Multitrack() {
     const [progress, setProgress] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
-    const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('mixer_proxyUrl') || 'http://localhost:3001');
+    const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('mixer_proxyUrl') || 'https://mixernew-production.up.railway.app');
 
     // Setlist States
     const [isSetlistMenuOpen, setIsSetlistMenuOpen] = useState(false);
@@ -1760,7 +1760,7 @@ export default function Multitrack() {
                                 setProxyUrl(val);
                                 localStorage.setItem('mixer_proxyUrl', val);
                             }}
-                            placeholder="http://localhost:3001"
+                            placeholder="https://mixernew-production.up.railway.app"
                             style={{
                                 width: '100%',
                                 padding: '10px 12px',

@@ -130,7 +130,7 @@ export default function Dashboard() {
                 const safeTrackName = track.displayName.replace(/[^a-zA-Z0-9]/g, '_');
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.${track.extension}`;
                 formData.append('fileName', b2Filename);
-                const currentProxy = localStorage.getItem('mixer_proxyUrl') || 'http://localhost:3001';
+                const currentProxy = localStorage.getItem('mixer_proxyUrl') || 'https://mixernew-production.up.railway.app';
                 const uploadRes = await fetch(`${currentProxy}/upload`, { method: 'POST', body: formData });
                 if (!uploadRes.ok) throw new Error(`Falló subida del track ${track.displayName}`);
                 const uploadData = await uploadRes.json();
