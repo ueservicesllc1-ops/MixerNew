@@ -1459,42 +1459,53 @@ export default function Multitrack() {
                                         Abre el menú Setlists para crear tu primer bloque de canciones.
                                     </div>
                                 ) : (
-                                    <>
-                                        {/* Songs list with DND support */}
-                                        {(activeSetlist.songs || []).length === 0 ? (
-                                            <div style={{ padding: '10px', color: '#aaa', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-                                                Sin canciones. Dale + Añadir Canción.
-                                            </div>
-                                        ) : (
-                                            <DndContext
-                                                sensors={sensors}
-                                                collisionDetection={closestCenter}
-                                                onDragEnd={handleDragEnd}
-                                                modifiers={[restrictToVerticalAxis]}
-                                            >
-                                                <SortableContext
-                                                    items={(activeSetlist.songs || []).map(s => s.id)}
-                                                    strategy={verticalListSortingStrategy}
+                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                                        {/* Setlist Name Header */}
+                                        <div style={{ padding: '0 5px 12px', borderBottom: '1px solid #eee', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <ListMusic size={18} color="#00bcd4" />
+                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: darkMode ? '#eee' : '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {activeSetlist.name}
+                                            </h3>
+                                        </div>
+
+                                        {/* Scrollable Song List Area */}
+                                        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
+                                            {(activeSetlist.songs || []).length === 0 ? (
+                                                <div style={{ padding: '10px', color: '#aaa', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
+                                                    Sin canciones. Dale + Añadir Canción.
+                                                </div>
+                                            ) : (
+                                                <DndContext
+                                                    sensors={sensors}
+                                                    collisionDetection={closestCenter}
+                                                    onDragEnd={handleDragEnd}
+                                                    modifiers={[restrictToVerticalAxis]}
                                                 >
-                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
-                                                        {(activeSetlist.songs || []).map((song, idx) => (
-                                                            <SortableSongItem
-                                                                key={song.id}
-                                                                song={song}
-                                                                idx={idx}
-                                                                isActive={activeSongId === song.id}
-                                                                pStatus={preloadStatus[song.id]}
-                                                                onSelect={() => handleLoadSong(song)}
-                                                            />
-                                                        ))}
-                                                    </div>
-                                                </SortableContext>
-                                            </DndContext>
-                                        )}
-                                        <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn">
+                                                    <SortableContext
+                                                        items={(activeSetlist.songs || []).map(s => s.id)}
+                                                        strategy={verticalListSortingStrategy}
+                                                    >
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                            {(activeSetlist.songs || []).map((song, idx) => (
+                                                                <SortableSongItem
+                                                                    key={song.id}
+                                                                    song={song}
+                                                                    idx={idx}
+                                                                    isActive={activeSongId === song.id}
+                                                                    pStatus={preloadStatus[song.id]}
+                                                                    onSelect={() => handleLoadSong(song)}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </SortableContext>
+                                                </DndContext>
+                                            )}
+                                        </div>
+
+                                        <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ flexShrink: 0 }}>
                                             + Añadir Canción
                                         </button>
-                                    </>
+                                    </div>
                                 )}
                             </div>
 

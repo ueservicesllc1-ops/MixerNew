@@ -970,6 +970,8 @@ body.dark-mode .action-btn:hover {
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   transition: all 0.3s;
+  min-height: 0;
+  /* Critical for inner scrolling in flex */
 }
 
 body.dark-mode .right-panel-item {
