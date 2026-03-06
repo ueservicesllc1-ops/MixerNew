@@ -117,14 +117,16 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
     }
 });
 
-app.get('/:path*', (req, res) => {
+// Solución definitiva para SPA en Express 5: Middleware al final de la cadena
+app.use((req, res) => {
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send("Error: La aplicación no ha sido compilada (dist/index.html no existe).");
+        res.status(404).send("Error: La aplicación no ha sido compilada o el archivo dist/index.html no existe.");
     }
 });
+
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor listo escuchando en puerto ${PORT}`);
