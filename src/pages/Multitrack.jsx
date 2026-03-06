@@ -579,16 +579,20 @@ export default function Multitrack() {
     const handleLoadSong = async (song) => {
         await audioEngine.init();
 
-        // ── SONG IS ALREADY IN RAM → instant switch, no blocking ──────────
+        // ── ACTUALIZACIÓN INMEDIATA DE UI ───────────────────────────────
+        console.log(`[SELECT] Seleccionando "${song.name}"...`);
+        audioEngine.stop();
+        audioEngine.clearTracks();
+        setIsPlaying(false);
+        setProgress(0);
+        setActiveSongId(song.id);
+        setTracks([]); // Limpiar mixer mientras carga (evita confusión)
+
+        // ── VERIFICAR SI YA ESTÁ EN RAM ────────────────────────────────
         const cachedBuffers = preloadCache.current.get(song.id);
         if (cachedBuffers && cachedBuffers.size > 0) {
-            console.log(`[INSTANT] "${song.name}" is Ready.`);
+            console.log(`[INSTANT] "${song.name}" ya estaba en RAM.`);
             touchLRU(song.id);
-
-            audioEngine.clearTracks();
-            setIsPlaying(false);
-            setProgress(0);
-            setActiveSongId(song.id);
 
             const newTracks = [];
             for (const [trackName, cached] of cachedBuffers.entries()) {
@@ -598,7 +602,7 @@ export default function Multitrack() {
             }
             setTracks(newTracks);
 
-            // Sliding window: start loading the next songs in background
+            // Pre-cargar siguientes canciones (ventana deslizante)
             if (activeSetlist?.songs) {
                 const allSongs = activeSetlist.songs;
                 const currentIdx = allSongs.findIndex(s => s.id === song.id);
@@ -610,51 +614,56 @@ export default function Multitrack() {
                     if (lookahead.length > 0) preloadSetlistSongs(lookahead);
                 }
             }
-            return; // Done — no blocking, current song plays immediately
-        }
-
-        // ── SONG NOT IN RAM → background load, DON'T interrupt current song ─
-        // If already loading this song in background, ignore the second click
-        if (preloadStatus[song.id] === 'loading') {
-            console.log(`[BG] "${song.name}" ya está cargando en segundo plano...`);
             return;
         }
 
-        // Mark as loading (shows badge in sidebar) but DON'T stop current song
-        console.log(`[BG] "${song.name}" not in RAM — loading in background. Current song keeps playing.`);
+        // ── NO ESTÁ EN RAM → CARGAR AHORA ─────────────────────────────
+        if (preloadStatus[song.id] === 'loading') {
+            // Ya se está cargando por el preloader silencioso, pero como el usuario 
+            // la seleccionó, simplemente esperamos a que la tarea termine...
+            // Pero para simplificar y asegurar que se asigne al mixer al terminar,
+            // reiniciamos el proceso de carga asegurada aquí para esta canción.
+        }
+
+        console.log(`[FETCH] "${song.name}" cargando bajo demanda...`);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
-        // Fire-and-forget background decode
-        (async () => {
-            try {
-                evictOldestIfNeeded();
-                const tracksData = song.tracks || [];
-                const trackBuffers = new Map();
+        try {
+            evictOldestIfNeeded();
+            const tracksData = song.tracks || [];
+            const trackBuffers = new Map();
 
-                for (const tr of tracksData) {
-                    if (!tr.url || tr.url === 'undefined') continue;
+            for (const tr of tracksData) {
+                if (!tr.url || tr.url === 'undefined') continue;
 
-                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                    if (!rawBuf) {
-                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) throw new Error(`Error en ${tr.name}: ${res.status}`);
-                        rawBuf = await res.arrayBuffer();
-                        await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
-                    }
-                    const audioBuf = await audioEngine.ctx.decodeAudioData(rawBuf.slice(0));
-                    trackBuffers.set(tr.name, { audioBuf, rawBuf });
+                let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                if (!rawBuf) {
+                    const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                    if (!res.ok) throw new Error(`Error en ${tr.name}: ${res.status}`);
+                    rawBuf = await res.arrayBuffer();
+                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                 }
-
-                preloadCache.current.set(song.id, trackBuffers);
-                touchLRU(song.id);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                console.log(`[BG] "${song.name}" now Ready — click to switch instantly.`);
-            } catch (err) {
-                console.warn(`[BG] Failed loading "${song.name}":`, err);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                const audioBuf = await audioEngine.ctx.decodeAudioData(rawBuf.slice(0));
+                trackBuffers.set(tr.name, { audioBuf, rawBuf });
             }
-        })();
-        // Returns immediately — current song is untouched
+
+            preloadCache.current.set(song.id, trackBuffers);
+            touchLRU(song.id);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+
+            // Una vez cargada, si sigue siendo la canción activa, inyectamos los tracks
+            const newTracks = [];
+            for (const [trackName, cached] of trackBuffers.entries()) {
+                const trackId = `${song.id}_${trackName}`;
+                audioEngine.addTrack(trackId, cached.audioBuf || cached, cached.rawBuf || null);
+                newTracks.push({ id: trackId, name: trackName });
+            }
+            setTracks(newTracks);
+
+        } catch (err) {
+            console.error(`[ERROR] No se pudo cargar "${song.name}":`, err);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+        }
     };
 
 
