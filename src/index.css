@@ -667,10 +667,8 @@ body.dark-mode .channel-btn {
 }
 
 body.dark-mode .channel-btn.m.active {
-  background: #ef4444;
-  /* Red for mute in dark mode? Or stick to cyan? Let's use cyan for brand. */
-  background: var(--primary-cyan);
-  border-color: var(--primary-cyan);
+  background: #ff5252;
+  border-color: #ff5252;
   color: white;
 }
 
@@ -707,16 +705,16 @@ body.dark-mode .channel-btn.s.active {
 }
 
 .channel-btn.m.active {
-  background: var(--primary-cyan);
+  background: #ff5252;
   color: white;
-  border-color: var(--primary-cyan);
+  border-color: #ff5252;
 }
 
 .channel-btn.s.active {
-  background: #ffffff;
-  color: var(--primary-cyan);
-  border-color: var(--primary-cyan);
-  box-shadow: 0 0 6px rgba(19, 181, 182, 0.2);
+  background: #ffc107;
+  color: black;
+  border-color: #ffc107;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
 }
 
 /* SIDEBAR RIGHT - Original Layout Restored */

@@ -1214,8 +1214,8 @@ export default function Multitrack() {
                 </div>
 
                 {/* MASTER VOLUME SLIDER */}
-                <div className="master-volume-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--transport-blue)', borderRadius: '8px', padding: '5px 12px', minWidth: '100px', flexShrink: 2 }}>
-                    <span className="desktop-only" style={{ color: 'white', fontSize: '0.7rem', fontWeight: '800', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>MASTER</span>
+                <div className="master-fader-mini" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 15px', minWidth: '180px', height: '40px', flexShrink: 0 }}>
+                    <span className="desktop-only" style={{ color: 'white', fontSize: '0.65rem', fontWeight: '900', letterSpacing: '0.1em', whiteSpace: 'nowrap', opacity: 0.9 }}>MASTER</span>
                     <input
                         type="range"
                         min="0" max="1" step="0.01"
@@ -1223,7 +1223,7 @@ export default function Multitrack() {
                         onChange={handleMasterVolume}
                         style={{ flex: 1, accentColor: 'white', cursor: 'pointer', height: '4px' }}
                     />
-                    <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: '700', minWidth: '30px' }}>{Math.round(masterVolume * 100)}%</span>
+                    <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: '900', minWidth: '40px', textAlign: 'right', paddingRight: '5px' }}>{Math.round(masterVolume * 100)}%</span>
                 </div>
 
                 <div className="controls-group">
