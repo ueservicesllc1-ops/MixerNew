@@ -765,7 +765,7 @@ body.dark-mode .pads-panel {
 }
 
 /* RESPONSIVE TRICKS */
-@media (max-width: 1050px) {
+@media (max-width: 1370px) {
   .multitrack-layout {
     padding: 4px;
   }
@@ -1603,7 +1603,7 @@ body.dark-mode .pad-ms-btn {
 }
 
 /* ΓöÇΓöÇ RESPONSIVE DESIGN FOR MOBILE ΓöÇΓöÇ */
-@media (max-width: 1050px) {
+@media (max-width: 1370px) {
   .main-content {
     flex-direction: column !important;
     overflow-y: auto !important;
