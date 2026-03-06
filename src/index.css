@@ -777,8 +777,9 @@ body.dark-mode .channel-btn.s.active {
   }
 }
 
-/* Hide sidebar fixed state ONLY on small Phones */
-@media (max-width: 1000px) {
+/* Hide sidebar ONLY on Phones (Narrow or Landscape phones with small height) */
+@media (max-width: 767px),
+(max-width: 1000px) and (max-height: 600px) {
   .sidebar {
     display: none !important;
   }
@@ -820,8 +821,10 @@ body.dark-mode .pads-panel {
 
 /* RESPONSIVE TRICKS - Segemented Mobile / Tablet / Desktop */
 
-/* TABLET & WEB MODE (iPad Pro, iPad Air, Desktops) - Multi-row Grid, Vertical Scroll, Visible sidebar */
-@media (min-width: 1001px) {
+/* TABLET & WEB MODE (iPad, Desktop) - Multi-row Grid, Vertical Scroll, Visible sidebar */
+/* Targets Screens > 1000px OR Tablets between 768-1000px that are TALL (like iPad portrait) */
+@media (min-width: 1001px),
+(min-width: 768px) and (min-height: 601px) {
   .main-stage-wrapper {
     flex: 1;
     display: flex;
@@ -851,8 +854,10 @@ body.dark-mode .pads-panel {
   }
 }
 
-/* MOBILE MODE (iPhone, S20, Small Tablets) - Single Line, Horizontal Scroll, NO Sidebar */
-@media (max-width: 1000px) {
+/* MOBILE MODE (Phones) - Single Line, Horizontal Scroll, NO Sidebar */
+/* Targets Screens < 768px OR Screens 768-1000px that are SHORT (like phones in landscape) */
+@media (max-width: 767px),
+(min-width: 768px) and (max-width: 1000px) and (max-height: 600px) {
   .multitrack-layout {
     padding: 4px;
   }
@@ -1683,12 +1688,13 @@ body.dark-mode .pad-ms-btn {
   color: white !important;
 }
 
-/* ΓöÇΓöÇ RESPONSIVE DESIGN FOR MOBILE ΓöÇΓöÇ */
-@media (max-width: 1370px) {
+/* ΓöÇΓöÇ RESPONSIVE DESIGN FOR MOBILE FINAL ΓöÇΓöÇ */
+/* Solo para pantallas de altura pequeña (móviles landscape) o estrechas (móviles portrait) */
+@media (max-width: 767px),
+(max-width: 1024px) and (max-height: 600px) {
   .main-content {
     flex-direction: column !important;
     overflow: hidden !important;
-    /* Corregido: no debe tener scroll vertical el contenedor */
   }
 
   .mixer-grid {
@@ -1713,88 +1719,8 @@ body.dark-mode .pad-ms-btn {
     overflow: hidden !important;
   }
 
-
-  .fader-stack {
-    gap: 6px !important;
-    justify-content: center !important;
-    width: 100% !important;
-    max-height: 250px;
-    /* Evita que los faders se estiren demasiado en teléfonos altos */
-  }
-
-  .fader-container {
-    width: 32px !important;
-    /* Narrower for mobile to center better */
-    display: flex !important;
-    justify-content: center !important;
-  }
-
-  .meter-bg {
-    width: 12px !important;
-  }
-
-  .db-scale {
-    width: 14px !important;
-  }
-
-  .fader::-webkit-slider-thumb {
-    width: 24px !important;
-    height: 32px !important;
-    margin-top: -13px !important;
-    /* (6px - 32px) / 2 = -13px */
-  }
-
   .sidebar {
     display: none !important;
-  }
-
-  .right-panel-item {
-    width: 100% !important;
-    min-height: 400px;
-  }
-
-  .pads-panel {
-    margin-top: 15px;
-  }
-
-  .db-scale {
-    width: 15px !important;
-    /* Narrower to fit all elements */
-  }
-
-  /* Transport bar adjustments for small screens */
-  .transport-bar {
-    flex-wrap: nowrap !important;
-    justify-content: flex-start !important;
-    gap: 10px !important;
-    padding: 8px 10px !important;
-    overflow-x: auto !important;
-    /* Allow internal scrolling if too many elements */
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .audio-info {
-    width: auto !important;
-    justify-content: flex-start !important;
-    font-size: 0.75rem !important;
-    padding: 4px 10px !important;
-    flex-shrink: 0 !important;
-  }
-
-  .waveform-section {
-    height: 35px !important;
-    /* Half height as requested */
-    margin-bottom: 4px !important;
-  }
-
-  .controls-group {
-    flex: 1 !important;
-    justify-content: center !important;
-  }
-
-  .lyrics-controls-bar {
-    flex-wrap: wrap !important;
-    justify-content: center !important;
   }
 
   .tab-content-area {
@@ -1811,16 +1737,9 @@ body.dark-mode .pad-ms-btn {
   }
 
   .setlist-drawer:not(.open),
-  .settings-drawer:not(.open) {
-    right: -100vw !important;
-  }
-
+  .settings-drawer:not(.open),
   .library-drawer:not(.open) {
     right: -100vw !important;
-  }
-
-  .control-group {
-    padding: 4px 8px !important;
   }
 
   /* Reduce tab bar height on mobile */
@@ -1831,14 +1750,6 @@ body.dark-mode .pad-ms-btn {
 
   .tab-btn {
     padding: 6px 0 !important;
-    font-size: 0.75rem !important;
-  }
-
-  .control-label {
-    font-size: 0.65rem !important;
-  }
-
-  .control-value {
     font-size: 0.75rem !important;
   }
 }
