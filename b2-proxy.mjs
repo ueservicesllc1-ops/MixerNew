@@ -14,10 +14,10 @@ app.use(cors());
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
-const B2_KEY_ID = '005c2b526be0baa000000000f';
-const B2_APPLICATION_KEY = 'K0051CrlFQOcyjlNZyFVI3spGLFhxk4';
-const B2_BUCKET_ID = 'cc12bbd592366bde909b0a1a';
-const B2_BUCKET_NAME = 'mixercur';
+const B2_KEY_ID = process.env.B2_KEY_ID || '005c2b526be0baa000000000f';
+const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || 'K0051CrlFQOcyjlNZyFVI3spGLFhxk4';
+const B2_BUCKET_ID = process.env.B2_BUCKET_ID || 'cc12bbd592366bde909b0a1a';
+const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'mixercur';
 
 // Vars en caché
 let b2AuthToken = null;
@@ -54,14 +54,51 @@ async function getUploadNode() {
 
 app.get('/download', async (req, res) => {
     try {
-        const { url } = req.query;
-        if (!url) return res.status(400).json({ error: 'URL parameter is required' });
+        let { url } = req.query;
+        if (!url || url === 'undefined' || url === 'null') {
+            console.error('❌ Intento de descarga con URL inválida:', url);
+            return res.status(400).json({ error: 'URL de descarga faltante o inválida' });
+        }
+        url = url.trim();
+
+        // Basic URL validation
+        try {
+            new URL(url);
+        } catch (e) {
+            console.error('❌ URL malformada:', url);
+            return res.status(400).json({ error: 'URL malformada' });
+        }
 
         console.log('📥 Proxying B2 Download:', url);
-        const response = await fetch(url);
+
+        // Intentar la descarga
+        let response;
+        try {
+            response = await fetch(url);
+        } catch (fetchError) {
+            console.error(`❌ Error de red al intentar fetch(${url}):`, fetchError.message);
+            return res.status(500).json({ error: `Error de red: ${fetchError.message}`, url });
+        }
 
         if (!response.ok) {
-            throw new Error(`Download failed: ${response.status}`);
+            const errText = await response.text();
+            console.error(`❌ B2 Error ${response.status} en URL: ${url}`);
+            console.error(`Detalle: ${errText.substring(0, 200)}`);
+
+            // Si es un error 401/403, es probable que el bucket sea privado
+            if (response.status === 401 || response.status === 403) {
+                return res.status(response.status).json({
+                    error: 'Acceso denegado a B2. ¿Es el bucket privado?',
+                    status: response.status,
+                    url
+                });
+            }
+
+            return res.status(response.status).json({
+                error: `B2 respondió con estado ${response.status}`,
+                detail: errText.substring(0, 100),
+                url
+            });
         }
 
         const contentType = response.headers.get('content-type') || 'application/octet-stream';
@@ -74,11 +111,11 @@ app.get('/download', async (req, res) => {
             'Access-Control-Allow-Headers': 'Content-Type'
         });
 
-        // We pipe the stream directly for better performance instead of buffering to memory
+        // We pipe the stream directly for better performance
         response.body.pipe(res);
 
     } catch (error) {
-        console.error('Download error:', error);
+        console.error('Download unexpected error:', error);
         res.status(500).json({ error: error.message });
     }
 });

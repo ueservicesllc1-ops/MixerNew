@@ -3,11 +3,28 @@ import { useNavigate } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power } from 'lucide-react'
-import { db, auth, GoogleAuthProvider, signInWithPopup, signOut } from '../firebase'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon } from 'lucide-react'
+import { db, auth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
 import { padEngine } from '../PadEngine'
+import { ScreenOrientation } from '@capacitor/screen-orientation';
+import {
+    DndContext,
+    closestCenter,
+    TouchSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    verticalListSortingStrategy,
+    useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 export default function Multitrack() {
     const navigate = useNavigate();
@@ -16,6 +33,7 @@ export default function Multitrack() {
     const [progress, setProgress] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('mixer_proxyUrl') || 'http://localhost:3001');
 
     // Setlist States
     const [isSetlistMenuOpen, setIsSetlistMenuOpen] = useState(false);
@@ -35,6 +53,13 @@ export default function Multitrack() {
     // Bottom tab panel
     const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings'
 
+    // Login Details
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [loginIsRegister, setLoginIsRegister] = useState(false);
+    const [loginError, setLoginError] = useState('');
+
     // ── SETTINGS PANEL STATES ─────────────────────────────────────────────
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
@@ -49,6 +74,41 @@ export default function Multitrack() {
     const [padVolume, setPadVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
     const [padSolo, setPadSolo] = useState(false); // (El modo Solo sería más complejo de integrar contra el otro motor, por ahora sirve visual)
+
+    // ── DND SENSORS ──────────────────────────────────────────────────────
+    const sensors = useSensors(
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 }
+        }),
+        useSensor(TouchSensor, {
+            activationConstraint: { delay: 300, tolerance: 8 }
+        })
+    );
+
+    const handleDragEnd = async (event) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id || !activeSetlist) return;
+
+        const oldIndex = activeSetlist.songs.findIndex(s => s.id === active.id);
+        const newIndex = activeSetlist.songs.findIndex(s => s.id === over.id);
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+            const newSongs = arrayMove(activeSetlist.songs, oldIndex, newIndex);
+
+            // Optimistic update
+            const updatedSetlist = { ...activeSetlist, songs: newSongs };
+            setActiveSetlist(updatedSetlist);
+
+            // Persist to Firebase
+            try {
+                await updateDoc(doc(db, 'setlists', activeSetlist.id), {
+                    songs: newSongs
+                });
+            } catch (err) {
+                console.error("Error al guardar orden en Firebase:", err);
+            }
+        }
+    };
 
     // Sincronizar encendido y tecla con el motor de audio
     useEffect(() => {
@@ -207,7 +267,6 @@ export default function Multitrack() {
             : estimatedRAM <= 16 ? 8
                 : 14;
 
-    console.log(`[RAM] deviceMemory=${deviceRAM}GB, estimated≈${estimatedRAM}GB → MAX_DECODED_SONGS=${MAX_DECODED_SONGS}`);
 
     // preloadCache: Map<songId, Map<trackName, {audioBuf, rawBuf}>>
     const preloadCache = useRef(new Map());
@@ -397,10 +456,17 @@ export default function Multitrack() {
                 const trackBuffers = new Map();
                 const tracksData = song.tracks || [];
                 for (const tr of tracksData) {
+                    if (!tr.url || tr.url === 'undefined') {
+                        console.warn(`[PRELOAD] Saltando pista ${tr.name} — URL inválida`);
+                        continue;
+                    }
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                     if (!rawBuf) {
-                        const res = await fetch(`http://localhost:3001/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) continue;
+                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                        if (!res.ok) {
+                            console.error(`[PRELOAD] Error descarga: ${tr.name}`, res.status);
+                            continue;
+                        }
                         rawBuf = await res.arrayBuffer();
                         await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                     }
@@ -450,8 +516,17 @@ export default function Multitrack() {
                 setDownloadProgress({ songId: song.id, text: `Bajando pista ${i + 1}/${tracks.length}: ${tr.name}` });
 
                 // Fetch the binary stream from our proxy (which hooks to B2)
-                const res = await fetch(`http://localhost:3001/download?url=${encodeURIComponent(tr.url)}`);
-                if (!res.ok) throw new Error(`Fallo red B2 en track ${tr.name}`);
+                if (!tr.url || tr.url === 'undefined') {
+                    console.warn(`[DOWNLOAD] Saltando pista ${tr.name} porque no tiene URL válida.`);
+                    continue;
+                }
+                const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    const msg = errorData.error || `Error ${res.status}`;
+                    throw new Error(`Error en ${tr.name}: ${msg}`);
+                }
 
                 const arrayBuf = await res.arrayBuffer();
                 await LocalFileManager.saveTrackLocal(song.id, tr.name, arrayBuf);
@@ -507,7 +582,7 @@ export default function Multitrack() {
         // ── SONG IS ALREADY IN RAM → instant switch, no blocking ──────────
         const cachedBuffers = preloadCache.current.get(song.id);
         if (cachedBuffers && cachedBuffers.size > 0) {
-            console.log(`[INSTANT] "${song.name}" from RAM.`);
+            console.log(`[INSTANT] "${song.name}" is Ready.`);
             touchLRU(song.id);
 
             audioEngine.clearTracks();
@@ -557,10 +632,12 @@ export default function Multitrack() {
                 const trackBuffers = new Map();
 
                 for (const tr of tracksData) {
+                    if (!tr.url || tr.url === 'undefined') continue;
+
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                     if (!rawBuf) {
-                        const res = await fetch(`http://localhost:3001/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) throw new Error(`Fallo red: ${tr.name}`);
+                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                        if (!res.ok) throw new Error(`Error en ${tr.name}: ${res.status}`);
                         rawBuf = await res.arrayBuffer();
                         await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                     }
@@ -571,7 +648,7 @@ export default function Multitrack() {
                 preloadCache.current.set(song.id, trackBuffers);
                 touchLRU(song.id);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                console.log(`[BG] "${song.name}" now in RAM — click to switch instantly.`);
+                console.log(`[BG] "${song.name}" now Ready — click to switch instantly.`);
             } catch (err) {
                 console.warn(`[BG] Failed loading "${song.name}":`, err);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
@@ -582,18 +659,59 @@ export default function Multitrack() {
 
 
     const handleLogin = async () => {
+        setShowLoginModal(true);
+        try {
+            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+                await ScreenOrientation.lock({ orientation: 'portrait' });
+            }
+        } catch (e) { }
+    };
+
+    const handleGoogleLogin = async () => {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
+            setShowLoginModal(false);
         } catch (error) {
-            console.error("Login falló:", error);
-            alert("Error al iniciar sesión: " + error.message);
+            console.error("Login con Google falló:", error);
+            setLoginError("Error con Google: " + error.message);
+        }
+    };
+
+    const handleEmailAuthSubmit = async (e) => {
+        e.preventDefault();
+        setLoginError('');
+        try {
+            if (loginIsRegister) {
+                await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
+            } else {
+                await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+            }
+            setShowLoginModal(false);
+            setLoginEmail('');
+            setLoginPassword('');
+            // Automatically handled by the useEffect on [currentUser], but we double call it just in case
+            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+                await ScreenOrientation.lock({ orientation: 'landscape' });
+            }
+        } catch (error) {
+            console.error("Auth falló:", error);
+            if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+                setLoginError('Correo o contraseña incorrectos');
+            } else if (error.code === 'auth/email-already-in-use') {
+                setLoginError('Este correo ya está registrado');
+            } else {
+                setLoginError(error.message);
+            }
         }
     };
 
     const handleLogout = async () => {
         try {
             await signOut(auth);
+            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+                await ScreenOrientation.lock({ orientation: 'portrait' });
+            }
             navigate('/'); // Regresar a inicio
         } catch (error) {
             console.error("Logout falló:", error);
@@ -623,6 +741,36 @@ export default function Multitrack() {
         audioEngine.stop();
         setIsPlaying(false);
         setProgress(0);
+    };
+
+    const handleSkipForward = () => {
+        if (!activeSetlist?.songs?.length || !activeSongId) return;
+        const songs = activeSetlist.songs;
+        const currentIdx = songs.findIndex(s => s.id === activeSongId);
+        if (currentIdx !== -1 && currentIdx < songs.length - 1) {
+            handleLoadSong(songs[currentIdx + 1]);
+        }
+    };
+
+    const handleSkipBack = () => {
+        // If more than 3 seconds in, restart the song; else go to prev song
+        if (progress > 3) {
+            audioEngine.stop();
+            setIsPlaying(false);
+            setProgress(0);
+        } else if (activeSetlist?.songs?.length && activeSongId) {
+            const songs = activeSetlist.songs;
+            const currentIdx = songs.findIndex(s => s.id === activeSongId);
+            if (currentIdx > 0) {
+                handleLoadSong(songs[currentIdx - 1]);
+            } else {
+                audioEngine.stop();
+                setIsPlaying(false);
+                setProgress(0);
+            }
+        } else {
+            handleRewind();
+        }
     };
 
     const [masterVolume, setMasterVolume] = useState(1);
@@ -673,13 +821,20 @@ export default function Multitrack() {
     // Final active song object
     const activeSong = liveSong || (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
 
-    // Get total duration from any loaded AudioEngine buffer
     const totalDuration = React.useMemo(() => {
         for (const [, track] of audioEngine.tracks.entries()) {
             if (track.buffer) return track.buffer.duration;
         }
         return 0;
     }, [tracks]); // Recalculate when tracks change
+
+    // AUTO-STOP when song finishes
+    useEffect(() => {
+        if (isPlaying && totalDuration > 0 && progress >= totalDuration) {
+            console.log("[AUTO-STOP] Song finished.");
+            handleStop();
+        }
+    }, [progress, totalDuration, isPlaying]);
 
     // Teleprompter and Chords states
     const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -824,6 +979,27 @@ export default function Multitrack() {
     const [countdown, setCountdown] = useState(10);
     const countdownRef = useRef(null);
 
+    // ── ORIENTATION MANAGEMENT ──────────────────────────────────────────
+    useEffect(() => {
+        // Detect native environment
+        const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        if (!isNative) return;
+
+        const lockOrientation = async () => {
+            try {
+                if (!currentUser) {
+                    await ScreenOrientation.lock({ orientation: 'portrait' });
+                } else {
+                    await ScreenOrientation.lock({ orientation: 'landscape' });
+                }
+            } catch (err) {
+                console.warn("ScreenOrientation error:", err);
+            }
+        };
+
+        lockOrientation();
+    }, [currentUser]);
+
     // Trigger preloader whenever preloading starts (setlist is loaded with songs)
     useEffect(() => {
         const hasSongs = (activeSetlist?.songs || []).length > 0;
@@ -860,10 +1036,44 @@ export default function Multitrack() {
         }
     }, [preloadStatus]);
 
-
-
     return (
         <div className="multitrack-layout">
+
+            {/* ── LOGIN MODAL ──────────────────────────────────────────────── */}
+            {showLoginModal && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
+                    <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '320px', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+                        <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
+                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
+                        <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                            <input type="email" placeholder="Correo electrónico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            <input type="password" placeholder="Contraseña" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center' }}>{loginError}</div>}
+                            <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>{loginIsRegister ? 'Registrarse' : 'Entrar'}</button>
+                        </form>
+
+                        <div style={{ margin: '15px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ flex: 1, height: '1px', background: '#444' }}></div>
+                            <span style={{ fontSize: '0.8rem', color: '#888' }}>o</span>
+                            <div style={{ flex: 1, height: '1px', background: '#444' }}></div>
+                        </div>
+
+                        <button
+                            onClick={handleGoogleLogin}
+                            style={{ width: '100%', padding: '12px', background: 'white', color: 'black', border: 'none', borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+                        >
+                            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /><path fill="none" d="M1 1h22v22H1z" /></svg>
+                            Continuar con Google
+                        </button>
+
+                        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                            <span onClick={() => { setLoginIsRegister(!loginIsRegister); setLoginError(''); }} style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none' }}>
+                                {loginIsRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? regístrate aquí'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ── PRELOADER OVERLAY ──────────────────────────────────────────── */}
             {showPreloader && (
@@ -879,7 +1089,7 @@ export default function Multitrack() {
                         <div style={{ width: '38px', height: '38px', background: '#00bcd4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <div style={{ width: '14px', height: '14px', background: 'white', borderRadius: '50%' }} />
                         </div>
-                        <span style={{ fontWeight: '800', fontSize: '1.5rem', color: 'white', letterSpacing: '-0.5px' }}>MixCommunity</span>
+                        <span className="preloader-text" style={{ fontWeight: '800', fontSize: '1.5rem', color: 'white', letterSpacing: '-0.5px' }}>MixCommunity</span>
                     </div>
 
                     {/* Spinner + Countdown stacked */}
@@ -963,9 +1173,19 @@ export default function Multitrack() {
                     <Menu size={20} />
                 </button>
 
+                {/* MOBILE DRAWER BUTTONS */}
+                <div className="mobile-only-flex" style={{ display: 'none', gap: '8px' }}>
+                    <button className="transport-btn" onClick={() => setIsSetlistMenuOpen(true)} title="Setlists">
+                        <ListMusic size={20} />
+                    </button>
+                    <button className="transport-btn" onClick={() => setIsLibraryMenuOpen(true)} title="Librería">
+                        <LibraryIcon size={20} />
+                    </button>
+                </div>
+
                 {/* MASTER VOLUME SLIDER */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--transport-blue)', borderRadius: '8px', padding: '5px 12px', minWidth: '170px' }}>
-                    <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: '800', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>MASTER</span>
+                <div className="master-volume-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--transport-blue)', borderRadius: '8px', padding: '5px 12px', minWidth: '100px', flexShrink: 2 }}>
+                    <span className="desktop-only" style={{ color: 'white', fontSize: '0.7rem', fontWeight: '800', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>MASTER</span>
                     <input
                         type="range"
                         min="0" max="1" step="0.01"
@@ -977,7 +1197,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="controls-group">
-                    <button className="transport-btn" title="Rebobinar" onClick={handleRewind}><SkipBack size={20} /></button>
+                    <button className="transport-btn" title="Rebobinar" onClick={handleSkipBack}><SkipBack size={20} /></button>
                     <button
                         className={`transport-btn ${isPlaying ? 'active' : 'play'}`}
                         onClick={handlePlay}
@@ -987,7 +1207,7 @@ export default function Multitrack() {
                         {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                     </button>
                     <button className="transport-btn stop" onClick={handleStop} title="Detener"><Square size={20} /></button>
-                    <button className="transport-btn" title="Siguiente"><SkipForward size={20} /></button>
+                    <button className="transport-btn" title="Siguiente" onClick={handleSkipForward}><SkipForward size={20} /></button>
                 </div>
 
                 <div className="audio-info">
@@ -995,47 +1215,35 @@ export default function Multitrack() {
 
                     {/* TEMPO CONTROL with ± buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                            onClick={() => handleTempoChange(-1)}
-                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #ccc', background: '#f0f0f0', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}
-                        >−</button>
+                        <button onClick={() => handleTempoChange(-1)} className="square-btn">−</button>
                         <span
                             onClick={tempoOffset !== 0 ? handleTempoReset : undefined}
-                            title={tempoOffset !== 0 ? 'Click para resetear' : ''}
-                            style={{ minWidth: '65px', textAlign: 'center', cursor: tempoOffset !== 0 ? 'pointer' : 'default', color: tempoOffset !== 0 ? '#f39c12' : 'inherit', fontWeight: tempoOffset !== 0 ? '800' : '600' }}
+                            className="control-value"
+                            style={{ minWidth: '75px', color: tempoOffset !== 0 ? '#f39c12' : 'inherit' }}
                         >
                             {activeSong?.tempo
                                 ? `${(parseFloat(activeSong.tempo) + tempoOffset).toFixed(1)} BPM`
                                 : '-- BPM'}
                             {tempoOffset !== 0 && <span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>{tempoOffset > 0 ? `▲${tempoOffset}` : `▼${Math.abs(tempoOffset)}`}</span>}
                         </span>
-                        <button
-                            onClick={() => handleTempoChange(+1)}
-                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #ccc', background: '#f0f0f0', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}
-                        >+</button>
+                        <button onClick={() => handleTempoChange(+1)} className="square-btn">+</button>
                     </span>
 
                     {/* PITCH/KEY CONTROL */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button
-                            onClick={() => handlePitchChange(-1)}
-                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #ccc', background: '#f0f0f0', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}
-                        >−</button>
+                        <button onClick={() => handlePitchChange(-1)} className="square-btn">−</button>
                         <span
                             onClick={pitchOffset !== 0 ? handlePitchReset : undefined}
-                            title={pitchOffset !== 0 ? 'Click para resetear' : ''}
-                            style={{ minWidth: '45px', textAlign: 'center', cursor: pitchOffset !== 0 ? 'pointer' : 'default', color: pitchOffset !== 0 ? '#f39c12' : 'inherit', fontWeight: pitchOffset !== 0 ? '800' : '600' }}
+                            className="control-value"
+                            style={{ minWidth: '45px', color: pitchOffset !== 0 ? '#f39c12' : 'inherit' }}
                         >
                             {activeSong?.key || '--'}
                             {pitchOffset !== 0 && <span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>{pitchOffset > 0 ? `+${pitchOffset}` : pitchOffset}</span>}
                         </span>
-                        <button
-                            onClick={() => handlePitchChange(+1)}
-                            style={{ width: '22px', height: '22px', borderRadius: '4px', border: '1px solid #ccc', background: '#f0f0f0', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', lineHeight: 1, padding: 0 }}
-                        >+</button>
+                        <button onClick={() => handlePitchChange(+1)} className="square-btn">+</button>
                     </span>
                     {activeSong && (
-                        <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', color: '#00bcd4', fontWeight: '800' }}>
+                        <span className="song-name-display">
                             {activeSong.name}
                         </span>
                     )}
@@ -1050,12 +1258,12 @@ export default function Multitrack() {
                             <LogIn size={16} /> Entrar
                         </button>
                     ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ fontSize: '0.8rem', color: '#666', fontWeight: 'bold' }}>{currentUser.displayName || currentUser.email.split('@')[0]}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span className="desktop-only" style={{ fontSize: '0.8rem', color: '#666', fontWeight: 'bold' }}>{currentUser.displayName || currentUser.email.split('@')[0]}</span>
                             <button onClick={handleLogout} className="transport-btn" title="Cerrar Sesión"><LogOut size={18} /></button>
                         </div>
                     )}
-                    <button className="transport-btn"><RefreshCw size={20} /></button>
+                    <button className="transport-btn" title="Reiniciar canción" onClick={handleRewind}><RefreshCw size={20} /></button>
                     <button
                         className={`transport-btn ${isSettingsOpen ? 'active' : ''}`}
                         onClick={() => setIsSettingsOpen(o => !o)}
@@ -1073,20 +1281,11 @@ export default function Multitrack() {
 
             {/* WAVEFORM OVERVIEW */}
             <div className="waveform-section">
-                <WaveformCanvas tracks={tracks} progress={progress} />
+                <WaveformCanvas tracks={tracks} progress={progress} isPlaying={isPlaying} />
             </div>
 
-            {/* TAB BAR — glassmorphism */}
-            <div style={{
-                display: 'flex',
-                width: '100%',
-                background: 'linear-gradient(180deg, #f0f4f8 0%, #e8edf2 100%)',
-                padding: '8px 16px',
-                gap: '8px',
-                boxSizing: 'border-box',
-                borderBottom: '1px solid rgba(0,0,0,0.06)',
-                borderTop: '1px solid rgba(0,0,0,0.04)',
-            }}>
+            {/* TAB BAR — modern & dark optimized */}
+            <div className="tab-bar">
                 {[
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
@@ -1098,41 +1297,7 @@ export default function Multitrack() {
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(isActive ? null : tab.id)}
-                            style={{
-                                flex: 1,
-                                padding: '9px 0',
-                                borderRadius: '10px',
-                                border: `1px solid ${isActive ? 'rgba(0,188,212,0.5)' : 'rgba(0,0,0,0.1)'}`,
-                                background: isActive
-                                    ? 'linear-gradient(135deg, rgba(0,188,212,0.15) 0%, rgba(0,188,212,0.05) 100%)'
-                                    : 'rgba(255,255,255,0.6)',
-                                backdropFilter: 'blur(10px)',
-                                WebkitBackdropFilter: 'blur(10px)',
-                                color: isActive ? '#0097a7' : '#555',
-                                fontWeight: isActive ? '700' : '500',
-                                fontSize: '0.82rem',
-                                letterSpacing: '0.5px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease',
-                                boxShadow: isActive
-                                    ? '0 2px 12px rgba(0,188,212,0.2), 0 1px 3px rgba(0,0,0,0.06)'
-                                    : '0 1px 3px rgba(0,0,0,0.06)',
-                                textTransform: 'uppercase',
-                            }}
-                            onMouseEnter={e => {
-                                if (!isActive) {
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.9)';
-                                    e.currentTarget.style.color = '#333';
-                                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                                }
-                            }}
-                            onMouseLeave={e => {
-                                if (!isActive) {
-                                    e.currentTarget.style.background = 'rgba(255,255,255,0.6)';
-                                    e.currentTarget.style.color = '#555';
-                                    e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)';
-                                }
-                            }}
+                            className={`tab-btn ${isActive ? 'active' : ''}`}
                         >
                             {tab.label}
                         </button>
@@ -1140,8 +1305,11 @@ export default function Multitrack() {
                 })}
             </div>
 
-            {/* PRIME BOTTOM GRID MIXER AND RIGHT PANEL */}
-            <div className="main-content">
+            {/* MAIN CONTENT SPLIT — dynamic height calculation */}
+            <div className="main-content" style={{
+                height: activeTab ? 'calc(100vh - 200px)' : 'calc(100vh - 145px)',
+                marginTop: '0'
+            }}>
                 {loading ? (
                     <div style={{ display: 'flex', width: '100%', justifyContent: 'center' }}>
                         <div className="loader"></div>
@@ -1149,50 +1317,44 @@ export default function Multitrack() {
                 ) : (
                     <>
                         {activeTab ? (
-                            <div style={{ flex: 7, display: 'flex', flexDirection: 'column', background: 'white', borderRadius: '12px', padding: '20px', boxSizing: 'border-box', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                            <div className="tab-content-area">
                                 {/* Shared Tab Header */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '15px' }}>
+                                <div className="tab-header">
                                     <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                                         <button
                                             onClick={() => setActiveTab(null)}
-                                            style={{ background: '#f0f0f0', border: '1px solid #ddd', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', color: '#444', display: 'flex', alignItems: 'center', gap: '8px' }}
+                                            className="back-to-mixer-btn"
                                         >
                                             <SkipBack size={16} /> MIXER
                                         </button>
-                                        <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#333', textTransform: 'uppercase' }}>
+                                        <h2>
                                             {activeTab === 'lyrics' ? 'Teleprompter' : activeTab}
                                         </h2>
                                     </div>
 
                                     {(activeTab === 'lyrics' || activeTab === 'chords') && (
-                                        <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8f9fa', padding: '5px 10px', borderRadius: '8px', border: '1px solid #eee' }}>
+                                        <div className="lyrics-controls-bar">
+                                            <div className="control-group">
                                                 <button
                                                     onClick={() => setIsAutoScroll(!isAutoScroll)}
-                                                    style={{
-                                                        background: isAutoScroll ? '#00bcd4' : '#eee',
-                                                        color: isAutoScroll ? 'white' : '#666',
-                                                        border: 'none', padding: '6px 12px', borderRadius: '6px',
-                                                        fontSize: '0.8rem', fontWeight: '700', cursor: 'pointer',
-                                                        boxShadow: isAutoScroll ? '0 2px 8px rgba(0,188,212,0.3)' : 'none'
-                                                    }}
+                                                    className={`control-btn ${isAutoScroll ? 'primary' : 'secondary'}`}
                                                 >
                                                     {isAutoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
                                                 </button>
                                                 {isAutoScroll && (
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span style={{ fontSize: '0.7rem', color: '#888', fontWeight: '700', marginLeft: '8px' }}>VEL:</span>
-                                                        <button onClick={() => setAutoScrollSpeed(s => Math.max(0.2, s - 0.2))} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>-</button>
-                                                        <span style={{ fontSize: '0.85rem', fontWeight: '800', minWidth: '32px', textAlign: 'center', color: '#333' }}>{autoScrollSpeed.toFixed(1)}x</span>
-                                                        <button onClick={() => setAutoScrollSpeed(s => Math.min(3.0, s + 0.2))} style={{ width: '24px', height: '24px', borderRadius: '4px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                                                        <span className="control-label" style={{ marginLeft: '8px' }}>VEL:</span>
+                                                        <button onClick={() => setAutoScrollSpeed(s => Math.max(0.2, s - 0.2))} className="square-btn">-</button>
+                                                        <span className="control-value">{autoScrollSpeed.toFixed(1)}x</span>
+                                                        <button onClick={() => setAutoScrollSpeed(s => Math.min(3.0, s + 0.2))} className="square-btn">+</button>
                                                     </div>
                                                 )}
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#f8f9fa', padding: '5px 12px', borderRadius: '8px', border: '1px solid #eee' }}>
-                                                <span style={{ fontSize: '0.75rem', color: '#888', fontWeight: '700' }}>TEXTO:</span>
-                                                <button onClick={() => setLyricsFontSize(f => Math.max(14, f - 2))} style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontWeight: 'bold' }}>-</button>
-                                                <span style={{ fontSize: '1rem', fontWeight: '800', minWidth: '30px', textAlign: 'center', color: '#333' }}>{lyricsFontSize}</span>
-                                                <button onClick={() => setLyricsFontSize(f => Math.min(60, f + 2))} style={{ width: '30px', height: '30px', borderRadius: '6px', border: '1px solid #ddd', background: 'white', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
+                                            <div className="control-group">
+                                                <span className="control-label">TEXTO:</span>
+                                                <button onClick={() => setLyricsFontSize(f => Math.max(14, f - 2))} className="square-btn">-</button>
+                                                <span className="control-value">{lyricsFontSize}</span>
+                                                <button onClick={() => setLyricsFontSize(f => Math.min(60, f + 2))} className="square-btn">+</button>
                                             </div>
                                             {activeTab === 'lyrics' && activeLyrics === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Letra...</span>}
                                             {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
@@ -1222,18 +1384,7 @@ export default function Multitrack() {
                                             {activeLyrics === 'loading' ? (
                                                 <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600' }}>Cargando letra...</div>
                                             ) : activeLyrics ? (
-                                                <pre style={{
-                                                    whiteSpace: 'pre-wrap',
-                                                    wordBreak: 'break-word',
-                                                    fontFamily: 'inherit',
-                                                    fontSize: `${lyricsFontSize}px`,
-                                                    fontWeight: '700',
-                                                    color: '#fff',
-                                                    lineHeight: '1.7',
-                                                    margin: 0,
-                                                    transition: 'font-size 0.2s',
-                                                    textShadow: '0 2px 4px rgba(0,0,0,0.5)'
-                                                }}>
+                                                <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px` }}>
                                                     {activeLyrics}
                                                 </pre>
                                             ) : (
@@ -1270,18 +1421,7 @@ export default function Multitrack() {
                                             {activeChords === 'loading' ? (
                                                 <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600', textAlign: 'center' }}>Cargando acordes...</div>
                                             ) : activeChords ? (
-                                                <pre style={{
-                                                    whiteSpace: 'pre-wrap',
-                                                    wordBreak: 'break-word',
-                                                    fontFamily: 'inherit',
-                                                    fontSize: `${lyricsFontSize}px`,
-                                                    fontWeight: '700',
-                                                    color: '#fff',
-                                                    lineHeight: '1.7',
-                                                    margin: 0,
-                                                    transition: 'font-size 0.2s',
-                                                    textShadow: '0 2px 4px rgba(0,0,0,0.5)'
-                                                }}>
+                                                <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px`, textAlign: 'left' }}>
                                                     {activeChords}
                                                 </pre>
                                             ) : (
@@ -1315,12 +1455,12 @@ export default function Multitrack() {
                         )}
 
                         <div className="sidebar">
-                            <div className="setlist-panel">
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                                    <h3 style={{ margin: 0, fontSize: '1rem' }}>{activeSetlist ? activeSetlist.name : 'Ning\u00fan Setlist Activo'}</h3>
+                            <div className="right-panel-item">
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                     <button
-                                        className="btn-setlist"
                                         onClick={() => setIsSetlistMenuOpen(true)}
+                                        className="tab-btn active"
+                                        style={{ flex: 1 }}
                                     >
                                         Setlists
                                     </button>
@@ -1328,54 +1468,42 @@ export default function Multitrack() {
 
                                 {!activeSetlist ? (
                                     <div style={{ padding: '10px', color: '#888', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-                                        Abre el men\u00fa Setlists para crear tu primer bloque de canciones.
+                                        Abre el menú Setlists para crear tu primer bloque de canciones.
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Songs list */}
+                                        {/* Songs list with DND support */}
                                         {(activeSetlist.songs || []).length === 0 ? (
                                             <div style={{ padding: '10px', color: '#aaa', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
                                                 Sin canciones. Dale + Añadir Canción.
                                             </div>
                                         ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
-                                                {(activeSetlist.songs || []).map((song, idx) => {
-                                                    const isActive = activeSongId === song.id;
-                                                    const pStatus = preloadStatus[song.id];
-                                                    return (
-                                                        <div
-                                                            key={song.id || idx}
-                                                            onClick={() => handleLoadSong(song)}
-                                                            style={{
-                                                                padding: '8px 10px',
-                                                                background: isActive ? '#e0f7fa' : '#f0fdff',
-                                                                borderLeft: `3px solid ${isActive ? '#00bcd4' : '#00d2d3'}`,
-                                                                borderRadius: '4px',
-                                                                cursor: 'pointer',
-                                                                transition: 'all 0.2s',
-                                                                boxShadow: isActive ? '0 2px 8px rgba(0,210,211,0.3)' : 'none',
-                                                                opacity: pStatus === 'loading' && !isActive ? 0.7 : 1
-                                                            }}
-                                                        >
-                                                            <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: '#333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                                <span>{song.name}</span>
-                                                                <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                                    {pStatus === 'loading' && !isActive && <span style={{ fontSize: '0.65rem', color: '#f39c12', background: '#fff8e1', padding: '1px 5px', borderRadius: '3px', fontWeight: '600' }}>Cargando</span>}
-                                                                    {pStatus === 'ready' && !isActive && <span style={{ fontSize: '0.65rem', color: '#2ecc71', background: '#e8f8f0', padding: '1px 5px', borderRadius: '3px', fontWeight: '600' }}>RAM</span>}
-                                                                    {isActive && <span style={{ color: '#2ecc71', fontSize: '0.72rem' }}>▶ Activa</span>}
-                                                                </span>
-                                                            </div>
-                                                            <div style={{ fontSize: '0.72rem', color: '#888' }}>
-                                                                {song.artist && `${song.artist} • `}
-                                                                {song.key && `${song.key} • `}
-                                                                {song.tempo && `${song.tempo} BPM`}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
+                                            <DndContext
+                                                sensors={sensors}
+                                                collisionDetection={closestCenter}
+                                                onDragEnd={handleDragEnd}
+                                                modifiers={[restrictToVerticalAxis]}
+                                            >
+                                                <SortableContext
+                                                    items={(activeSetlist.songs || []).map(s => s.id)}
+                                                    strategy={verticalListSortingStrategy}
+                                                >
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '10px' }}>
+                                                        {(activeSetlist.songs || []).map((song, idx) => (
+                                                            <SortableSongItem
+                                                                key={song.id}
+                                                                song={song}
+                                                                idx={idx}
+                                                                isActive={activeSongId === song.id}
+                                                                pStatus={preloadStatus[song.id]}
+                                                                onSelect={() => handleLoadSong(song)}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </SortableContext>
+                                            </DndContext>
                                         )}
-                                        <button onClick={() => setIsLibraryMenuOpen(true)} style={{ width: '100%', marginTop: '4px', padding: '10px', background: '#e0e0e0', color: '#333', border: '1px dashed #aaa', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                        <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn">
                                             + Añadir Canción
                                         </button>
                                     </>
@@ -1624,6 +1752,42 @@ export default function Multitrack() {
                     )}
                 </div>
 
+                {/* ── 5. Proxy B2 ───────────────────────────────────── */}
+                <div className="settings-section">
+                    <div className="settings-label">
+                        <div className="settings-icon-wrap" style={{ background: darkMode ? '#2d3748' : '#e0f7fa' }}>
+                            <Settings size={16} color="#00bcd4" />
+                        </div>
+                        <div>
+                            <div className="settings-title">Servidor Proxy B2</div>
+                            <div className="settings-sub">URL para descargas (Ej: http://192.168.1.50:3001)</div>
+                        </div>
+                    </div>
+                    <div style={{ marginTop: '10px' }}>
+                        <input
+                            type="text"
+                            value={proxyUrl}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                setProxyUrl(val);
+                                localStorage.setItem('mixer_proxyUrl', val);
+                            }}
+                            placeholder="http://localhost:3001"
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                background: darkMode ? '#1a2433' : 'white',
+                                color: darkMode ? '#fff' : '#000',
+                                fontSize: '0.9rem',
+                                outline: 'none',
+                                boxSizing: 'border-box'
+                            }}
+                        />
+                    </div>
+                </div>
+
                 {/* Reset defaults */}
                 <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
                     <button
@@ -1731,10 +1895,18 @@ export default function Multitrack() {
                         ) : (() => {
                             const songs = libraryTab === 'mine' ? librarySongs : globalSongs;
                             if (songs.length === 0) return (
-                                <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
-                                    {libraryTab === 'mine'
-                                        ? 'No tienes canciones. Sube algunas desde el Dashboard.'
-                                        : 'No hay canciones globales todavía.'}
+                                <div style={{ textAlign: 'center', color: '#666', marginTop: '30px', padding: '0 20px' }}>
+                                    {libraryTab === 'mine' ? (
+                                        <>
+                                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
+                                            <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                                Para subir tus propias canciones, ingresa desde tu computadora a:<br />
+                                                <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
+                                    )}
                                 </div>
                             );
                             return (
@@ -1777,4 +1949,75 @@ export default function Multitrack() {
             </div>
         </div>
     )
+}
+
+function SortableSongItem({ song, idx, isActive, pStatus, onSelect }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id: song.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.6 : (pStatus === 'loading' && !isActive ? 0.7 : 1),
+        zIndex: isDragging ? 100 : 1,
+        touchAction: 'none',
+        position: 'relative',
+        transformOrigin: '0 0'
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className={`setlist-song-item ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+        >
+            <div className="song-item-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                    {/* Reorder handle */}
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }}>
+                        <GripVertical size={16} />
+                    </div>
+                    <span className="song-index-badge">{idx + 1}</span>
+                    <span
+                        onClick={onSelect}
+                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
+                    >
+                        {song.name}
+                    </span>
+                </div>
+                <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                    {pStatus === 'loading' && !isActive && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f39c12', boxShadow: '0 0 5px #f39c12' }} />
+                            <span style={{ fontSize: '0.6rem', color: '#f39c12', fontWeight: '800', textTransform: 'uppercase' }}>Loading</span>
+                        </div>
+                    )}
+                    {pStatus === 'ready' && !isActive && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(46, 204, 113, 0.1)', padding: '2px 6px', borderRadius: '10px' }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }} />
+                            <span style={{ fontSize: '0.6rem', color: '#2ecc71', fontWeight: '800', textTransform: 'uppercase' }}>Ready</span>
+                        </div>
+                    )}
+                    {!pStatus && !isActive && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.6 }}>
+                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff5252' }} />
+                            <span style={{ fontSize: '0.6rem', color: '#ff5252', fontWeight: '800', textTransform: 'uppercase' }}>Off</span>
+                        </div>
+                    )}
+                    {isActive && <span className="active-badge">▶ LINE</span>}
+                </span>
+            </div>
+            <div className="song-item-meta" onClick={onSelect} style={{ cursor: 'pointer', marginLeft: '24px' }}>
+                {song.artist && `${song.artist} • `}
+                {song.key && `${song.key} • `}
+                {song.tempo && `${song.tempo} BPM`}
+            </div>
+        </div>
+    );
 }

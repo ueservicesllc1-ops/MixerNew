@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import JSZip from 'jszip';
 import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, getDocs } from 'firebase/firestore';
 import {
     Upload, Music2, User, Tag, CheckCircle2,
     ChevronRight, ArrowLeft, Layers, Cloud,
@@ -130,7 +130,8 @@ export default function Dashboard() {
                 const safeTrackName = track.displayName.replace(/[^a-zA-Z0-9]/g, '_');
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.${track.extension}`;
                 formData.append('fileName', b2Filename);
-                const uploadRes = await fetch('http://localhost:3001/upload', { method: 'POST', body: formData });
+                const currentProxy = localStorage.getItem('mixer_proxyUrl') || 'http://localhost:3001';
+                const uploadRes = await fetch(`${currentProxy}/upload`, { method: 'POST', body: formData });
                 if (!uploadRes.ok) throw new Error(`Falló subida del track ${track.displayName}`);
                 const uploadData = await uploadRes.json();
                 uploadedTracksInfo.push({
@@ -336,7 +337,6 @@ export default function Dashboard() {
                                                 setEditingLyricsSong({ ...song, mode: 'lyrics' });
                                                 setTempLyrics('Cargando...');
                                                 try {
-                                                    const { getDocs, query, collection, where } = await import('firebase/firestore');
                                                     const q = query(collection(db, 'lyrics'), where('songId', '==', song.id));
                                                     const snap = await getDocs(q);
                                                     if (!snap.empty) {
@@ -540,13 +540,11 @@ export default function Dashboard() {
                                         setEditingLyricsSong({ ...editingLyricsSong, mode: 'chords' });
                                         setTempLyrics('Cargando...');
                                         // Refetch chords
-                                        import('firebase/firestore').then(({ getDocs, query, collection, where }) => {
-                                            const q = query(collection(db, 'chords'), where('songId', '==', editingLyricsSong.id));
-                                            getDocs(q).then(snap => {
-                                                if (!snap.empty) setTempLyrics(snap.docs[0].data().text);
-                                                else setTempLyrics('');
-                                            }).catch(() => setTempLyrics(''));
-                                        });
+                                        const q = query(collection(db, 'chords'), where('songId', '==', editingLyricsSong.id));
+                                        getDocs(q).then(snap => {
+                                            if (!snap.empty) setTempLyrics(snap.docs[0].data().text);
+                                            else setTempLyrics('');
+                                        }).catch(() => setTempLyrics(''));
                                     }}
                                     style={{ background: 'none', border: 'none', color: editingLyricsSong.mode === 'chords' ? '#00bcd4' : '#666', fontSize: '1.2rem', fontWeight: '700', cursor: 'pointer', padding: 0 }}
                                 >
@@ -570,8 +568,6 @@ export default function Dashboard() {
                                     style={btnPrimary(true)}
                                     onClick={async () => {
                                         try {
-                                            const { doc, addDoc, updateDoc, query, collection, where, getDocs, serverTimestamp } = await import('firebase/firestore');
-
                                             const collectionName = editingLyricsSong.mode === 'chords' ? 'chords' : 'lyrics';
                                             const q = query(collection(db, collectionName), where('songId', '==', editingLyricsSong.id));
                                             const snap = await getDocs(q);
@@ -589,7 +585,7 @@ export default function Dashboard() {
                                                 });
                                             }
 
-                                            // 2. BACKUP: Also update the song document itself for immediate sync
+                                            // BACKUP: Also update the song document itself for immediate sync
                                             const backupObj = {};
                                             backupObj[collectionName] = tempLyrics;
                                             await updateDoc(doc(db, 'songs', editingLyricsSong.id), backupObj);
@@ -679,7 +675,6 @@ export default function Dashboard() {
                                     style={btnPrimary(true)}
                                     onClick={async () => {
                                         try {
-                                            const { doc, updateDoc } = await import('firebase/firestore');
                                             await updateDoc(doc(db, 'songs', editingSongInfo.id), {
                                                 name: editingSongInfo.name,
                                                 artist: editingSongInfo.artist,

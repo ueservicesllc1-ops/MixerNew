@@ -160,7 +160,7 @@ class AudioEngine {
         this._applyStates();
 
         const syncTime = this.ctx.currentTime + 0.08;
-        this.startTime = this.ctx.currentTime - this.pausePosition;
+        this.playStartTime = this.ctx.currentTime;
 
         for (const [, track] of this.tracks.entries()) {
             this._cleanupSource(track);
@@ -198,7 +198,8 @@ class AudioEngine {
         if (!this.isPlaying) return;
 
         // Calculate pause position based on elapsed time and tempo
-        this.pausePosition = this.pausePosition + (this.ctx.currentTime - this.startTime) * this.tempoRatio;
+        const realElapsed = this.ctx.currentTime - this.playStartTime;
+        this.pausePosition = this.pausePosition + (realElapsed * this.tempoRatio);
 
         for (const [, track] of this.tracks.entries()) {
             this._cleanupSource(track);
@@ -206,6 +207,25 @@ class AudioEngine {
 
         this.isPlaying = false;
         if (this._updater) cancelAnimationFrame(this._updater);
+    }
+
+    seek(time) {
+        const wasPlaying = this.isPlaying;
+        if (wasPlaying) {
+            // Stop current sources
+            for (const [, track] of this.tracks.entries()) {
+                this._cleanupSource(track);
+            }
+            this.isPlaying = false;
+        }
+
+        this.pausePosition = time;
+
+        if (wasPlaying) {
+            this.play();
+        } else {
+            if (this.onProgress) this.onProgress(this.pausePosition);
+        }
     }
 
 
@@ -221,9 +241,9 @@ class AudioEngine {
         const update = () => {
             if (this.isPlaying && this.onProgress) {
                 // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
-                const realElapsed = this.ctx.currentTime - this.startTime;
-                const pseudoPosition = this.pausePosition + (realElapsed * this.tempoRatio);
-                this.onProgress(pseudoPosition);
+                const realElapsed = this.ctx.currentTime - this.playStartTime;
+                const currentPos = this.pausePosition + (realElapsed * this.tempoRatio);
+                this.onProgress(currentPos);
             }
             if (this.isPlaying) {
                 this._updater = requestAnimationFrame(update);

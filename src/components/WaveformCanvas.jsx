@@ -5,7 +5,7 @@ import { audioEngine } from '../AudioEngine';
  * Draws a combined waveform of all loaded tracks on a canvas.
  * The playhead travels over it as the song plays.
  */
-export default function WaveformCanvas({ tracks, progress }) {
+export default function WaveformCanvas({ tracks, progress, isPlaying }) {
     const canvasRef = useRef(null);
     // duration from any loaded buffer
     const durationRef = useRef(1);
@@ -20,12 +20,9 @@ export default function WaveformCanvas({ tracks, progress }) {
 
         ctx.clearRect(0, 0, W, H);
 
-        // If no tracks yet, show placeholder gradient
+        // If no tracks yet, show placeholder background
         if (!tracks || tracks.length === 0) {
-            const grad = ctx.createLinearGradient(0, 0, W, 0);
-            grad.addColorStop(0, '#e0e0e0');
-            grad.addColorStop(1, '#eeeeee');
-            ctx.fillStyle = grad;
+            ctx.fillStyle = '#4b5563';
             ctx.fillRect(0, 0, W, H);
             ctx.fillStyle = '#bbb';
             ctx.font = '13px sans-serif';
@@ -72,8 +69,8 @@ export default function WaveformCanvas({ tracks, progress }) {
         if (maxPeak === 0) maxPeak = 1;
         for (let i = 0; i < W; i++) peaks[i] /= maxPeak;
 
-        // ── Dark DAW background ──────────────────────────────────────
-        ctx.fillStyle = '#1a1c2e';
+        // ── Grey DAW background ──────────────────────────────────────
+        ctx.fillStyle = '#4b5563';
         ctx.fillRect(0, 0, W, H);
 
         // Grid lines (subtle)
@@ -133,8 +130,25 @@ export default function WaveformCanvas({ tracks, progress }) {
     const duration = durationRef.current;
     const playheadPct = duration > 0 ? (progress / duration) * 100 : 0;
 
+    const handleSeek = (e) => {
+        if (!duration || duration <= 0) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = (e.clientX || (e.touches && e.touches[0].clientX)) - rect.left;
+        const pct = Math.max(0, Math.min(1, x / rect.width));
+        const seekTime = pct * duration;
+        audioEngine.seek(seekTime);
+    };
+
     return (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div
+            onClick={handleSeek}
+            style={{
+                position: 'relative',
+                width: '100%',
+                height: '100%',
+                cursor: 'pointer'
+            }}
+        >
             <canvas
                 ref={canvasRef}
                 style={{ width: '100%', height: '100%', display: 'block', borderRadius: '10px' }}
@@ -150,7 +164,7 @@ export default function WaveformCanvas({ tracks, progress }) {
                 boxShadow: '0 0 6px #ff525299',
                 zIndex: 10,
                 pointerEvents: 'none',
-                transition: 'left 0.1s linear'
+                transition: isPlaying ? 'none' : 'left 0.1s linear'
             }} />
             {/* Played region dim */}
             <div style={{
@@ -161,7 +175,8 @@ export default function WaveformCanvas({ tracks, progress }) {
                 height: '100%',
                 background: 'rgba(0,0,0,0.35)',
                 borderRadius: '10px 0 0 10px',
-                pointerEvents: 'none'
+                pointerEvents: 'none',
+                transition: isPlaying ? 'none' : 'width 0.1s linear'
             }} />
         </div>
     );

@@ -1,0 +1,17 @@
+{
+  "webDir": "dist",
+  "appId": "com.mixer.app",
+  "appName": "Mixer",
+  "bundledWebRuntime": false,
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "ScreenOrientation": {
+      "orientation": "portrait"
+    }
+  }
+}

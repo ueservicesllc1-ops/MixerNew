@@ -22,3 +22,18 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Android & Build artifacts
+android/
+apk_extracted/
+*.apk
+*.zip
+*.idsig
+
+# Sensitive keys
+*.keystore
+google-services.json
+
+# Local scripts
+compress-pads.mjs
+.gemini/
+.agents/
