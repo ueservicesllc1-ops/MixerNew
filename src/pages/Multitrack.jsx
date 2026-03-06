@@ -1313,6 +1313,8 @@ export default function Multitrack() {
             {/* TAB BAR — modern & dark optimized */}
             <div className="tab-bar">
                 {[
+                    { id: 'setlist', label: 'Lista' },
+                    { id: 'pads', label: 'Pads' },
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
                     { id: 'video', label: 'Video' },
@@ -1462,6 +1464,96 @@ export default function Multitrack() {
                                                     </button>
                                                 </div>
                                             )}
+                                        </div>
+                                    )}
+                                    {activeTab === 'setlist' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', padding: '15px', overflow: 'hidden' }}>
+                                            {!activeSetlist ? (
+                                                <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
+                                                    <ListMusic size={48} style={{ opacity: 0.2, marginBottom: '10px' }} />
+                                                    <p>No hay un setlist activo.</p>
+                                                    <button onClick={() => setIsSetlistMenuOpen(true)} className="action-btn" style={{ marginTop: '10px' }}>
+                                                        Abrir Menú Setlists
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                                                    <div style={{ padding: '0 5px 12px', borderBottom: '1px solid #eee', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <ListMusic size={18} color="#00bcd4" />
+                                                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: darkMode ? '#eee' : '#333' }}>
+                                                            {activeSetlist.name}
+                                                        </h3>
+                                                    </div>
+
+                                                    <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
+                                                        {(activeSetlist.songs || []).length === 0 ? (
+                                                            <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>
+                                                                Sin canciones.
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                {(activeSetlist.songs || []).map((song, idx) => (
+                                                                    <SortableSongItem
+                                                                        key={song.id}
+                                                                        song={song}
+                                                                        idx={idx}
+                                                                        isActive={activeSongId === song.id}
+                                                                        pStatus={preloadStatus[song.id]}
+                                                                        onSelect={() => {
+                                                                            handleLoadSong(song);
+                                                                            setActiveTab(null); // Return to mixer on selection if on mobile
+                                                                        }}
+                                                                        onRemove={handleRemoveSongFromSetlist}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ width: '100%', padding: '15px' }}>
+                                                        + Añadir Canción desde Librería
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                    {activeTab === 'pads' && (
+                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '15px', overflowY: 'auto' }}>
+                                            <div className="pads-panel" style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}>
+                                                {/* Re-use pads-header and pads-body styles from CSS */}
+                                                <div className="pads-header" style={{ marginBottom: '20px' }}>
+                                                    <button
+                                                        className={`pad-power-btn ${padActive ? 'active' : ''}`}
+                                                        onClick={() => setPadActive(!padActive)}
+                                                        style={{ width: '60px', height: '60px' }}
+                                                    >
+                                                        <Power size={32} />
+                                                    </button>
+                                                    <div className="pad-title-section">
+                                                        <h3 className="pad-title" style={{ fontSize: '1.4rem' }}>Fundamental Ambient Pads</h3>
+                                                        <div className="pad-subtitle">Loop Community</div>
+                                                    </div>
+                                                </div>
+                                                <div className="pads-body">
+                                                    <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+                                                        {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
+                                                            <button
+                                                                key={k}
+                                                                className={`pad-key-btn ${padKey === k ? 'active' : ''}`}
+                                                                onClick={() => setPadKey(k)}
+                                                                style={{ height: '70px', fontSize: '1.2rem' }}
+                                                            >
+                                                                {k}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    <div className="pad-pitch-control" style={{ marginTop: '30px', justifyContent: 'center', scale: '1.2' }}>
+                                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>−</button>
+                                                        <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
+                                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                     {activeTab === 'video' && (

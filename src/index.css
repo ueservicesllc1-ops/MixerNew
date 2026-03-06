@@ -1616,6 +1616,7 @@ body.dark-mode .pad-ms-btn {
   }
 
   .sidebar {
+    display: flex !important;
     width: 100% !important;
     flex: none !important;
     padding: 10px;
