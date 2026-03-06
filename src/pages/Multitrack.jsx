@@ -5,7 +5,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from '../firebase'
-import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion } from 'firebase/firestore'
+import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
 import { padEngine } from '../PadEngine'
 import { ScreenOrientation } from '@capacitor/screen-orientation';
@@ -500,6 +500,36 @@ export default function Multitrack() {
         }
     };
 
+    const handleRemoveSongFromSetlist = async (songIdToRemove, e) => {
+        if (e) e.stopPropagation();
+        if (!activeSetlist) return;
+
+        if (window.confirm("¿Seguro que deseas remover esta canción del setlist activo?")) {
+            try {
+                // Find the song object in the active setlist to use with arrayRemove
+                const songToRemove = activeSetlist.songs.find(s => s.id === songIdToRemove);
+                if (songToRemove) {
+                    await updateDoc(doc(db, 'setlists', activeSetlist.id), {
+                        songs: arrayRemove(songToRemove)
+                    });
+
+                    // If the removed song is playing/active, we could stop it
+                    if (activeSongId === songIdToRemove) {
+                        audioEngine.stop();
+                        audioEngine.clearTracks();
+                        setIsPlaying(false);
+                        setProgress(0);
+                        setActiveSongId(null);
+                        setTracks([]);
+                    }
+                }
+            } catch (error) {
+                console.error("Error removiendo canción del setlist:", error);
+                alert("No se pudo remover la canción del setlist.");
+            }
+        }
+    };
+
     const handleDownloadAndAdd = async (song) => {
         if (!activeSetlist) {
             return alert("Por favor, selecciona un setlist primero antes de añadir canciones.");
@@ -577,16 +607,21 @@ export default function Multitrack() {
     };
 
     const handleLoadSong = async (song) => {
-        await audioEngine.init();
-
         // ── ACTUALIZACIÓN INMEDIATA DE UI ───────────────────────────────
         console.log(`[SELECT] Seleccionando "${song.name}"...`);
-        audioEngine.stop();
-        audioEngine.clearTracks();
-        setIsPlaying(false);
-        setProgress(0);
+        // Visual feedback inmediato antes de cualquier await bloqueante
         setActiveSongId(song.id);
         setTracks([]); // Limpiar mixer mientras carga (evita confusión)
+        setIsPlaying(false);
+        setProgress(0);
+        setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
+
+        audioEngine.stop();
+        audioEngine.clearTracks();
+
+        // Inicializamos audio (puede suspender la ejecución si es el primer click en safari/ios,
+        // pero la UI ya cambió)
+        await audioEngine.init();
 
         // ── VERIFICAR SI YA ESTÁ EN RAM ────────────────────────────────
         const cachedBuffers = preloadCache.current.get(song.id);
@@ -601,6 +636,7 @@ export default function Multitrack() {
                 newTracks.push({ id: trackId, name: trackName });
             }
             setTracks(newTracks);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
 
             // Pre-cargar siguientes canciones (ventana deslizante)
             if (activeSetlist?.songs) {
@@ -618,13 +654,6 @@ export default function Multitrack() {
         }
 
         // ── NO ESTÁ EN RAM → CARGAR AHORA ─────────────────────────────
-        if (preloadStatus[song.id] === 'loading') {
-            // Ya se está cargando por el preloader silencioso, pero como el usuario 
-            // la seleccionó, simplemente esperamos a que la tarea termine...
-            // Pero para simplificar y asegurar que se asigne al mixer al terminar,
-            // reiniciamos el proceso de carga asegurada aquí para esta canción.
-        }
-
         console.log(`[FETCH] "${song.name}" cargando bajo demanda...`);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
@@ -1503,6 +1532,7 @@ export default function Multitrack() {
                                                                     isActive={activeSongId === song.id}
                                                                     pStatus={preloadStatus[song.id]}
                                                                     onSelect={() => handleLoadSong(song)}
+                                                                    onRemove={handleRemoveSongFromSetlist}
                                                                 />
                                                             ))}
                                                         </div>
@@ -1959,7 +1989,7 @@ export default function Multitrack() {
     )
 }
 
-function SortableSongItem({ song, idx, isActive, pStatus, onSelect }) {
+function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) {
     const {
         attributes,
         listeners,
@@ -1982,20 +2012,18 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect }) {
     return (
         <div
             ref={setNodeRef}
-            style={style}
+            style={{ ...style, cursor: 'pointer' }}
             className={`setlist-song-item ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+            onClick={onSelect}
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                     {/* Reorder handle */}
-                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }}>
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
                     <span className="song-index-badge">{idx + 1}</span>
-                    <span
-                        onClick={onSelect}
-                        style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'pointer' }}
-                    >
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {song.name}
                     </span>
                 </div>
@@ -2019,9 +2047,30 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect }) {
                         </div>
                     )}
                     {isActive && <span className="active-badge">▶ LINE</span>}
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onRemove(song.id, e);
+                        }}
+                        style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#ff5252',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '4px',
+                            marginLeft: '4px',
+                            opacity: 0.7
+                        }}
+                        title="Eliminar del setlist"
+                    >
+                        <Trash2 size={16} />
+                    </button>
                 </span>
             </div>
-            <div className="song-item-meta" onClick={onSelect} style={{ cursor: 'pointer', marginLeft: '24px' }}>
+            <div className="song-item-meta" style={{ marginLeft: '24px' }}>
                 {song.artist && `${song.artist} • `}
                 {song.key && `${song.key} • `}
                 {song.tempo && `${song.tempo} BPM`}
