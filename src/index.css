@@ -47,7 +47,8 @@ body.dark-mode {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 10px;
+  height: 100dvh;
+  padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
   box-sizing: border-box;
   overflow: hidden;
   /* Prevent body scroll, use child scroll */
@@ -84,11 +85,12 @@ body.dark-mode .transport-bar {
 }
 
 .master-fader-mini {
-  width: 150px;
+  min-width: 150px;
   height: 40px;
   background: var(--transport-blue);
   border-radius: 8px;
   margin-right: auto;
+  overflow: visible;
 }
 
 .controls-group {
@@ -705,10 +707,8 @@ body.dark-mode .channel-btn {
 }
 
 body.dark-mode .channel-btn.m.active {
-  background: #ef4444;
-  /* Red for mute in dark mode? Or stick to cyan? Let's use cyan for brand. */
-  background: var(--primary-cyan);
-  border-color: var(--primary-cyan);
+  background: #ff5252;
+  border-color: #ff5252;
   color: white;
 }
 
@@ -745,16 +745,16 @@ body.dark-mode .channel-btn.s.active {
 }
 
 .channel-btn.m.active {
-  background: var(--primary-cyan);
+  background: #ff5252;
   color: white;
-  border-color: var(--primary-cyan);
+  border-color: #ff5252;
 }
 
 .channel-btn.s.active {
-  background: #ffffff;
-  color: var(--primary-cyan);
-  border-color: var(--primary-cyan);
-  box-shadow: 0 0 6px rgba(19, 181, 182, 0.2);
+  background: #ffc107;
+  color: black;
+  border-color: #ffc107;
+  box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
 }
 
 /* SIDEBAR RIGHT - Base width for Tablets */
@@ -818,6 +818,7 @@ body.dark-mode .pads-panel {
   border-color: rgba(255, 255, 255, 0.05);
 }
 
+<<<<<<< HEAD
 /* RESPONSIVE TRICKS - Segemented Mobile / Tablet / Desktop */
 
 /* TABLET & WEB MODE (iPad Pro, iPad Air, Desktops) - Multi-row Grid, Vertical Scroll, Visible sidebar 600px */
@@ -853,6 +854,10 @@ body.dark-mode .pads-panel {
 
 /* MOBILE MODE (iPhone, S20, Small Tablets) - Single Line, Horizontal Scroll, NO Sidebar */
 @media (max-width: 1000px) {
+=======
+/* RESPONSIVE TRICKS */
+@media (max-width: 1370px) {
+>>>>>>> 64ca8b43887d315a57eb95702d730532867e3af7
   .multitrack-layout {
     padding: 4px;
   }
@@ -1684,7 +1689,7 @@ body.dark-mode .pad-ms-btn {
 }
 
 /* ΓöÇΓöÇ RESPONSIVE DESIGN FOR MOBILE ΓöÇΓöÇ */
-@media (max-width: 768px) {
+@media (max-width: 1370px) {
   .main-content {
     flex-direction: column !important;
     overflow: hidden !important;
@@ -1698,6 +1703,8 @@ body.dark-mode .pad-ms-btn {
 
   .multitrack-layout {
     height: 100vh !important;
+    height: 100dvh !important;
+    padding: env(safe-area-inset-top, 4px) env(safe-area-inset-right, 4px) env(safe-area-inset-bottom, 4px) env(safe-area-inset-left, 4px) !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -1716,6 +1723,8 @@ body.dark-mode .pad-ms-btn {
     gap: 6px !important;
     justify-content: center !important;
     width: 100% !important;
+    max-height: 250px;
+    /* Evita que los faders se estiren demasiado en teléfonos altos */
   }
 
   .fader-container {
