@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
@@ -37,6 +37,7 @@ export default function Multitrack() {
 
     // Setlist States
     const [isSetlistMenuOpen, setIsSetlistMenuOpen] = useState(false);
+    const [isCurrentListOpen, setIsCurrentListOpen] = useState(false);
     const [isLibraryMenuOpen, setIsLibraryMenuOpen] = useState(false);
     const [setlists, setSetlists] = useState([]);
     const [activeSetlist, setActiveSetlist] = useState(null);
@@ -60,22 +61,23 @@ export default function Multitrack() {
     const [loginIsRegister, setLoginIsRegister] = useState(false);
     const [loginError, setLoginError] = useState('');
 
-    // ── SETTINGS PANEL STATES ─────────────────────────────────────────────
+    // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
     const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
     const [dynamicClick, setDynamicClick] = useState(false);
 
-    // ── PADS SYSTEM STATES ───────────────────────────────────────────────
+    // ΓöÇΓöÇ PADS SYSTEM STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [padActive, setPadActive] = useState(false);
     const [padKey, setPadKey] = useState('C');
     const [padPitch, setPadPitch] = useState(0);
     const [padVolume, setPadVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
-    const [padSolo, setPadSolo] = useState(false); // (El modo Solo sería más complejo de integrar contra el otro motor, por ahora sirve visual)
+    const [padSolo, setPadSolo] = useState(false); // (El modo Solo ser├¡a m├ís complejo de integrar contra el otro motor, por ahora sirve visual)
 
-    // ── DND SENSORS ──────────────────────────────────────────────────────
+    // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const sensors = useSensors(
         useSensor(PointerSensor, {
             activationConstraint: { distance: 8 }
@@ -133,7 +135,7 @@ export default function Multitrack() {
         padEngine.setPitch(padPitch);
     }, [padPitch]);
 
-    // ── DYNAMIC CLICK ENGINE ─────────────────────────────────────────────
+    // ΓöÇΓöÇ DYNAMIC CLICK ENGINE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const clickCtxRef = useRef(null);
     const clickSchedulerRef = useRef(null);
     const clickNextBeatRef = useRef(0);
@@ -191,9 +193,9 @@ export default function Multitrack() {
         clickSchedulerRef.current = setInterval(scheduleClick, lookahead);
     }, [stopDynamicClick]);
 
-    // Click dinámico: solo suena cuando la canción está reproduciendo (Play)
-    // El switch solo "arma" el modo — el click real respeta el transport.
-    // NOTA: No usamos `activeSong` aquí porque se declara más abajo (TDZ).
+    // Click din├ímico: solo suena cuando la canci├│n est├í reproduciendo (Play)
+    // El switch solo "arma" el modo ΓÇö el click real respeta el transport.
+    // NOTA: No usamos `activeSong` aqu├¡ porque se declara m├ís abajo (TDZ).
     //       Derivamos el tempo directamente desde los arrays disponibles.
     useEffect(() => {
         const song = librarySongs.find(s => s.id === activeSongId)
@@ -240,7 +242,7 @@ export default function Multitrack() {
         }
         localStorage.setItem('mixer_panMode', panMode);
     }, [panMode]);
-    // ── Smart LRU Preload Cache ──────────────────────────────────────────────
+    // ΓöÇΓöÇ Smart LRU Preload Cache ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // Detects device RAM and sets how many decoded songs to keep in cache.
     // navigator.deviceMemory is privacy-capped at 8 even on 32/64GB machines.
     // We supplement with performance.memory (Chromium only) to detect real available heap.
@@ -258,10 +260,10 @@ export default function Multitrack() {
     })();
 
     // Song limits per estimated RAM:
-    //   ≤4 GB  → 2 songs  (phones)
-    //   ≤8 GB  → 4 songs  (tablets / old laptops)
-    //   ≤16 GB → 8 songs  (laptop / iPad Pro)
-    //   > 16 GB→ 14 songs (desktop / workstation)
+    //   Γëñ4 GB  ΓåÆ 2 songs  (phones)
+    //   Γëñ8 GB  ΓåÆ 4 songs  (tablets / old laptops)
+    //   Γëñ16 GB ΓåÆ 8 songs  (laptop / iPad Pro)
+    //   > 16 GBΓåÆ 14 songs (desktop / workstation)
     const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 2
         : estimatedRAM <= 8 ? 4
             : estimatedRAM <= 16 ? 8
@@ -281,7 +283,7 @@ export default function Multitrack() {
         while (preloadCache.current.size >= MAX_DECODED_SONGS) {
             // Find the oldest entry that is NOT the active song
             const candidate = lruOrder.current.find(id => id !== activeSongId && preloadCache.current.has(id));
-            if (!candidate) break; // All cached songs are active — don't evict anything
+            if (!candidate) break; // All cached songs are active ΓÇö don't evict anything
             lruOrder.current = lruOrder.current.filter(id => id !== candidate);
             preloadCache.current.delete(candidate);
             setPreloadStatus(prev => { const n = { ...prev }; delete n[candidate]; return n; });
@@ -334,7 +336,7 @@ export default function Multitrack() {
             setCurrentUser(user);
 
             if (user) {
-                // ── Songs: solo las del usuario autenticado ──────────────────
+                // ΓöÇΓöÇ Songs: solo las del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 const q = query(collection(db, 'songs'), where('userId', '==', user.uid));
                 const unsubSongs = onSnapshot(q, (snap) => {
                     const songs = [];
@@ -342,7 +344,7 @@ export default function Multitrack() {
                     setLibrarySongs(songs);
                 });
 
-                // Global/VIP tab — todas las canciones (sin filtro de dueño, solo lectura de metadata)
+                // Global/VIP tab ΓÇö todas las canciones (sin filtro de due├▒o, solo lectura de metadata)
                 const qGlobal = query(collection(db, 'songs'));
                 const unsubGlobal = onSnapshot(qGlobal, (snap) => {
                     const songs = [];
@@ -350,7 +352,7 @@ export default function Multitrack() {
                     setGlobalSongs(songs);
                 });
 
-                // ── Setlists: SOLO los del usuario autenticado ───────────────
+                // ΓöÇΓöÇ Setlists: SOLO los del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 // SECURITY FIX: filtrar por userId para que nadie vea setlists ajenos
                 const qSetlists = query(
                     collection(db, 'setlists'),
@@ -362,7 +364,7 @@ export default function Multitrack() {
                         list.push({ id: d.id, ...d.data() });
                     });
                     setSetlists(list);
-                    // Sync el setlist activo si Firestore lo actualizó
+                    // Sync el setlist activo si Firestore lo actualiz├│
                     setActiveSetlist(prev => {
                         if (!prev) return prev;
                         const updated = list.find(s => s.id === prev.id);
@@ -374,7 +376,7 @@ export default function Multitrack() {
 
                 return () => { unsubSongs(); unsubGlobal(); unsubSetlists(); };
             } else {
-                // Usuario sin sesión → limpiar todo
+                // Usuario sin sesi├│n ΓåÆ limpiar todo
                 setLibrarySongs([]);
                 setGlobalSongs([]);
                 setSetlists([]);
@@ -382,7 +384,7 @@ export default function Multitrack() {
             }
         });
 
-        // Inicializar canales vacíos del engine
+        // Inicializar canales vac├¡os del engine
         const initCore = async () => {
             const emptyTracks = [
                 { id: '1', name: 'Master' },
@@ -404,14 +406,14 @@ export default function Multitrack() {
     const handleCreateSetlist = async () => {
         if (!newSetlistName.trim()) return;
         if (!currentUser) {
-            alert('Debes iniciar sesión para crear un setlist.');
+            alert('Debes iniciar sesi├│n para crear un setlist.');
             return;
         }
 
         try {
             await addDoc(collection(db, 'setlists'), {
                 name: newSetlistName,
-                userId: currentUser.uid,          // ← REQUERIDO para seguridad
+                userId: currentUser.uid,          // ΓåÉ REQUERIDO para seguridad
                 createdAt: serverTimestamp(),
                 songs: []
             });
@@ -419,7 +421,7 @@ export default function Multitrack() {
             setIsCreatingSetlist(false);
         } catch (error) {
             console.error("Error creando setlist:", error);
-            alert("No se pudo crear. Asegúrate de tener permisos (Reglas de Firestore).");
+            alert("No se pudo crear. Aseg├║rate de tener permisos (Reglas de Firestore).");
         }
     };
 
@@ -444,7 +446,7 @@ export default function Multitrack() {
     const preloadSetlistSongs = async (songs) => {
         for (const song of songs) {
             if (preloadCache.current.has(song.id)) {
-                touchLRU(song.id); // Already cached — refresh recency
+                touchLRU(song.id); // Already cached ΓÇö refresh recency
                 continue;
             }
 
@@ -457,7 +459,7 @@ export default function Multitrack() {
                 const tracksData = song.tracks || [];
                 for (const tr of tracksData) {
                     if (!tr.url || tr.url === 'undefined') {
-                        console.warn(`[PRELOAD] Saltando pista ${tr.name} — URL inválida`);
+                        console.warn(`[PRELOAD] Saltando pista ${tr.name} ΓÇö URL inv├ílida`);
                         continue;
                     }
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
@@ -487,7 +489,7 @@ export default function Multitrack() {
 
     const handleDeleteSetlist = async (id, name, e) => {
         e.stopPropagation(); // Avoid triggering selection
-        if (window.confirm(`¿Seguro que deseas ELIMINAR permanentemente el setlist "${name}"? Esta acción no se puede deshacer.`)) {
+        if (window.confirm(`┬┐Seguro que deseas ELIMINAR permanentemente el setlist "${name}"? Esta acci├│n no se puede deshacer.`)) {
             try {
                 await deleteDoc(doc(db, 'setlists', id));
                 if (activeSetlist && activeSetlist.id === id) {
@@ -504,7 +506,7 @@ export default function Multitrack() {
         if (e) e.stopPropagation();
         if (!activeSetlist) return;
 
-        if (window.confirm("¿Seguro que deseas remover esta canción del setlist activo?")) {
+        if (window.confirm("┬┐Seguro que deseas remover esta canci├│n del setlist activo?")) {
             try {
                 // Find the song object in the active setlist to use with arrayRemove
                 const songToRemove = activeSetlist.songs.find(s => s.id === songIdToRemove);
@@ -524,15 +526,15 @@ export default function Multitrack() {
                     }
                 }
             } catch (error) {
-                console.error("Error removiendo canción del setlist:", error);
-                alert("No se pudo remover la canción del setlist.");
+                console.error("Error removiendo canci├│n del setlist:", error);
+                alert("No se pudo remover la canci├│n del setlist.");
             }
         }
     };
 
     const handleDownloadAndAdd = async (song) => {
         if (!activeSetlist) {
-            return alert("Por favor, selecciona un setlist primero antes de añadir canciones.");
+            return alert("Por favor, selecciona un setlist primero antes de a├▒adir canciones.");
         }
 
         setDownloadProgress({ songId: song.id, text: 'Iniciando descarga B2...' });
@@ -547,7 +549,7 @@ export default function Multitrack() {
 
                 // Fetch the binary stream from our proxy (which hooks to B2)
                 if (!tr.url || tr.url === 'undefined') {
-                    console.warn(`[DOWNLOAD] Saltando pista ${tr.name} porque no tiene URL válida.`);
+                    console.warn(`[DOWNLOAD] Saltando pista ${tr.name} porque no tiene URL v├ílida.`);
                     continue;
                 }
                 const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
@@ -600,18 +602,18 @@ export default function Multitrack() {
             setIsLibraryMenuOpen(false);
         } catch (error) {
             console.error(error);
-            alert("Hubo un error descargando la canción. Verifica la consola.");
+            alert("Hubo un error descargando la canci├│n. Verifica la consola.");
         } finally {
             setDownloadProgress({ songId: null, text: '' });
         }
     };
 
     const handleLoadSong = async (song) => {
-        // ── ACTUALIZACIÓN INMEDIATA DE UI ───────────────────────────────
+        // ΓöÇΓöÇ ACTUALIZACI├ôN INMEDIATA DE UI ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         console.log(`[SELECT] Seleccionando "${song.name}"...`);
         // Visual feedback inmediato antes de cualquier await bloqueante
         setActiveSongId(song.id);
-        setTracks([]); // Limpiar mixer mientras carga (evita confusión)
+        setTracks([]); // Limpiar mixer mientras carga (evita confusi├│n)
         setIsPlaying(false);
         setProgress(0);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
@@ -619,11 +621,11 @@ export default function Multitrack() {
         audioEngine.stop();
         audioEngine.clearTracks();
 
-        // Inicializamos audio (puede suspender la ejecución si es el primer click en safari/ios,
-        // pero la UI ya cambió)
+        // Inicializamos audio (puede suspender la ejecuci├│n si es el primer click en safari/ios,
+        // pero la UI ya cambi├│)
         await audioEngine.init();
 
-        // ── VERIFICAR SI YA ESTÁ EN RAM ────────────────────────────────
+        // ΓöÇΓöÇ VERIFICAR SI YA EST├ü EN RAM ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         const cachedBuffers = preloadCache.current.get(song.id);
         if (cachedBuffers && cachedBuffers.size > 0) {
             console.log(`[INSTANT] "${song.name}" ya estaba en RAM.`);
@@ -653,7 +655,7 @@ export default function Multitrack() {
             return;
         }
 
-        // ── NO ESTÁ EN RAM → CARGAR AHORA ─────────────────────────────
+        // ΓöÇΓöÇ NO EST├ü EN RAM ΓåÆ CARGAR AHORA ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         console.log(`[FETCH] "${song.name}" cargando bajo demanda...`);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
@@ -680,7 +682,7 @@ export default function Multitrack() {
             touchLRU(song.id);
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
 
-            // Una vez cargada, si sigue siendo la canción activa, inyectamos los tracks
+            // Una vez cargada, si sigue siendo la canci├│n activa, inyectamos los tracks
             const newTracks = [];
             for (const [trackName, cached] of trackBuffers.entries()) {
                 const trackId = `${song.id}_${trackName}`;
@@ -711,7 +713,7 @@ export default function Multitrack() {
             await signInWithPopup(auth, provider);
             setShowLoginModal(false);
         } catch (error) {
-            console.error("Login con Google falló:", error);
+            console.error("Login con Google fall├│:", error);
             setLoginError("Error con Google: " + error.message);
         }
     };
@@ -733,11 +735,11 @@ export default function Multitrack() {
                 await ScreenOrientation.lock({ orientation: 'landscape' });
             }
         } catch (error) {
-            console.error("Auth falló:", error);
+            console.error("Auth fall├│:", error);
             if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-                setLoginError('Correo o contraseña incorrectos');
+                setLoginError('Correo o contrase├▒a incorrectos');
             } else if (error.code === 'auth/email-already-in-use') {
-                setLoginError('Este correo ya está registrado');
+                setLoginError('Este correo ya est├í registrado');
             } else {
                 setLoginError(error.message);
             }
@@ -752,7 +754,7 @@ export default function Multitrack() {
             }
             navigate('/'); // Regresar a inicio
         } catch (error) {
-            console.error("Logout falló:", error);
+            console.error("Logout fall├│:", error);
         }
     };
 
@@ -818,7 +820,7 @@ export default function Multitrack() {
         audioEngine.masterGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.015);
     };
 
-    // Tempo control (±15 BPM from original, pitch preserved via SoundTouch)
+    // Tempo control (┬▒15 BPM from original, pitch preserved via SoundTouch)
     const [tempoOffset, setTempoOffset] = useState(0); // offset in BPM from original
     const handleTempoChange = (delta) => {
         const originalBPM = activeSong?.tempo ? parseFloat(activeSong.tempo) : 120;
@@ -832,7 +834,7 @@ export default function Multitrack() {
         audioEngine.setTempo(1.0);
     };
 
-    // Pitch / Key control (±6 semitones via SoundTouch)
+    // Pitch / Key control (┬▒6 semitones via SoundTouch)
     const [pitchOffset, setPitchOffset] = useState(0);
     const handlePitchChange = (delta) => {
         const newOffset = Math.max(-12, Math.min(12, pitchOffset + delta));
@@ -893,7 +895,7 @@ export default function Multitrack() {
             return;
         }
 
-        console.log(`[TEXTS] 🔍 Buscando Letras y Acordes para ID: ${activeSongId}`);
+        console.log(`[TEXTS] ≡ƒöì Buscando Letras y Acordes para ID: ${activeSongId}`);
         setActiveLyrics('loading');
         setActiveChords('loading');
 
@@ -901,14 +903,14 @@ export default function Multitrack() {
         let unsubChords = () => { };
 
         const loadTexts = async () => {
-            // 1. CARGA RÁPIDA OFFLINE
+            // 1. CARGA R├üPIDA OFFLINE
             const offlineLyrics = await LocalFileManager.getTextLocal(activeSongId, 'lyrics');
             const offlineChords = await LocalFileManager.getTextLocal(activeSongId, 'chords');
 
             if (offlineLyrics) setActiveLyrics(offlineLyrics);
             if (offlineChords) setActiveChords(offlineChords);
 
-            // 2. SINCRONIZACIÓN EN VIVO DESDE FIRESTORE (si hay internet)
+            // 2. SINCRONIZACI├ôN EN VIVO DESDE FIRESTORE (si hay internet)
             // Lyrics sync
             const qLyrics = query(collection(db, 'lyrics'), where('songId', '==', activeSongId));
             unsubLyrics = onSnapshot(qLyrics, (snap) => {
@@ -1012,12 +1014,12 @@ export default function Multitrack() {
         setManualScrollOffset(0);
     }, [activeTab]);
 
-    // ── PRELOADER OVERLAY ──────────────────────────────────────────────────
+    // ΓöÇΓöÇ PRELOADER OVERLAY ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [showPreloader, setShowPreloader] = useState(false);
     const [countdown, setCountdown] = useState(10);
     const countdownRef = useRef(null);
 
-    // ── ORIENTATION MANAGEMENT ──────────────────────────────────────────
+    // ΓöÇΓöÇ ORIENTATION MANAGEMENT ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     useEffect(() => {
         // Detect native environment
         const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
@@ -1077,17 +1079,17 @@ export default function Multitrack() {
     return (
         <div className="multitrack-layout">
 
-            {/* ── ALERTS / LOGIN SYSTEM ────────────────────────────────────────── */}
+            {/* ΓöÇΓöÇ ALERTS / LOGIN SYSTEM ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
             {(!currentUser || showLoginModal) && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
                     <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '320px', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
                         {currentUser && (
                             <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
                         )}
-                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
+                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesi├│n'}</h2>
                         <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            <input type="email" placeholder="Correo electrónico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
-                            <input type="password" placeholder="Contraseña" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            <input type="email" placeholder="Correo electr├│nico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            <input type="password" placeholder="Contrase├▒a" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
                             {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center' }}>{loginError}</div>}
                             <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>{loginIsRegister ? 'Registrarse' : 'Entrar'}</button>
                         </form>
@@ -1096,14 +1098,14 @@ export default function Multitrack() {
 
                         <div style={{ marginTop: '20px', textAlign: 'center' }}>
                             <span onClick={() => { setLoginIsRegister(!loginIsRegister); setLoginError(''); }} style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none' }}>
-                                {loginIsRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? regístrate aquí'}
+                                {loginIsRegister ? '┬┐Ya tienes cuenta? Inicia sesi├│n' : '┬┐No tienes cuenta? reg├¡strate aqu├¡'}
                             </span>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* ── PRELOADER OVERLAY ──────────────────────────────────────────── */}
+            {/* ΓöÇΓöÇ PRELOADER OVERLAY ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
             {showPreloader && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 99999,
@@ -1206,7 +1208,7 @@ export default function Multitrack() {
                     <button className="transport-btn" onClick={() => setIsSetlistMenuOpen(true)} title="Setlists">
                         <ListMusic size={20} />
                     </button>
-                    <button className="transport-btn" onClick={() => setIsLibraryMenuOpen(true)} title="Librería">
+                    <button className="transport-btn" onClick={() => setIsLibraryMenuOpen(true)} title="Librer├¡a">
                         <LibraryIcon size={20} />
                     </button>
                 </div>
@@ -1241,9 +1243,9 @@ export default function Multitrack() {
                 <div className="audio-info">
                     <span>{formatTime(progress)} / {totalDuration ? formatTime(totalDuration) : '--:--'}</span>
 
-                    {/* TEMPO CONTROL with ± buttons */}
+                    {/* TEMPO CONTROL with ┬▒ buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button onClick={() => handleTempoChange(-1)} className="square-btn">−</button>
+                        <button onClick={() => handleTempoChange(-1)} className="square-btn">-</button>
                         <span
                             onClick={tempoOffset !== 0 ? handleTempoReset : undefined}
                             className="control-value"
@@ -1259,7 +1261,7 @@ export default function Multitrack() {
 
                     {/* PITCH/KEY CONTROL */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <button onClick={() => handlePitchChange(-1)} className="square-btn">−</button>
+                        <button onClick={() => handlePitchChange(-1)} className="square-btn">-</button>
                         <span
                             onClick={pitchOffset !== 0 ? handlePitchReset : undefined}
                             className="control-value"
@@ -1323,6 +1325,29 @@ export default function Multitrack() {
                     { id: 'settings', label: 'Ajustes' },
                 ].map(tab => {
                     const isActive = activeTab === tab.id;
+                    // Lista and Pads open drawers directly (especially useful on mobile)
+                    if (tab.id === 'setlist') {
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setIsCurrentListOpen(true)}
+                                className="tab-btn"
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    }
+                    if (tab.id === 'pads') {
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setIsPadsOpen(o => !o)}
+                                className={`tab-btn ${isPadsOpen ? 'active' : ''}`}
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    }
                     return (
                         <button
                             key={tab.id}
@@ -1335,393 +1360,266 @@ export default function Multitrack() {
                 })}
             </div>
 
-            {/* MAIN CONTENT SPLIT — dynamic height calculation */}
-            <div className="main-content" style={{
-                height: activeTab ? 'calc(100vh - 200px)' : 'calc(100vh - 145px)',
-                marginTop: '0'
-            }}>
-                {loading ? (
-                    <div style={{ display: 'flex', width: '100%', justifyContent: 'center' }}>
-                        <div className="loader"></div>
-                    </div>
-                ) : (
-                    <>
-                        {activeTab ? (
-                            <div className="tab-content-area">
-                                {/* Shared Tab Header */}
-                                <div className="tab-header">
-                                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                        <button
-                                            onClick={() => setActiveTab(null)}
-                                            className="back-to-mixer-btn"
-                                        >
-                                            <SkipBack size={16} /> MIXER
-                                        </button>
-                                        <h2>
-                                            {activeTab === 'lyrics' ? 'Teleprompter' : activeTab}
-                                        </h2>
-                                    </div>
+            <div className="main-content">
+                {/* MAIN STAGE (Mixer or Tab Content) - Takes 70% on desktop */}
+                <div style={{ flex: 7, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    {loading ? (
+                        <div style={{ display: 'flex', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+                            <div className="loader"></div>
+                        </div>
+                    ) : (
+                        <>
+                            {activeTab ? (
+                                <div className="tab-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                    {/* Shared Tab Header */}
+                                    <div className="tab-header">
+                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                            <button
+                                                onClick={() => setActiveTab(null)}
+                                                className="back-to-mixer-btn"
+                                            >
+                                                <SkipBack size={16} /> MIXER
+                                            </button>
+                                            <h2>
+                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab}
+                                            </h2>
+                                        </div>
 
-                                    {(activeTab === 'lyrics' || activeTab === 'chords') && (
-                                        <div className="lyrics-controls-bar">
-                                            <div className="control-group">
-                                                <button
-                                                    onClick={() => setIsAutoScroll(!isAutoScroll)}
-                                                    className={`control-btn ${isAutoScroll ? 'primary' : 'secondary'}`}
-                                                >
-                                                    {isAutoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
-                                                </button>
-                                                {isAutoScroll && (
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                                        <span className="control-label" style={{ marginLeft: '8px' }}>VEL:</span>
-                                                        <button onClick={() => setAutoScrollSpeed(s => Math.max(0.2, s - 0.2))} className="square-btn">-</button>
-                                                        <span className="control-value">{autoScrollSpeed.toFixed(1)}x</span>
-                                                        <button onClick={() => setAutoScrollSpeed(s => Math.min(3.0, s + 0.2))} className="square-btn">+</button>
+                                        {(activeTab === 'lyrics' || activeTab === 'chords') && (
+                                            <div className="lyrics-controls-bar">
+                                                <div className="control-group">
+                                                    <button
+                                                        onClick={() => setIsAutoScroll(!isAutoScroll)}
+                                                        className={`control-btn ${isAutoScroll ? 'primary' : 'secondary'}`}
+                                                    >
+                                                        {isAutoScroll ? 'AUTO-SCROLL ON' : 'AUTO-SCROLL OFF'}
+                                                    </button>
+                                                    {isAutoScroll && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <span className="control-label" style={{ marginLeft: '8px' }}>VEL:</span>
+                                                            <button onClick={() => setAutoScrollSpeed(s => Math.max(0.2, s - 0.2))} className="square-btn">-</button>
+                                                            <span className="control-value">{autoScrollSpeed.toFixed(1)}x</span>
+                                                            <button onClick={() => setAutoScrollSpeed(s => Math.min(3.0, s + 0.2))} className="square-btn">+</button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="control-group">
+                                                    <span className="control-label">TEXTO:</span>
+                                                    <button onClick={() => setLyricsFontSize(f => Math.max(14, f - 2))} className="square-btn">-</button>
+                                                    <span className="control-value">{lyricsFontSize}</span>
+                                                    <button onClick={() => setLyricsFontSize(f => Math.min(60, f + 2))} className="square-btn">+</button>
+                                                </div>
+                                                {activeTab === 'lyrics' && activeLyrics === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Letra...</span>}
+                                                {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                                        {activeTab === 'lyrics' && (
+                                            <div
+                                                ref={lyricsScrollRef}
+                                                onScroll={handleTextScroll}
+                                                style={{
+                                                    flex: 1,
+                                                    background: '#0a0a0e',
+                                                    borderRadius: '12px',
+                                                    overflowY: 'auto',
+                                                    padding: '200px 60px',
+                                                    textAlign: 'center',
+                                                    scrollBehavior: 'smooth',
+                                                    position: 'relative',
+                                                    boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
+                                                    touchAction: 'pan-y'
+                                                }}
+                                            >
+                                                {activeLyrics === 'loading' ? (
+                                                    <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600' }}>Cargando letra...</div>
+                                                ) : activeLyrics ? (
+                                                    <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px` }}>
+                                                        {activeLyrics}
+                                                    </pre>
+                                                ) : (
+                                                    <div style={{ padding: '60px', color: '#777', textAlign: 'center' }}>
+                                                        <p style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff' }}>No hay letra disponible</p>
+                                                        <p style={{ margin: '15px 0', fontSize: '1rem', color: '#aaa' }}>ID de canción: {activeSongId}</p>
+                                                        <button
+                                                            onClick={handleRetryLyrics}
+                                                            style={{ background: '#00bcd4', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
+                                                        >
+                                                            REINTENTAR CARGA
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="control-group">
-                                                <span className="control-label">TEXTO:</span>
-                                                <button onClick={() => setLyricsFontSize(f => Math.max(14, f - 2))} className="square-btn">-</button>
-                                                <span className="control-value">{lyricsFontSize}</span>
-                                                <button onClick={() => setLyricsFontSize(f => Math.min(60, f + 2))} className="square-btn">+</button>
+                                        )}
+                                        {activeTab === 'chords' && (
+                                            <div
+                                                ref={chordsScrollRef}
+                                                onScroll={handleTextScroll}
+                                                style={{
+                                                    flex: 1,
+                                                    background: '#0a0a0e',
+                                                    borderRadius: '12px',
+                                                    overflowY: 'auto',
+                                                    padding: '200px 60px',
+                                                    textAlign: 'left', // Chords usually better left-aligned or center-left
+                                                    scrollBehavior: 'smooth',
+                                                    position: 'relative',
+                                                    boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
+                                                    touchAction: 'pan-y'
+                                                }}
+                                            >
+                                                {activeChords === 'loading' ? (
+                                                    <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600', textAlign: 'center' }}>Cargando acordes...</div>
+                                                ) : activeChords ? (
+                                                    <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px`, textAlign: 'left' }}>
+                                                        {activeChords}
+                                                    </pre>
+                                                ) : (
+                                                    <div style={{ padding: '60px', color: '#777', textAlign: 'center' }}>
+                                                        <p style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff' }}>No hay acordes disponibles</p>
+                                                        <p style={{ margin: '15px 0', fontSize: '1rem', color: '#aaa' }}>Agrega acordes en formato [C]Texto</p>
+                                                        <button
+                                                            onClick={handleRetryLyrics}
+                                                            style={{ background: '#00e5ff', color: '#000', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
+                                                        >
+                                                            REINTENTAR CARGA
+                                                        </button>
+                                                    </div>
+                                                )}
                                             </div>
-                                            {activeTab === 'lyrics' && activeLyrics === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Letra...</span>}
-                                            {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
-
-                                {/* Content Area */}
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                                    {activeTab === 'lyrics' && (
-                                        <div
-                                            ref={lyricsScrollRef}
-                                            onScroll={handleTextScroll}
-                                            style={{
-                                                flex: 1,
-                                                background: '#0a0a0e',
-                                                borderRadius: '12px',
-                                                overflowY: 'auto',
-                                                padding: '200px 60px',
-                                                textAlign: 'center',
-                                                scrollBehavior: 'smooth',
-                                                position: 'relative',
-                                                boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
-                                                touchAction: 'pan-y'
-                                            }}
-                                        >
-                                            {activeLyrics === 'loading' ? (
-                                                <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600' }}>Cargando letra...</div>
-                                            ) : activeLyrics ? (
-                                                <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px` }}>
-                                                    {activeLyrics}
-                                                </pre>
-                                            ) : (
-                                                <div style={{ padding: '60px', color: '#777', textAlign: 'center' }}>
-                                                    <p style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff' }}>No hay letra disponible</p>
-                                                    <p style={{ margin: '15px 0', fontSize: '1rem', color: '#aaa' }}>ID de canción: {activeSongId}</p>
-                                                    <button
-                                                        onClick={handleRetryLyrics}
-                                                        style={{ background: '#00bcd4', color: 'white', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                                                    >
-                                                        REINTENTAR CARGA
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {activeTab === 'chords' && (
-                                        <div
-                                            ref={chordsScrollRef}
-                                            onScroll={handleTextScroll}
-                                            style={{
-                                                flex: 1,
-                                                background: '#0a0a0e',
-                                                borderRadius: '12px',
-                                                overflowY: 'auto',
-                                                padding: '200px 60px',
-                                                textAlign: 'left', // Chords usually better left-aligned or center-left
-                                                scrollBehavior: 'smooth',
-                                                position: 'relative',
-                                                boxShadow: 'inset 0 0 50px rgba(0,0,0,0.5)',
-                                                touchAction: 'pan-y'
-                                            }}
-                                        >
-                                            {activeChords === 'loading' ? (
-                                                <div style={{ color: '#00bcd4', fontSize: '1.2rem', fontWeight: '600', textAlign: 'center' }}>Cargando acordes...</div>
-                                            ) : activeChords ? (
-                                                <pre className="lyrics-text-area" style={{ fontSize: `${lyricsFontSize}px`, textAlign: 'left' }}>
-                                                    {activeChords}
-                                                </pre>
-                                            ) : (
-                                                <div style={{ padding: '60px', color: '#777', textAlign: 'center' }}>
-                                                    <p style={{ fontSize: '1.4rem', fontWeight: '700', color: '#fff' }}>No hay acordes disponibles</p>
-                                                    <p style={{ margin: '15px 0', fontSize: '1rem', color: '#aaa' }}>Agrega acordes en formato [C]Texto</p>
-                                                    <button
-                                                        onClick={handleRetryLyrics}
-                                                        style={{ background: '#00e5ff', color: '#000', border: 'none', padding: '12px 24px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                                                    >
-                                                        REINTENTAR CARGA
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {activeTab === 'setlist' && (
-                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: darkMode ? '#1e293b' : '#fff', borderRadius: '12px', padding: '15px', overflow: 'hidden' }}>
-                                            {!activeSetlist ? (
-                                                <div style={{ padding: '20px', textAlign: 'center', color: '#888' }}>
-                                                    <ListMusic size={48} style={{ opacity: 0.2, marginBottom: '10px' }} />
-                                                    <p>No hay un setlist activo.</p>
-                                                    <button onClick={() => setIsSetlistMenuOpen(true)} className="action-btn" style={{ marginTop: '10px' }}>
-                                                        Abrir Menú Setlists
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                                                    <div style={{ padding: '0 5px 12px', borderBottom: '1px solid #eee', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <ListMusic size={18} color="#00bcd4" />
-                                                        <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '800', color: darkMode ? '#eee' : '#333' }}>
-                                                            {activeSetlist.name}
-                                                        </h3>
-                                                    </div>
-
-                                                    <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
-                                                        {(activeSetlist.songs || []).length === 0 ? (
-                                                            <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>
-                                                                Sin canciones.
-                                                            </div>
-                                                        ) : (
-                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                                {(activeSetlist.songs || []).map((song, idx) => (
-                                                                    <SortableSongItem
-                                                                        key={song.id}
-                                                                        song={song}
-                                                                        idx={idx}
-                                                                        isActive={activeSongId === song.id}
-                                                                        pStatus={preloadStatus[song.id]}
-                                                                        onSelect={() => {
-                                                                            handleLoadSong(song);
-                                                                            setActiveTab(null); // Return to mixer on selection if on mobile
-                                                                        }}
-                                                                        onRemove={handleRemoveSongFromSetlist}
-                                                                    />
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ width: '100%', padding: '15px' }}>
-                                                        + Añadir Canción desde Librería
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {activeTab === 'pads' && (
-                                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: darkMode ? '#1e293b' : '#f8fafc', borderRadius: '12px', padding: '15px', overflowY: 'auto' }}>
-                                            <div className="pads-panel" style={{ background: 'transparent', boxShadow: 'none', border: 'none' }}>
-                                                {/* Re-use pads-header and pads-body styles from CSS */}
-                                                <div className="pads-header" style={{ marginBottom: '20px' }}>
-                                                    <button
-                                                        className={`pad-power-btn ${padActive ? 'active' : ''}`}
-                                                        onClick={() => setPadActive(!padActive)}
-                                                        style={{ width: '60px', height: '60px' }}
-                                                    >
-                                                        <Power size={32} />
-                                                    </button>
-                                                    <div className="pad-title-section">
-                                                        <h3 className="pad-title" style={{ fontSize: '1.4rem' }}>Fundamental Ambient Pads</h3>
-                                                        <div className="pad-subtitle">Loop Community</div>
-                                                    </div>
-                                                </div>
-                                                <div className="pads-body">
-                                                    <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
-                                                        {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                                                            <button
-                                                                key={k}
-                                                                className={`pad-key-btn ${padKey === k ? 'active' : ''}`}
-                                                                onClick={() => setPadKey(k)}
-                                                                style={{ height: '70px', fontSize: '1.2rem' }}
-                                                            >
-                                                                {k}
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                    <div className="pad-pitch-control" style={{ marginTop: '30px', justifyContent: 'center', scale: '1.2' }}>
-                                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>−</button>
-                                                        <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
-                                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {activeTab === 'video' && (
-                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: '12px', color: '#fff', fontSize: '1.2rem' }}>
-                                            Módulo de Video — Próximamente
-                                        </div>
-                                    )}
-                                    {activeTab === 'settings' && (
-                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8f9fa', borderRadius: '12px', color: '#888', fontSize: '1.2rem' }}>
-                                            Ajustes Avanzados — Próximamente
-                                        </div>
-                                    )}
+                            ) : (
+                                <div className="mixer-wrapper" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                    <Mixer tracks={tracks} />
                                 </div>
+                            )}
+                        </>
+                    )}
+                </div>
+
+                {/* DESKTOP SIDEBAR — visible on web, hidden on mobile */}
+                <aside className="sidebar desktop-only">
+                    {/* Active Setlist Panel */}
+                    <div className="setlist-panel">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <ListMusic size={20} color="#00bcd4" />
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800' }}>{activeSetlist?.name || 'Lista de Canciones'}</h3>
                             </div>
-                        ) : (
-                            <Mixer tracks={tracks} />
-                        )}
-
-                        <div className="sidebar">
-                            <div className="right-panel-item">
-                                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                                    <button
-                                        onClick={() => setIsSetlistMenuOpen(true)}
-                                        className="tab-btn active"
-                                        style={{ flex: 1 }}
-                                    >
-                                        Setlists
-                                    </button>
-                                </div>
-
-                                {!activeSetlist ? (
-                                    <div style={{ padding: '10px', color: '#888', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-                                        Abre el menú Setlists para crear tu primer bloque de canciones.
-                                    </div>
-                                ) : (
-                                    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                                        {/* Setlist Name Header */}
-                                        <div style={{ padding: '0 5px 12px', borderBottom: '1px solid #eee', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                            <ListMusic size={18} color="#00bcd4" />
-                                            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: '800', color: darkMode ? '#eee' : '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                                {activeSetlist.name}
-                                            </h3>
-                                        </div>
-
-                                        {/* Scrollable Song List Area */}
-                                        <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', paddingRight: '5px' }}>
-                                            {(activeSetlist.songs || []).length === 0 ? (
-                                                <div style={{ padding: '10px', color: '#aaa', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>
-                                                    Sin canciones. Dale + Añadir Canción.
-                                                </div>
-                                            ) : (
-                                                <DndContext
-                                                    sensors={sensors}
-                                                    collisionDetection={closestCenter}
-                                                    onDragEnd={handleDragEnd}
-                                                    modifiers={[restrictToVerticalAxis]}
-                                                >
-                                                    <SortableContext
-                                                        items={(activeSetlist.songs || []).map(s => s.id)}
-                                                        strategy={verticalListSortingStrategy}
-                                                    >
-                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                            {(activeSetlist.songs || []).map((song, idx) => (
-                                                                <SortableSongItem
-                                                                    key={song.id}
-                                                                    song={song}
-                                                                    idx={idx}
-                                                                    isActive={activeSongId === song.id}
-                                                                    pStatus={preloadStatus[song.id]}
-                                                                    onSelect={() => handleLoadSong(song)}
-                                                                    onRemove={handleRemoveSongFromSetlist}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                    </SortableContext>
-                                                </DndContext>
-                                            )}
-                                        </div>
-
-                                        <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ flexShrink: 0 }}>
-                                            + Añadir Canción
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* ── PADS PANEL ────────────────────────────────────────── */}
-                            <div className="pads-panel">
-                                {/* Header */}
-                                <div className="pads-header">
-                                    <button
-                                        className={`pad-power-btn ${padActive ? 'active' : ''}`}
-                                        onClick={() => setPadActive(!padActive)}
-                                    >
-                                        <Power size={22} />
-                                    </button>
-                                    <div className="pad-title-section">
-                                        <h3 className="pad-title">Fundamental Ambient Pads</h3>
-                                        <div className="pad-subtitle">Loop Community</div>
-                                    </div>
-                                    <div className="pad-pitch-control">
-                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>−</button>
-                                        <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
-                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
-                                    </div>
-                                </div>
-                                {/* Body */}
-                                <div className="pads-body">
-                                    <div className="pad-grid">
-                                        {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                                            <button
-                                                key={k}
-                                                className={`pad-key-btn ${padKey === k ? 'active' : ''}`}
-                                                onClick={() => setPadKey(k)}
-                                            >
-                                                {k}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="pad-master-section">
-                                        <div
-                                            className="pad-fader-container"
-                                            onClick={(e) => {
-                                                const rect = e.currentTarget.getBoundingClientRect();
-                                                const val = 1 - (e.clientY - rect.top) / rect.height;
-                                                setPadVolume(Math.max(0, Math.min(1, val)));
-                                            }}
-                                            onMouseMove={(e) => {
-                                                if (e.buttons === 1) { // dragging
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    const val = 1 - (e.clientY - rect.top) / rect.height;
-                                                    setPadVolume(Math.max(0, Math.min(1, val)));
-                                                }
-                                            }}
-                                        >
-                                            <div className="pad-fader-fill" style={{ height: `${padVolume * 100}%` }}></div>
-                                        </div>
-                                        <div className="pad-ms-group">
-                                            <button
-                                                className={`pad-ms-btn ${padMute ? 'm-active' : ''}`}
-                                                onClick={() => setPadMute(!padMute)}
-                                            >
-                                                M
-                                            </button>
-                                            <button
-                                                className={`pad-ms-btn ${padSolo ? 's-active' : ''}`}
-                                                onClick={() => setPadSolo(!padSolo)}
-                                            >
-                                                S
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                    onClick={() => setIsLibraryMenuOpen(true)}
+                                    style={{
+                                        background: 'rgba(155, 89, 182, 0.1)',
+                                        color: '#9b59b6',
+                                        border: '1px solid rgba(155, 89, 182, 0.3)',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: '800',
+                                        cursor: 'pointer',
+                                        transition: '0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#9b59b6'; e.currentTarget.style.color = 'white'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(155, 89, 182, 0.1)'; e.currentTarget.style.color = '#9b59b6'; }}
+                                >
+                                    +Canciones
+                                </button>
+                                <button
+                                    onClick={() => setIsSetlistMenuOpen(true)}
+                                    style={{
+                                        background: 'rgba(0, 188, 212, 0.1)',
+                                        color: '#00bcd4',
+                                        border: '1px solid rgba(0, 188, 212, 0.3)',
+                                        borderRadius: '6px',
+                                        padding: '4px 10px',
+                                        fontSize: '0.72rem',
+                                        fontWeight: '800',
+                                        cursor: 'pointer',
+                                        transition: '0.2s'
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#00bcd4'; e.currentTarget.style.color = 'white'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0, 188, 212, 0.1)'; e.currentTarget.style.color = '#00bcd4'; }}
+                                >
+                                    +Setlist
+                                </button>
                             </div>
                         </div>
-                    </>
-                )}
+                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                            {!activeSetlist ? (
+                                <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
+                                    <p>No hay un setlist activo.</p>
+                                    <button onClick={() => setIsSetlistMenuOpen(true)} className="action-btn">Mis Setlists</button>
+                                </div>
+                            ) : (
+                                <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={handleDragEnd}
+                                    modifiers={[restrictToVerticalAxis]}
+                                >
+                                    <SortableContext
+                                        items={(activeSetlist.songs || []).map(s => s.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {(activeSetlist.songs || []).map((song, idx) => (
+                                                <SortableSongItem
+                                                    key={song.id}
+                                                    song={song}
+                                                    idx={idx}
+                                                    isActive={activeSongId === song.id}
+                                                    pStatus={preloadStatus[song.id]}
+                                                    onSelect={() => handleLoadSong(song)}
+                                                    onRemove={handleRemoveSongFromSetlist}
+                                                />
+                                            ))}
+                                        </div>
+                                    </SortableContext>
+                                </DndContext>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Ambient Pads Panel */}
+                    <div className="pads-panel" style={{ marginTop: '5px' }}>
+                        <div className="pads-header" style={{ marginBottom: '10px' }}>
+                            <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '45px', height: '45px' }}>
+                                <Power size={22} />
+                            </button>
+                            <div className="pad-title-section">
+                                <h4 className="pad-title">Ambient Pads</h4>
+                                <div className="pad-subtitle" style={{ fontSize: '0.7rem' }}>Fundamental Pads</div>
+                            </div>
+                            <div className="pad-pitch-control">
+                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>-</button>
+                                <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
+                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
+                            </div>
+                        </div>
+                        <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                            {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
+                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '35px', fontSize: '0.85rem' }}>{k}</button>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
+                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '45px', height: '32px' }}>M</button>
+                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '45px', height: '32px' }}>S</button>
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             {/* SLIDE-OUT MENUS (Overlay + Drawers) */}
             <div
-                className={`drawer-overlay ${isSetlistMenuOpen || isLibraryMenuOpen || isSettingsOpen ? 'open' : ''}`}
-                onClick={() => { setIsSetlistMenuOpen(false); setIsLibraryMenuOpen(false); setIsSettingsOpen(false); }}
+                className={`drawer-overlay ${isSetlistMenuOpen || isLibraryMenuOpen || isSettingsOpen || isCurrentListOpen || isPadsOpen ? 'open' : ''}`}
+                onClick={() => { setIsSetlistMenuOpen(false); setIsLibraryMenuOpen(false); setIsSettingsOpen(false); setIsCurrentListOpen(false); setIsPadsOpen(false); }}
             />
 
-            {/* ── SETTINGS DRAWER ─────────────────────────────────────────── */}
+            {/* ── SETTINGS DRAWER ───────────────────────────────────────────────────────────── */}
             <div className={`settings-drawer ${isSettingsOpen ? 'open' : ''}`}>
                 {/* Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
@@ -1742,7 +1640,7 @@ export default function Multitrack() {
                     </button>
                 </div>
 
-                {/* ── 1. Dark Mode ────────────────────────────────── */}
+                {/* ── 1. Dark Mode ──────────────────────────────────── */}
                 <div className="settings-section">
                     <div className="settings-row">
                         <div className="settings-label">
@@ -1778,7 +1676,7 @@ export default function Multitrack() {
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        {[{ id: 'L', label: '◄ L', desc: 'Solo Izquierda' }, { id: 'mono', label: '◆ Mono', desc: 'Centro' }, { id: 'R', label: 'R ►', desc: 'Solo Derecha' }].map(opt => (
+                        {[{ id: 'L', label: '◄ L', desc: 'Solo Izquierda' }, { id: 'mono', label: '● Mono', desc: 'Centro' }, { id: 'R', label: 'R ►', desc: 'Solo Derecha' }].map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => setPanMode(opt.id)}
@@ -1824,7 +1722,7 @@ export default function Multitrack() {
                             <button
                                 onClick={() => setAppFontSize(f => Math.max(11, f - 1))}
                                 style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e2e8f0', background: darkMode ? '#3a4a5a' : 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                            >−</button>
+                            >-</button>
                             <span style={{ fontWeight: '800', fontSize: '1rem', minWidth: '32px', textAlign: 'center', color: '#00bcd4' }}>{appFontSize}</span>
                             <button
                                 onClick={() => setAppFontSize(f => Math.min(20, f + 1))}
@@ -1838,7 +1736,7 @@ export default function Multitrack() {
                     </div>
                 </div>
 
-                {/* ── 4. Click Dinámico ──────────────────────────────── */}
+                {/* ── 4. Click Dinámico ────────────────────────────────── */}
                 <div className="settings-section">
                     <div className="settings-row">
                         <div className="settings-label">
@@ -1936,6 +1834,96 @@ export default function Multitrack() {
                     >
                         Restaurar valores por defecto
                     </button>
+                </div>
+            </div>
+
+            {/* 0. PADS DRAWER — mobile drawer for Pads */}
+            <div className={`setlist-drawer ${isPadsOpen ? 'open' : ''}`} style={{ zIndex: 1005 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <h2>Ambient Pads</h2>
+                    <button onClick={() => setIsPadsOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                </div>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                    <div className="pads-header" style={{ marginBottom: '20px' }}>
+                        <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '55px', height: '55px' }}><Power size={26} /></button>
+                        <div className="pad-title-section">
+                            <h3 className="pad-title">Fundamental Ambient Pads</h3>
+                            <div className="pad-subtitle">Loop Community</div>
+                        </div>
+                        <div className="pad-pitch-control">
+                            <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>−</button>
+                            <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
+                            <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
+                        </div>
+                    </div>
+                    <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
+                        {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
+                            <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '60px', fontSize: '1.1rem' }}>{k}</button>
+                        ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                        <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '60px', height: '40px' }}>M</button>
+                        <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '60px', height: '40px' }}>S</button>
+                    </div>
+                </div>
+            </div>
+
+            {/* 0.5 CURRENT LIST DRAWER (Active Setlist Songs) */}
+            <div className={`setlist-drawer ${isCurrentListOpen ? 'open' : ''}`} style={{ zIndex: 1006 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <ListMusic size={22} color="#00bcd4" />
+                        <h2 style={{ margin: 0 }}>{activeSetlist?.name || 'Lista de Canciones'}</h2>
+                    </div>
+                    <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>
+                    {!activeSetlist ? (
+                        <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>
+                            No hay un setlist activo.
+                            <button onClick={() => { setIsCurrentListOpen(false); setIsSetlistMenuOpen(true); }} className="action-btn" style={{ marginTop: '10px', width: '100%' }}>Abrir Mis Setlists</button>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                            {(activeSetlist.songs || []).length === 0 ? (
+                                <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>Sin canciones en este setlist.</div>
+                            ) : (
+                                <DndContext
+                                    sensors={sensors}
+                                    collisionDetection={closestCenter}
+                                    onDragEnd={handleDragEnd}
+                                    modifiers={[restrictToVerticalAxis]}
+                                >
+                                    <SortableContext
+                                        items={(activeSetlist.songs || []).map(s => s.id)}
+                                        strategy={verticalListSortingStrategy}
+                                    >
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            {(activeSetlist.songs || []).map((song, idx) => (
+                                                <SortableSongItem
+                                                    key={song.id}
+                                                    song={song}
+                                                    idx={idx}
+                                                    isActive={activeSongId === song.id}
+                                                    pStatus={preloadStatus[song.id]}
+                                                    onSelect={() => {
+                                                        handleLoadSong(song);
+                                                        setIsCurrentListOpen(false); // Close drawer on selection
+                                                    }}
+                                                    onRemove={handleRemoveSongFromSetlist}
+                                                />
+                                            ))}
+                                        </div>
+                                    </SortableContext>
+                                </DndContext>
+                            )}
+                            <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
+                                <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ flex: 1 }}>+ Añadir Pistas</button>
+                                <button onClick={() => { setIsCurrentListOpen(false); setIsSetlistMenuOpen(true); }} className="action-btn secondary" style={{ flex: 1 }}>Mis Setlists</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 

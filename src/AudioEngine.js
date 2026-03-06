@@ -6,8 +6,19 @@ class AudioEngine {
         });
 
         this.tracks = new Map();
+
+        // Sum bus to mix all tracks before time-stretching
+        this.stSumBus = this.ctx.createGain();
+        this.stSumBus.channelCount = 2;
+        this.stSumBus.channelCountMode = 'explicit';
+
         this.masterGain = this.ctx.createGain();
+
+        // Default routing without SoundTouch
+        this.stSumBus.connect(this.masterGain);
         this.masterGain.connect(this.ctx.destination);
+
+        this.masterSoundTouchNode = null;
 
         this.isPlaying = false;
         this.startTime = 0;
@@ -50,16 +61,15 @@ class AudioEngine {
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.75;
 
-        // Signal chain: Source → Panner → Gain → Analyser → Master
+        // Signal chain: Source → Panner → Gain → Analyser → Sum Bus
         pannerNode.connect(gainNode);
         gainNode.connect(analyser);
-        analyser.connect(this.masterGain);
+        analyser.connect(this.stSumBus);
 
         this.tracks.set(id, {
             buffer: audioBuffer,
             rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
             source: null,
-            soundtouchNode: null, // Holds the AudioWorkletNode
             gain: gainNode,
             panner: pannerNode,
             analyser: analyser,
@@ -98,10 +108,6 @@ class AudioEngine {
             try { track.source.stop(); } catch (e) { }
             try { track.source.disconnect(); } catch (e) { }
             track.source = null;
-        }
-        if (track.soundtouchNode) {
-            try { track.soundtouchNode.disconnect(); } catch (e) { }
-            track.soundtouchNode = null;
         }
     }
 
@@ -145,13 +151,11 @@ class AudioEngine {
     }
 
     _updateWorkletParams() {
-        for (const [, track] of this.tracks.entries()) {
-            if (track.soundtouchNode) {
-                const tempoParam = track.soundtouchNode.parameters.get('tempo');
-                const pitchParam = track.soundtouchNode.parameters.get('pitchSemitones');
-                if (tempoParam) tempoParam.value = this.tempoRatio;
-                if (pitchParam) pitchParam.value = this.pitchSemitones;
-            }
+        if (this.masterSoundTouchNode) {
+            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
+            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
+            if (tempoParam) tempoParam.value = this.tempoRatio;
+            if (pitchParam) pitchParam.value = this.pitchSemitones;
         }
     }
 
@@ -162,30 +166,35 @@ class AudioEngine {
         const syncTime = this.ctx.currentTime + 0.08;
         this.playStartTime = this.ctx.currentTime;
 
+        // Manage Master SoundTouch Node
+        if (this.masterSoundTouchNode) {
+            try { this.masterSoundTouchNode.disconnect(); } catch (e) { }
+            this.masterSoundTouchNode = null;
+        }
+
+        try { this.stSumBus.disconnect(); } catch (e) { }
+
+        if (this.workletLoaded && (this.tempoRatio !== 1.0 || this.pitchSemitones !== 0)) {
+            this.masterSoundTouchNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
+            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
+            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
+            if (tempoParam) tempoParam.value = this.tempoRatio;
+            if (pitchParam) pitchParam.value = this.pitchSemitones;
+
+            this.stSumBus.connect(this.masterSoundTouchNode);
+            this.masterSoundTouchNode.connect(this.masterGain);
+        } else {
+            // Bypass if no tempo/pitch shift applied OR worklet not loaded
+            this.stSumBus.connect(this.masterGain);
+        }
+
         for (const [, track] of this.tracks.entries()) {
             this._cleanupSource(track);
 
             const source = this.ctx.createBufferSource();
             source.buffer = track.buffer;
 
-            if (this.workletLoaded) {
-                // ── SOUNDTOUCH AUDIO WORKLET NODE ──
-                const stNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
-
-                // Initialize parameters
-                const tempoParam = stNode.parameters.get('tempo');
-                const pitchParam = stNode.parameters.get('pitchSemitones');
-                if (tempoParam) tempoParam.value = this.tempoRatio;
-                if (pitchParam) pitchParam.value = this.pitchSemitones;
-
-                source.connect(stNode);
-                stNode.connect(track.panner);
-                track.soundtouchNode = stNode;
-            } else {
-                // Flashback to normal buffer if worklet failed to load
-                source.connect(track.panner);
-            }
-
+            source.connect(track.panner);
             source.start(syncTime, Math.max(0, this.pausePosition));
             track.source = source;
         }

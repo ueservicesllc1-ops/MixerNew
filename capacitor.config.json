@@ -11,7 +11,7 @@
   },
   "plugins": {
     "ScreenOrientation": {
-      "orientation": "portrait"
+      "orientation": "any"
     }
   }
 }
