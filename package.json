@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "node b2-proxy.mjs",
+    "start": "npm run build && node b2-proxy.mjs",
     "start-proxy": "node b2-proxy.mjs",
     "build": "vite build",
     "lint": "eslint .",

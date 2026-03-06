@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import path, { dirname } from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,8 +18,14 @@ app.use(cors());
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
-// Servir archivos estáticos de la aplicación (Frontend)
-app.use(express.static(path.join(__dirname, 'dist')));
+// Diagnóstico de Frontend
+const distPath = path.join(__dirname, 'dist');
+if (fs.existsSync(distPath)) {
+    console.log("📂 Carpeta 'dist' detectada. Sirviendo aplicación...");
+    app.use(express.static(distPath));
+} else {
+    console.warn("⚠️ Carpeta 'dist' NO encontrada. El frontend no se cargará correctamente.");
+}
 
 const B2_KEY_ID = process.env.B2_KEY_ID || '005c2b526be0baa000000000f';
 const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || 'K0051CrlFQOcyjlNZyFVI3spGLFhxk4';
@@ -29,7 +36,6 @@ const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'mixercur';
 let b2AuthToken = null;
 let b2ApiUrl = null;
 
-// Func. Auxiliar de B2
 async function getB2Auth() {
     if (b2AuthToken && b2ApiUrl) return { apiUrl: b2ApiUrl, token: b2AuthToken };
     console.log("Renovando B2 Auth Token...");
@@ -57,7 +63,12 @@ async function getUploadNode() {
     return res.json();
 }
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'B2 Proxy + Frontend' }));
+app.get('/health', (req, res) => res.json({
+    status: 'ok',
+    service: 'B2 Proxy + Frontend',
+    distExists: fs.existsSync(distPath),
+    port: PORT
+}));
 
 app.get('/download', async (req, res) => {
     try {
@@ -106,12 +117,17 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
     }
 });
 
-// IMPORTANTE: Manejo de SPA - Cualquier otra ruta sirve el index.html de React
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+app.get('/*', (req, res) => {
+    const indexPath = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Error: La aplicación no ha sido compilada (dist/index.html no existe).");
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server ready on port ${PORT}`);
+    console.log(`🚀 Servidor listo escuchando en puerto ${PORT}`);
 });
+
 
