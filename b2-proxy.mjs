@@ -111,7 +111,7 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
         });
         const b2Data = await b2Response.json();
         const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
-        res.json({ success: true, url: finalUrl });
+        res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

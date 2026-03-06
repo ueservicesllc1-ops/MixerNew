@@ -144,10 +144,17 @@ export default function Dashboard() {
                 setUploadProgress(Math.round(((i + 1) / fileList.length) * 100));
             }
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName, artist, key: songKey, tempo, timeSignature, useType,
-                userId: currentUser.uid, userEmail: currentUser.email,
+                name: songName || 'Sin nombre',
+                artist: artist || '',
+                key: songKey || '',
+                tempo: tempo || '',
+                timeSignature: timeSignature || '',
+                useType: useType || '',
+                userId: currentUser.uid,
+                userEmail: currentUser.email,
                 tracks: uploadedTracksInfo,
-                createdAt: serverTimestamp(), isGlobal: false
+                createdAt: serverTimestamp(),
+                isGlobal: false
             });
 
             if (lyrics && lyrics.trim()) {
