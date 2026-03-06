@@ -47,7 +47,8 @@ body.dark-mode {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 10px;
+  height: 100dvh;
+  padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
   box-sizing: border-box;
   overflow: hidden;
   /* Prevent body scroll, use child scroll */
@@ -765,7 +766,7 @@ body.dark-mode .pads-panel {
 }
 
 /* RESPONSIVE TRICKS */
-@media (max-width: 900px) {
+@media (max-width: 1050px) {
   .multitrack-layout {
     padding: 4px;
   }
@@ -1603,7 +1604,7 @@ body.dark-mode .pad-ms-btn {
 }
 
 /* ΓöÇΓöÇ RESPONSIVE DESIGN FOR MOBILE ΓöÇΓöÇ */
-@media (max-width: 768px) {
+@media (max-width: 1050px) {
   .main-content {
     flex-direction: column !important;
     overflow-y: auto !important;
@@ -1624,6 +1625,8 @@ body.dark-mode .pad-ms-btn {
 
   .multitrack-layout {
     height: 100vh !important;
+    height: 100dvh !important;
+    padding: env(safe-area-inset-top, 4px) env(safe-area-inset-right, 4px) env(safe-area-inset-bottom, 4px) env(safe-area-inset-left, 4px) !important;
     display: flex !important;
     flex-direction: column !important;
     overflow: hidden !important;
@@ -1652,6 +1655,8 @@ body.dark-mode .pad-ms-btn {
     gap: 6px !important;
     justify-content: center !important;
     width: 100% !important;
+    max-height: 250px;
+    /* Evita que los faders se estiren demasiado en teléfonos altos */
   }
 
   .fader-container {
