@@ -85,11 +85,12 @@ body.dark-mode .transport-bar {
 }
 
 .master-fader-mini {
-  width: 150px;
+  min-width: 150px;
   height: 40px;
   background: var(--transport-blue);
   border-radius: 8px;
   margin-right: auto;
+  overflow: visible;
 }
 
 .controls-group {
