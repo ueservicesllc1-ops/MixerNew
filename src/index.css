@@ -818,10 +818,9 @@ body.dark-mode .pads-panel {
   border-color: rgba(255, 255, 255, 0.05);
 }
 
-<<<<<<< HEAD
 /* RESPONSIVE TRICKS - Segemented Mobile / Tablet / Desktop */
 
-/* TABLET & WEB MODE (iPad Pro, iPad Air, Desktops) - Multi-row Grid, Vertical Scroll, Visible sidebar 600px */
+/* TABLET & WEB MODE (iPad Pro, iPad Air, Desktops) - Multi-row Grid, Vertical Scroll, Visible sidebar */
 @media (min-width: 1001px) {
   .main-stage-wrapper {
     flex: 1;
@@ -854,10 +853,6 @@ body.dark-mode .pads-panel {
 
 /* MOBILE MODE (iPhone, S20, Small Tablets) - Single Line, Horizontal Scroll, NO Sidebar */
 @media (max-width: 1000px) {
-=======
-/* RESPONSIVE TRICKS */
-@media (max-width: 1370px) {
->>>>>>> 64ca8b43887d315a57eb95702d730532867e3af7
   .multitrack-layout {
     padding: 4px;
   }
