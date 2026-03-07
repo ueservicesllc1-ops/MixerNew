@@ -17,7 +17,7 @@ export const Mixer = ({ tracks }) => {
     return (
         <div className="mixer-grid">
             {sortedTracks.map(track => (
-                <ChannelStrip key={track.id} id={track.id} name={track.name} />
+                <ChannelStrip key={track.id} id={track.id} name={track.name} isPlaceholder={track.isPlaceholder} />
             ))}
         </div>
     );
@@ -88,7 +88,7 @@ function VUMeter({ trackId, muted }) {
 }
 
 // ─── Channel Strip ────────────────────────────────────────────────
-const ChannelStrip = ({ id, name }) => {
+const ChannelStrip = ({ id, name, isPlaceholder }) => {
     const [volume, setVolume] = useState(0.8);
     const [muted, setMuted] = useState(false);
     const [solo, setSolo] = useState(false);
@@ -169,7 +169,7 @@ const ChannelStrip = ({ id, name }) => {
     };
 
     return (
-        <div className={`channel-strip ${isSpecial ? 'special-track' : ''}`}>
+        <div className={`channel-strip ${isSpecial ? 'special-track' : ''} ${isPlaceholder ? 'is-loading' : ''}`}>
             <div className="channel-name">{name}</div>
 
             <div className="fader-stack" ref={stackRef}>

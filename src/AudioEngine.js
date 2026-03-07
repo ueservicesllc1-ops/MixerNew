@@ -1,262 +1,370 @@
+/**
+ * AudioEngine.js
+ * Optimized for Native Storage: Direct file loading, minimum RAM usage.
+ */
+
+let _nativeEngine = null;
+async function getNative() {
+    if (!_nativeEngine) {
+        const mod = await import('./NativeEngine');
+        _nativeEngine = mod.NativeEngine;
+    }
+    return _nativeEngine;
+}
+
+const IS_NATIVE =
+    typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+
 class AudioEngine {
     constructor() {
-        /** @type {AudioContext} */
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)({
-            latencyHint: 'interactive'
-        });
-
-        this.tracks = new Map();
-
-        // Sum bus to mix all tracks before time-stretching
-        this.stSumBus = this.ctx.createGain();
-        this.stSumBus.channelCount = 2;
-        this.stSumBus.channelCountMode = 'explicit';
-
-        this.masterGain = this.ctx.createGain();
-
-        // Default routing without SoundTouch
-        this.stSumBus.connect(this.masterGain);
-        this.masterGain.connect(this.ctx.destination);
-
-        this.masterSoundTouchNode = null;
-
         this.isPlaying = false;
-        this.startTime = 0;
         this.pausePosition = 0;
         this.tempoRatio = 1.0;
-        this.pitchSemitones = 0; // 0 = original key, +1 = half-step up, -1 = half-step down
-
-        this.onProgress = null;
+        this.pitchSemitones = 0;
+        this.progress = 0;
         this._updater = null;
 
-        // SoundTouch Worklet Module loading state
-        this.workletLoaded = false;
+        // trackId => { path, volume, muted, solo, buffer }
+        this._trackMeta = new Map();
+        this.tracks = new Map();
+        this._playStartWall = 0;
+        this._playStartPos = 0;
+
+        if (!IS_NATIVE) {
+            this._initWebAudio();
+        }
+    }
+
+    _initWebAudio() {
+        if (this.ctx) return;
+        this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        this.stSumBus = this.ctx.createGain();
+        this.masterGain = this.ctx.createGain();
+        this.stSumBus.connect(this.masterGain);
+        this.masterGain.connect(this.ctx.destination);
     }
 
     async init() {
-        if (this.ctx.state === 'suspended') {
-            await this.ctx.resume();
-        }
-        if (!this.workletLoaded) {
-            try {
-                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
-                this.workletLoaded = true;
-                console.log("SoundTouchWorklet loaded successfully.");
-            } catch (err) {
-                console.error("Failed to load soundtouch-worklet.js", err);
+        this._initWebAudio();
+        if (this.ctx.state === 'suspended') await this.ctx.resume();
+    }
+
+    /**
+     * NATIVE MODE / WEB BATCH: Loads multiple tracks at once for maximum speed.
+     */
+    async addTracksBatch(tracksArray) {
+        if (IS_NATIVE) {
+            const batch = [];
+            for (const t of tracksArray) {
+                const trackInfo = {
+                    path: t.path,
+                    volume: 1,
+                    muted: false,
+                    solo: false,
+                    isVisualOnly: !!t.isVisualOnly,
+                    buffer: t.audioBuffer // Guardar buffer para visuales
+                };
+                this._trackMeta.set(t.id, trackInfo);
+                if (t.path) batch.push({ id: t.id, path: t.path });
             }
+            if (batch.length > 0) {
+                const n = await getNative();
+                await n.loadTracks(batch);
+            }
+            return;
+        }
+
+        // Web Audio Batch
+        for (const t of tracksArray) {
+            await this.addTrack(t.id, t.audioBuffer, t.sourceData, { isVisualOnly: t.isVisualOnly });
         }
     }
 
-    // Creates a complete channel strip per buffer
-    // rawArrayBuffer: the original compressed bytes (WAV/MP3) — used for tempo shift via Audio element
-    addTrack(id, audioBuffer, rawArrayBuffer = null) {
-        const gainNode = this.ctx.createGain();
-        const pannerNode = this.ctx.createStereoPanner
-            ? this.ctx.createStereoPanner()
-            : this.ctx.createPanner();
+    async addTrack(id, audioBuffer, sourceData = null, options = {}) {
+        if (IS_NATIVE) {
+            const trackInfo = { path: null, volume: 1, muted: false, solo: false, isVisualOnly: !!options.isVisualOnly };
+            this._trackMeta.set(id, trackInfo);
 
-        // AnalyserNode for VU meter LEDs
-        const analyser = this.ctx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.75;
+            if (typeof sourceData === 'string') {
+                trackInfo.path = sourceData;
+                this._pushToNative(id, sourceData);
+            } else if (sourceData instanceof Blob) {
+                const n = await getNative();
+                const path = await n.saveTrackBlob(sourceData, `track_${id}.mp3`);
+                trackInfo.path = path;
+                this._pushToNative(id, path);
+            }
+            return;
+        }
 
-        // Signal chain: Source → Panner → Gain → Analyser → Sum Bus
-        pannerNode.connect(gainNode);
-        gainNode.connect(analyser);
-        analyser.connect(this.stSumBus);
+        // Web Audio logic
+        try {
+            let buffer = audioBuffer;
+            if (!buffer && sourceData) {
+                const arrayBuf = (sourceData instanceof Blob) ? await sourceData.arrayBuffer() : sourceData;
+                buffer = await this.ctx.decodeAudioData(arrayBuf);
+            }
 
-        this.tracks.set(id, {
-            buffer: audioBuffer,
-            rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
-            source: null,
-            gain: gainNode,
-            panner: pannerNode,
-            analyser: analyser,
-            volume: 1,
-            muted: false,
-            solo: false
-        });
+            const pannerNode = this.ctx.createStereoPanner();
+            const analyser = this.ctx.createAnalyser();
+            analyser.fftSize = 256;
+            const gainNode = this.ctx.createGain();
+
+            pannerNode.connect(analyser);
+            analyser.connect(gainNode);
+
+            if (!options.isVisualOnly) {
+                gainNode.connect(this.stSumBus);
+            }
+
+            this.tracks.set(id, {
+                buffer: buffer,
+                gain: gainNode,
+                analyser: analyser,
+                panner: pannerNode,
+                volume: 1,
+                muted: false,
+                solo: false,
+                isVisualOnly: options.isVisualOnly || false
+            });
+        } catch (e) {
+            console.error(`[AudioEngine] Error decoding web audio for ${id}:`, e);
+        }
     }
 
-    // Returns 0-1 RMS level for a track (used by VU meter LEDs)
-    getTrackLevel(id) {
-        const t = this.tracks.get(id);
-        if (!t || !t.analyser) return 0;
-        const data = new Uint8Array(t.analyser.frequencyBinCount);
-        t.analyser.getByteTimeDomainData(data);
-        let sum = 0;
-        for (let i = 0; i < data.length; i++) {
-            const norm = (data[i] - 128) / 128;
-            sum += norm * norm;
-        }
-        return Math.sqrt(sum / data.length);
+    _pushToNative(id, path) {
+        getNative().then(n => n.loadSingleTrack(id, path)).catch(e => console.error(e));
     }
 
-    clearTracks() {
-        this.stop();
-        for (const [, track] of this.tracks.entries()) {
-            this._cleanupSource(track);
-            track.gain.disconnect();
-            track.panner.disconnect();
-        }
+    async clear() {
+        this._trackMeta.clear();
         this.tracks.clear();
-    }
-
-    _cleanupSource(track) {
-        if (track.source) {
-            try { track.source.stop(); } catch (e) { }
-            try { track.source.disconnect(); } catch (e) { }
-            track.source = null;
+        try {
+            if (IS_NATIVE) {
+                const n = await getNative();
+                await n.stop();
+                await n.clearTracks();
+            } else {
+                for (const id of this.tracks.keys()) this.removeTrack(id);
+            }
+        } catch (e) {
+            console.warn("[AudioEngine] Error en clear:", e);
         }
-    }
-
-    _applyStates() {
-        let isAnySolo = false;
-        for (const [, track] of this.tracks.entries()) {
-            if (track.solo) isAnySolo = true;
-        }
-        for (const [, track] of this.tracks.entries()) {
-            let finalGain = track.volume;
-            if (track.muted) finalGain = 0;
-            if (isAnySolo && !track.solo) finalGain = 0;
-            track.gain.gain.setTargetAtTime(finalGain, this.ctx.currentTime, 0.015);
-        }
-    }
-
-    setTrackVolume(id, vol) {
-        const t = this.tracks.get(id);
-        if (t) { t.volume = vol; this._applyStates(); }
-    }
-
-    setTrackMute(id, val) {
-        const t = this.tracks.get(id);
-        if (t) { t.muted = val; this._applyStates(); }
-    }
-
-    setTrackSolo(id, val) {
-        const t = this.tracks.get(id);
-        if (t) { t.solo = val; this._applyStates(); }
-    }
-
-    // ── Master Tempo / Pitch ────────────────────────────────────────────────
-    setTempo(ratio) {
-        this.tempoRatio = ratio;
-        this._updateWorkletParams();
-    }
-
-    setPitch(semitones) {
-        this.pitchSemitones = semitones;
-        this._updateWorkletParams();
-    }
-
-    _updateWorkletParams() {
-        if (this.masterSoundTouchNode) {
-            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
-            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
-            if (tempoParam) tempoParam.value = this.tempoRatio;
-            if (pitchParam) pitchParam.value = this.pitchSemitones;
-        }
-    }
-
-    play() {
-        if (this.isPlaying) return;
-        this._applyStates();
-
-        const syncTime = this.ctx.currentTime + 0.08;
-        this.playStartTime = this.ctx.currentTime;
-
-        // Manage Master SoundTouch Node
-        if (this.masterSoundTouchNode) {
-            try { this.masterSoundTouchNode.disconnect(); } catch (e) { }
-            this.masterSoundTouchNode = null;
-        }
-
-        try { this.stSumBus.disconnect(); } catch (e) { }
-
-        if (this.workletLoaded && (this.tempoRatio !== 1.0 || this.pitchSemitones !== 0)) {
-            this.masterSoundTouchNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
-            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
-            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
-            if (tempoParam) tempoParam.value = this.tempoRatio;
-            if (pitchParam) pitchParam.value = this.pitchSemitones;
-
-            this.stSumBus.connect(this.masterSoundTouchNode);
-            this.masterSoundTouchNode.connect(this.masterGain);
-        } else {
-            // Bypass if no tempo/pitch shift applied OR worklet not loaded
-            this.stSumBus.connect(this.masterGain);
-        }
-
-        for (const [, track] of this.tracks.entries()) {
-            this._cleanupSource(track);
-
-            const source = this.ctx.createBufferSource();
-            source.buffer = track.buffer;
-
-            source.connect(track.panner);
-            source.start(syncTime, Math.max(0, this.pausePosition));
-            track.source = source;
-        }
-
-        this.isPlaying = true;
-        this._startRAF();
-    }
-
-    pause() {
-        if (!this.isPlaying) return;
-
-        // Calculate pause position based on elapsed time and tempo
-        const realElapsed = this.ctx.currentTime - this.playStartTime;
-        this.pausePosition = this.pausePosition + (realElapsed * this.tempoRatio);
-
-        for (const [, track] of this.tracks.entries()) {
-            this._cleanupSource(track);
-        }
-
+        this.pausePosition = 0;
         this.isPlaying = false;
         if (this._updater) cancelAnimationFrame(this._updater);
     }
 
-    seek(time) {
-        const wasPlaying = this.isPlaying;
-        if (wasPlaying) {
-            // Stop current sources
-            for (const [, track] of this.tracks.entries()) {
-                this._cleanupSource(track);
-            }
-            this.isPlaying = false;
-        }
+    // -- Volume / Mute --
+    setMasterVolume(vol) {
+        if (IS_NATIVE) { getNative().then(n => n.setMasterVolume(vol)); }
+        else { this.masterGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.015); }
+    }
 
-        this.pausePosition = time;
-
-        if (wasPlaying) {
-            this.play();
+    setTrackVolume(id, vol) {
+        if (IS_NATIVE) {
+            const m = this._trackMeta.get(id);
+            if (m) { m.volume = vol; getNative().then(n => n.setTrackVolume(id, vol)); }
         } else {
-            if (this.onProgress) this.onProgress(this.pausePosition);
+            const t = this.tracks.get(id);
+            if (t) {
+                t.volume = vol;
+                this._updateMuteSoloState();
+            }
         }
     }
 
+    setTrackMute(id, val) {
+        if (IS_NATIVE) {
+            const m = this._trackMeta.get(id);
+            if (m) { m.muted = val; getNative().then(n => n.setTrackMute(id, val)); }
+        } else {
+            const t = this.tracks.get(id);
+            if (t) {
+                t.muted = val;
+                this._updateMuteSoloState();
+            }
+        }
+    }
 
-    stop() {
-        this.pause();
+    setTrackSolo(id, val) {
+        if (IS_NATIVE) {
+            const m = this._trackMeta.get(id);
+            if (m) {
+                m.solo = val;
+                getNative().then(n => {
+                    if (n.setTrackSolo) n.setTrackSolo(id, val);
+                });
+            }
+        } else {
+            const t = this.tracks.get(id);
+            if (t) {
+                t.solo = val;
+                this._updateMuteSoloState();
+            }
+        }
+    }
+
+    _updateMuteSoloState() {
+        if (IS_NATIVE) return;
+        let anySolo = false;
+        for (const t of this.tracks.values()) {
+            if (t.solo) { anySolo = true; break; }
+        }
+        for (const t of this.tracks.values()) {
+            let muteIt = t.muted;
+            if (anySolo && !t.solo) muteIt = true;
+            t.gain.gain.setTargetAtTime(muteIt ? 0 : t.volume, this.ctx.currentTime, 0.01);
+        }
+    }
+
+    getTrackLevel(id) {
+        if (!this.isPlaying) return 0;
+        if (IS_NATIVE) {
+            // Fake level for native since no native meter implemented yet
+            const m = this._trackMeta.get(id);
+            if (!m || m.muted) return 0;
+            return (Math.random() * 0.4 + 0.3) * (m.volume || 1);
+        } else {
+            const t = this.tracks.get(id);
+            if (!t || !t.analyser) return 0;
+            const dataArray = new Uint8Array(t.analyser.frequencyBinCount);
+            t.analyser.getByteTimeDomainData(dataArray);
+
+            let max = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const v = Math.abs(dataArray[i] - 128) / 128;
+                if (v > max) max = v;
+            }
+            return max * t.volume;
+        }
+    }
+
+    removeTrack(id) {
+        if (IS_NATIVE) {
+            this._trackMeta.delete(id);
+            getNative().then(n => n.removeTrack && n.removeTrack(id));
+        } else {
+            const t = this.tracks.get(id);
+            if (t) {
+                if (t.source) { try { t.source.stop(); } catch (e) { } }
+                t.gain.disconnect();
+                t.panner.disconnect();
+                if (t.analyser) t.analyser.disconnect();
+                this.tracks.delete(id);
+            }
+        }
+    }
+
+    setTempo(ratio) { this.tempoRatio = ratio; }
+    setPitch(semitones) { this.pitchSemitones = semitones; }
+
+    async play() {
+        if (this.isPlaying) return;
+        if (!IS_NATIVE && this.ctx.state === 'suspended') await this.ctx.resume();
+
+        if (IS_NATIVE) {
+            const native = await getNative();
+            if (this.pausePosition > 0) await native.seek(this.pausePosition);
+            await native.play();
+            this._playStartWall = performance.now();
+            this._playStartPos = this.pausePosition;
+            this.isPlaying = true;
+            this._startRAF();
+            return;
+        }
+
+        // Web Audio Play...
+        this._playStartTime = this.ctx.currentTime;
+        this.isPlaying = true;
+        this._startRAF();
+        for (const [, track] of this.tracks.entries()) {
+            if (track.isVisualOnly) continue;
+            if (!track.buffer) {
+                console.warn("[AudioEngine] No se puede reproducir pista sin buffer.");
+                continue;
+            }
+            const src = this.ctx.createBufferSource();
+            src.buffer = track.buffer;
+
+            // Connect to the chain START (panner)
+            src.connect(track.panner);
+
+            src.start(0, Math.max(0, this.pausePosition));
+            track.source = src;
+        }
+    }
+
+    async pause() {
+        if (!this.isPlaying) return;
+        if (IS_NATIVE) {
+            const elapsed = (performance.now() - this._playStartWall) / 1000;
+            this.pausePosition = this._playStartPos + elapsed;
+            const native = await getNative();
+            await native.pause();
+        } else {
+            const elapsed = this.ctx.currentTime - this._playStartTime;
+            this.pausePosition = this.pausePosition + elapsed * this.tempoRatio;
+            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+        }
+        this.isPlaying = false;
+        if (this._updater) cancelAnimationFrame(this._updater);
+    }
+
+    async seek(seconds) {
+        if (IS_NATIVE) {
+            const native = await getNative();
+            await native.seek(seconds);
+            this._playStartWall = performance.now();
+            this._playStartPos = seconds;
+            this.pausePosition = seconds;
+            this.progress = seconds;
+            return;
+        }
+
+        // Web Audio logic
+        const wasPlaying = this.isPlaying;
+        if (wasPlaying) {
+            // No podemos usar this.pause() porque sumaria tiempo extra
+            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+        }
+        this.pausePosition = seconds;
+        this.progress = seconds;
+        if (wasPlaying) {
+            this.isPlaying = false; // Forzar reinicio en play()
+            await this.play();
+        } else {
+            if (this.onProgress) this.onProgress(this.progress);
+        }
+    }
+
+    async stop() {
+        if (IS_NATIVE) {
+            const native = await getNative();
+            await native.stop();
+        } else {
+            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+        }
         this.pausePosition = 0;
-        if (this.onProgress) this.onProgress(0);
-        // Cleanup all media elements fully
-        for (const [, track] of this.tracks.entries()) this._cleanupSource(track);
+        this.isPlaying = false;
+        this.progress = 0;
+        if (this._updater) cancelAnimationFrame(this._updater);
     }
 
     _startRAF() {
-        const update = () => {
-            if (this.isPlaying && this.onProgress) {
-                // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
-                const realElapsed = this.ctx.currentTime - this.playStartTime;
-                const currentPos = this.pausePosition + (realElapsed * this.tempoRatio);
-                this.onProgress(currentPos);
+        const update = async () => {
+            if (!this.isPlaying) return;
+            if (IS_NATIVE) {
+                const n = await getNative();
+                this.progress = await n.getPosition();
+            } else {
+                const elapsed = this.ctx.currentTime - this._playStartTime;
+                this.progress = this.pausePosition + (elapsed * this.tempoRatio);
             }
-            if (this.isPlaying) {
-                this._updater = requestAnimationFrame(update);
+            if (this.onProgress) {
+                this.onProgress(this.progress);
             }
+            this._updater = requestAnimationFrame(update);
         };
         this._updater = requestAnimationFrame(update);
     }

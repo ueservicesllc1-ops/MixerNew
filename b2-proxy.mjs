@@ -6,6 +6,11 @@ import path, { dirname } from 'path';
 import multer from 'multer';
 import crypto from 'crypto';
 import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
+import ffmpegStatic from 'ffmpeg-static';
+import os from 'os';
+
+ffmpeg.setFfmpegPath(ffmpegStatic);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -91,28 +96,106 @@ app.get('/download', async (req, res) => {
 });
 
 app.post('/upload', upload.single('audioFile'), async (req, res) => {
+    let tempInputPath = '';
+    let tempOutputPath = '';
     try {
         const file = req.file;
         const b2Filename = req.body.fileName;
         if (!file || !b2Filename) return res.status(400).json({ error: 'Falta archivo' });
 
         const uploadNode = await getUploadNode();
-        const sha1 = crypto.createHash('sha1').update(file.buffer).digest('hex');
+
+        // Temp paths for ffmpeg conversion
+        const tempId = crypto.randomBytes(8).toString('hex');
+        tempInputPath = path.join(os.tmpdir(), `in_${tempId}`);
+        tempOutputPath = path.join(os.tmpdir(), `out_${tempId}.m4a`);
+
+        // 1. Write original buffer to disk
+        fs.writeFileSync(tempInputPath, file.buffer);
+
+        // 2. Transcode to MP3 (Safe Choice)
+        await new Promise((resolve, reject) => {
+            ffmpeg()
+                .input(tempInputPath)
+                .audioCodec('libmp3lame')
+                .audioBitrate('128k')
+                .output(tempOutputPath)
+                .on('end', () => resolve())
+                .on('error', (err) => reject(err))
+                .run();
+        });
+
+        // 3. Read MP3 file into buffer
+        const mp3Buffer = fs.readFileSync(tempOutputPath);
+
+        // 4. Calculate required B2 metadata (SHA1 and Length)
+        const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': uploadNode.authorizationToken,
                 'X-Bz-File-Name': encodeURI(b2Filename),
-                'Content-Type': file.mimetype || 'audio/wav',
+                'Content-Type': 'audio/mpeg',
                 'X-Bz-Content-Sha1': sha1,
-                'Content-Length': file.buffer.length
+                'Content-Length': mp3Buffer.length
             },
-            body: file.buffer
+            body: mp3Buffer
         });
         const b2Data = await b2Response.json();
         const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
         res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
     } catch (error) {
+        console.error("Upload error:", error);
+        res.status(500).json({ error: error.message });
+    } finally {
+        // 5. Clean up temp files
+        if (tempInputPath && fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
+        if (tempOutputPath && fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+    }
+});
+
+app.post('/delete-file', async (req, res) => {
+    try {
+        const { fileId, fileName } = req.body;
+        if (!fileId || !fileName) return res.status(400).json({ error: 'Falta fileId o fileName' });
+
+        const { apiUrl, token } = await getB2Auth();
+        const b2Response = await fetch(`${apiUrl}/b2api/v2/b2_delete_file_version`, {
+            method: 'POST',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fileId, fileName })
+        });
+
+        if (!b2Response.ok) {
+            const err = await b2Response.json();
+            throw new Error(err.message || 'Error deleting from B2');
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error("Delete error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.get('/list-files', async (req, res) => {
+    try {
+        const { apiUrl, token } = await getB2Auth();
+        const b2Response = await fetch(`${apiUrl}/b2api/v2/b2_list_file_names`, {
+            method: 'POST',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bucketId: B2_BUCKET_ID, maxFileCount: 1000 })
+        });
+
+        if (!b2Response.ok) {
+            const err = await b2Response.json();
+            throw new Error(err.message || 'Error listing files from B2');
+        }
+
+        const data = await b2Response.json();
+        res.json(data.files);
+    } catch (error) {
+        console.error("List error:", error);
         res.status(500).json({ error: error.message });
     }
 });

@@ -7,6 +7,7 @@ import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, 
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
+import { NativeEngine } from '../NativeEngine'
 import { padEngine } from '../PadEngine'
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
@@ -51,6 +52,7 @@ export default function Multitrack() {
     const [downloadProgress, setDownloadProgress] = useState({ songId: null, text: '' });
     // Active loaded song
     const [activeSongId, setActiveSongId] = useState(null);
+    const [audioReady, setAudioReady] = useState(0); // Trigger re-renders when buffers finish decoding
     // Bottom tab panel
     const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings'
 
@@ -68,6 +70,23 @@ export default function Multitrack() {
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
     const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
     const [dynamicClick, setDynamicClick] = useState(false);
+    const [debugLogs, setDebugLogs] = useState([]);
+    const [showDebug, setShowDebug] = useState(false);
+
+    // Intercept console.log/error to show on-screen (for debugging without USB)
+    useEffect(() => {
+        const origLog = console.log;
+        const origErr = console.error;
+        const origWarn = console.warn;
+        const push = (type, args) => {
+            const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+            setDebugLogs(prev => [...prev.slice(-80), { type, msg, t: new Date().toISOString().slice(11, 19) }]);
+        };
+        console.log = (...a) => { origLog(...a); push('log', a); };
+        console.error = (...a) => { origErr(...a); push('err', a); };
+        console.warn = (...a) => { origWarn(...a); push('warn', a); };
+        return () => { console.log = origLog; console.error = origErr; console.warn = origWarn; };
+    }, []);
 
     // ΓöÇΓöÇ PADS SYSTEM STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [padActive, setPadActive] = useState(false);
@@ -458,8 +477,10 @@ export default function Multitrack() {
     }, [activeSetlist?.songs]);
 
 
-    // Silently decode songs into RAM with LRU eviction
+    // Silently preload/cache songs (either in native FileSystem or Web RAM)
     const preloadSetlistSongs = async (songs) => {
+        const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+
         for (const song of songs) {
             if (preloadCache.current.has(song.id)) {
                 touchLRU(song.id); // Already cached ΓÇö refresh recency
@@ -473,28 +494,76 @@ export default function Multitrack() {
             try {
                 const trackBuffers = new Map();
                 const tracksData = song.tracks || [];
-                for (const tr of tracksData) {
-                    if (!tr.url || tr.url === 'undefined') {
-                        console.warn(`[PRELOAD] Saltando pista ${tr.name} ΓÇö URL inv├ílida`);
-                        continue;
-                    }
-                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                    if (!rawBuf) {
-                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) {
-                            console.error(`[PRELOAD] Error descarga: ${tr.name}`, res.status);
-                            continue;
+
+                // Carga en paralelo dentro de la pre-carga
+                await Promise.all(tracksData.map(async (tr) => {
+                    if (!tr.url || tr.url === 'undefined') return;
+
+                    if (isAppNative) {
+                        let finalPath = '';
+                        let blob = null;
+                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+
+                        if (alreadyHasFile) {
+                            finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                            // Para visuales en Nativo necesitamos el buffer
+                            if (tr.name === '__PreviewMix') {
+                                blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                                if (!blob) {
+                                    // Si no esta en IndexedDB, intentamos bajarlo solo para el visual (una vez)
+                                    const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (res.ok) blob = await res.blob();
+                                }
+                            }
+                        } else {
+                            let legacyRawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                            if (legacyRawBuf) {
+                                finalPath = await NativeEngine.saveTrackBlob(legacyRawBuf, `${song.id}_${tr.name}.mp3`);
+                                blob = legacyRawBuf;
+                            } else {
+                                const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                                if (!res.ok) return;
+                                blob = await res.blob();
+                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                            }
                         }
-                        rawBuf = await res.arrayBuffer();
-                        await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+
+                        if (tr.name === '__PreviewMix' && blob) {
+                            try {
+                                const ab = await blob.arrayBuffer();
+                                const audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                                trackBuffers.set(tr.name, { path: finalPath, audioBuf });
+                            } catch (e) {
+                                console.error("Error decodificando visual native:", e);
+                                trackBuffers.set(tr.name, { path: finalPath });
+                            }
+                        } else {
+                            trackBuffers.set(tr.name, { path: finalPath });
+                        }
+                    } else {
+                        let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                        if (!rawBuf) {
+                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                            if (!res.ok) return;
+                            rawBuf = await res.blob();
+                            await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                        }
+
+                        // DECODIFICAR EN SEGUNDO PLANO (WEB)
+                        try {
+                            const arrayBuf = await rawBuf.arrayBuffer();
+                            const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
+                            trackBuffers.set(tr.name, { audioBuf }); // Guardamos el buffer decodificado!
+                        } catch (e) {
+                            console.error("Error decodificando en pre-carga:", tr.name, e);
+                            trackBuffers.set(tr.name, { rawBuf }); // Fallback a blob
+                        }
                     }
-                    const audioBuf = await audioEngine.ctx.decodeAudioData(rawBuf.slice(0));
-                    trackBuffers.set(tr.name, { audioBuf, rawBuf });
-                }
+                }));
                 preloadCache.current.set(song.id, trackBuffers);
                 touchLRU(song.id);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                console.log(`[PRELOAD] "${song.name}" in RAM. Cache: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
+                console.log(`[PRELOAD] "${song.name}" in Cache. Size: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
             } catch (e) {
                 console.warn(`[PRELOAD] Failed "${song.name}":`, e);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
@@ -533,8 +602,8 @@ export default function Multitrack() {
 
                     // If the removed song is playing/active, we could stop it
                     if (activeSongId === songIdToRemove) {
-                        audioEngine.stop();
-                        audioEngine.clearTracks();
+                        await audioEngine.stop();
+                        audioEngine.clear();
                         setIsPlaying(false);
                         setProgress(0);
                         setActiveSongId(null);
@@ -557,8 +626,9 @@ export default function Multitrack() {
 
         try {
             const tracks = song.tracks || [];
+            const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
-            // Loop tracks to download to IndexedDB cache
+            // Loop tracks to download
             for (let i = 0; i < tracks.length; i++) {
                 const tr = tracks[i];
                 setDownloadProgress({ songId: song.id, text: `Bajando pista ${i + 1}/${tracks.length}: ${tr.name}` });
@@ -568,16 +638,32 @@ export default function Multitrack() {
                     console.warn(`[DOWNLOAD] Saltando pista ${tr.name} porque no tiene URL v├ílida.`);
                     continue;
                 }
-                const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
 
-                if (!res.ok) {
-                    const errorData = await res.json().catch(() => ({}));
-                    const msg = errorData.error || `Error ${res.status}`;
-                    throw new Error(`Error en ${tr.name}: ${msg}`);
+                if (isAppNative) {
+                    const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                    if (!alreadyHasFile) {
+                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                        if (!res.ok) {
+                            const errorData = await res.json().catch(() => ({}));
+                            const msg = errorData.error || `Error ${res.status}`;
+                            throw new Error(`Error en ${tr.name}: ${msg}`);
+                        }
+                        const blobData = await res.blob();
+                        await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
+                    }
+                } else {
+                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                    if (!rawBuf) {
+                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                        if (!res.ok) {
+                            const errorData = await res.json().catch(() => ({}));
+                            const msg = errorData.error || `Error ${res.status}`;
+                            throw new Error(`Error en ${tr.name}: ${msg}`);
+                        }
+                        const blobData = await res.blob();
+                        await LocalFileManager.saveTrackLocal(song.id, tr.name, blobData);
+                    }
                 }
-
-                const arrayBuf = await res.arrayBuffer();
-                await LocalFileManager.saveTrackLocal(song.id, tr.name, arrayBuf);
             }
 
             setDownloadProgress({ songId: song.id, text: 'Guardando Letra y Acordes offline...' });
@@ -634,29 +720,50 @@ export default function Multitrack() {
         setProgress(0);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
-        audioEngine.stop();
-        audioEngine.clearTracks();
+        await audioEngine.stop();
+        await audioEngine.clear();
+
+        // [SKELETON] Show faders immediately with track names
+        const skeleton = (song.tracks || [])
+            .filter(tr => tr.name !== '__PreviewMix')
+            .map(tr => ({
+                id: `${song.id}_${tr.name}`,
+                name: tr.name,
+                isPlaceholder: true
+            }));
+        setTracks(skeleton);
+        setLoading(false);
 
         // Inicializamos audio (puede suspender la ejecuci├│n si es el primer click en safari/ios,
         // pero la UI ya cambi├│)
         await audioEngine.init();
 
-        // ΓöÇΓöÇ VERIFICAR SI YA EST├ü EN RAM ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+        // ΓöÇΓöÇ VERIFICAR SI YA EST├ü EN RAM O DISCO LOCAL ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         const cachedBuffers = preloadCache.current.get(song.id);
         if (cachedBuffers && cachedBuffers.size > 0) {
-            console.log(`[INSTANT] "${song.name}" ya estaba en RAM.`);
             touchLRU(song.id);
 
+            const batch = [];
             const newTracks = [];
             for (const [trackName, cached] of cachedBuffers.entries()) {
                 const trackId = `${song.id}_${trackName}`;
-                audioEngine.addTrack(trackId, cached.audioBuf || cached, cached.rawBuf || null);
-                newTracks.push({ id: trackId, name: trackName });
+                const isVisual = trackName === '__PreviewMix';
+                batch.push({
+                    id: trackId,
+                    path: cached.path,
+                    audioBuffer: cached.audioBuf,
+                    sourceData: cached.rawBuf,
+                    isVisualOnly: isVisual
+                });
+                if (!isVisual) newTracks.push({ id: trackId, name: trackName });
             }
+
+            await audioEngine.addTracksBatch(batch);
             setTracks(newTracks);
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+            setAudioReady(prev => prev + 1);
 
-            // Pre-cargar siguientes canciones (ventana deslizante)
+            // Pre-cargar siguientes...
             if (activeSetlist?.songs) {
                 const allSongs = activeSetlist.songs;
                 const currentIdx = allSongs.findIndex(s => s.id === song.id);
@@ -671,41 +778,92 @@ export default function Multitrack() {
             return;
         }
 
-        // ΓöÇΓöÇ NO EST├ü EN RAM ΓåÆ CARGAR AHORA ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-        console.log(`[FETCH] "${song.name}" cargando bajo demanda...`);
+        const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         try {
             evictOldestIfNeeded();
-            const tracksData = song.tracks || [];
             const trackBuffers = new Map();
+            const tracksData = song.tracks || [];
 
-            for (const tr of tracksData) {
-                if (!tr.url || tr.url === 'undefined') continue;
+            // Descarga/Lectura en paralelo
+            await Promise.all(tracksData.map(async (tr) => {
+                if (!tr.url || tr.url === 'undefined') return;
 
-                let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                if (!rawBuf) {
-                    const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                    if (!res.ok) throw new Error(`Error en ${tr.name}: ${res.status}`);
-                    rawBuf = await res.arrayBuffer();
-                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                if (isAppNative) {
+                    let finalPath = '';
+                    let blob = null;
+                    try {
+                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                        if (alreadyHasFile) {
+                            finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                            if (tr.name === '__PreviewMix') {
+                                blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                            }
+                        } else {
+                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                            if (res.ok) {
+                                blob = await res.blob();
+                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
+                            }
+                        }
+                    } catch (e) { console.error("Error loading track file native:", tr.name, e); }
+
+                    // Decodificar visual solo para la mezcla si es posible
+                    let audioBuf = null;
+                    if (tr.name === '__PreviewMix' && blob) {
+                        try {
+                            const ab = await blob.arrayBuffer();
+                            audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                        } catch (e) { console.error("Error decodificando visual:", e); }
+                    }
+                    trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
+                } else {
+                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                    if (!rawBuf) {
+                        try {
+                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                            if (res.ok) {
+                                rawBuf = await res.blob();
+                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                            }
+                        } catch (e) { }
+                    }
+
+                    let audioBuf = null;
+                    if (rawBuf) {
+                        try {
+                            const ab = await rawBuf.arrayBuffer();
+                            audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                        } catch (e) { }
+                    }
+                    trackBuffers.set(tr.name, { rawBuf, audioBuf });
                 }
-                const audioBuf = await audioEngine.ctx.decodeAudioData(rawBuf.slice(0));
-                trackBuffers.set(tr.name, { audioBuf, rawBuf });
-            }
+            }));
 
             preloadCache.current.set(song.id, trackBuffers);
             touchLRU(song.id);
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
 
-            // Una vez cargada, si sigue siendo la canci├│n activa, inyectamos los tracks
+            const batch = [];
             const newTracks = [];
             for (const [trackName, cached] of trackBuffers.entries()) {
                 const trackId = `${song.id}_${trackName}`;
-                audioEngine.addTrack(trackId, cached.audioBuf || cached, cached.rawBuf || null);
-                newTracks.push({ id: trackId, name: trackName });
+                const isVisual = trackName === '__PreviewMix';
+                batch.push({
+                    id: trackId,
+                    path: cached.path,
+                    audioBuffer: cached.audioBuf,
+                    sourceData: cached.rawBuf,
+                    isVisualOnly: isVisual
+                });
+                if (!isVisual) newTracks.push({ id: trackId, name: trackName });
             }
+
+            await audioEngine.addTracksBatch(batch);
             setTracks(newTracks);
+            setAudioReady(prev => prev + 1);
 
         } catch (err) {
             console.error(`[ERROR] No se pudo cargar "${song.name}":`, err);
@@ -777,24 +935,22 @@ export default function Multitrack() {
     const handlePlay = async () => {
         await audioEngine.init();
         if (isPlaying) {
-            // Pause
-            audioEngine.pause();
+            await audioEngine.pause();
             setIsPlaying(false);
         } else {
-            // Play or Resume
-            audioEngine.play();
+            await audioEngine.play();
             setIsPlaying(true);
         }
     };
 
-    const handleStop = () => {
-        audioEngine.stop();
+    const handleStop = async () => {
+        await audioEngine.stop();
         setIsPlaying(false);
         setProgress(0);
     };
 
-    const handleRewind = () => {
-        audioEngine.stop();
+    const handleRewind = async () => {
+        await audioEngine.stop();
         setIsPlaying(false);
         setProgress(0);
     };
@@ -808,10 +964,9 @@ export default function Multitrack() {
         }
     };
 
-    const handleSkipBack = () => {
-        // If more than 3 seconds in, restart the song; else go to prev song
+    const handleSkipBack = async () => {
         if (progress > 3) {
-            audioEngine.stop();
+            await audioEngine.stop();
             setIsPlaying(false);
             setProgress(0);
         } else if (activeSetlist?.songs?.length && activeSongId) {
@@ -820,7 +975,7 @@ export default function Multitrack() {
             if (currentIdx > 0) {
                 handleLoadSong(songs[currentIdx - 1]);
             } else {
-                audioEngine.stop();
+                await audioEngine.stop();
                 setIsPlaying(false);
                 setProgress(0);
             }
@@ -833,7 +988,12 @@ export default function Multitrack() {
     const handleMasterVolume = (e) => {
         const val = parseFloat(e.target.value);
         setMasterVolume(val);
-        audioEngine.masterGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.015);
+        if (audioEngine.masterGain && audioEngine.ctx) {
+            audioEngine.masterGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.015);
+        } else {
+            // Native: delegate to audioEngine which internally uses NativeEngine
+            audioEngine.setMasterVolume && audioEngine.setMasterVolume(val);
+        }
     };
 
     // Tempo control (┬▒15 BPM from original, pitch preserved via SoundTouch)
@@ -878,11 +1038,14 @@ export default function Multitrack() {
     const activeSong = liveSong || (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
 
     const totalDuration = React.useMemo(() => {
+        if (!audioEngine.tracks || audioEngine.tracks.size === 0) {
+            return activeSong?.duration || 180;
+        }
         for (const [, track] of audioEngine.tracks.entries()) {
             if (track.buffer) return track.buffer.duration;
         }
-        return 0;
-    }, [tracks]); // Recalculate when tracks change
+        return activeSong?.duration || 180;
+    }, [tracks, activeSong, audioReady]); // Recalculate when tracks or audioReady change
 
     // AUTO-STOP when song finishes
     useEffect(() => {
@@ -1095,7 +1258,8 @@ export default function Multitrack() {
     return (
         <div className="multitrack-layout">
 
-            {/* ΓöÇΓöÇ ALERTS / LOGIN SYSTEM ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
+            {/* ── ALERTS / LOGIN SYSTEM ────────────────────────────────────────────────── */}
+
             {(!currentUser || showLoginModal) && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
                     <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '320px', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
@@ -1325,9 +1489,16 @@ export default function Multitrack() {
                 </div>
             </div>
 
-            {/* WAVEFORM OVERVIEW */}
-            <div className="waveform-section">
-                <WaveformCanvas tracks={tracks} progress={progress} isPlaying={isPlaying} />
+            {/* WAVEFORM OVERVIEW / SCRUBBER */}
+            <div className="waveform-section" style={{ height: '85px' }}>
+                <WaveformCanvas
+                    songId={activeSong?.id}
+                    tracks={tracks}
+                    progress={progress}
+                    isPlaying={isPlaying}
+                    duration={totalDuration}
+                    hasPreview={activeSong?.tracks?.some(t => t.name === '__PreviewMix')}
+                />
             </div>
 
             {/* TAB BAR — modern & dark optimized */}
@@ -1337,7 +1508,7 @@ export default function Multitrack() {
                     { id: 'pads', label: 'Pads' },
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
-                    { id: 'video', label: 'Video' },
+                    { id: 'debug', label: 'DEBUG' },
                     { id: 'settings', label: 'Ajustes' },
                 ].map(tab => {
                     const isActive = activeTab === tab.id;
@@ -1397,7 +1568,7 @@ export default function Multitrack() {
                                                 <SkipBack size={16} /> MIXER
                                             </button>
                                             <h2>
-                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab}
+                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab === 'chords' ? 'Cifrado' : activeTab === 'debug' ? 'Sistema de Diagnóstico' : activeTab}
                                             </h2>
                                         </div>
 
@@ -1503,6 +1674,28 @@ export default function Multitrack() {
                                                         </button>
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+                                        {activeTab === 'debug' && (
+                                            <div style={{ flex: 1, background: '#0a0a0e', borderRadius: '12px', padding: '20px', overflowY: 'auto', fontFamily: 'monospace' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '15px', marginBottom: '15px', alignItems: 'center' }}>
+                                                    <span style={{ color: '#00bcd4', fontWeight: '800', fontSize: '1.1rem' }}>SISTEMA DE DIAGNÓSTICO ({debugLogs.length})</span>
+                                                    <button onClick={() => setDebugLogs([])} style={{ background: '#f44336', border: 'none', color: '#fff', padding: '6px 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>LIMPIAR TODO</button>
+                                                </div>
+                                                {debugLogs.length === 0 && (
+                                                    <div style={{ textAlign: 'center', padding: '100px 20px', color: '#444', fontSize: '1.1rem' }}>
+                                                        No hay logs técnicos registrados.<br />
+                                                        Presiona PLAY o cambia de canción para generar datos.
+                                                    </div>
+                                                )}
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                    {debugLogs.map((l, i) => (
+                                                        <div key={i} style={{ color: l.type === 'err' ? '#f87171' : l.type === 'warn' ? '#fbbf24' : '#86efac', marginBottom: '2px', fontSize: '0.9rem', whiteSpace: 'pre-wrap', borderLeft: `4px solid ${l.type === 'err' ? '#f87171' : l.type === 'warn' ? '#fbbf24' : '#333'}`, paddingLeft: '12px', backgroundColor: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '4px' }}>
+                                                            <div style={{ color: '#555', fontSize: '0.7rem', marginBottom: '4px' }}>[{l.t}] - {l.type.toUpperCase()}</div>
+                                                            {l.msg}
+                                                        </div>
+                                                    )).reverse()}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
