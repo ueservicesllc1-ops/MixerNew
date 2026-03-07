@@ -114,6 +114,7 @@ export default function Dashboard() {
 
     // New User Plan state
     const [userPlan, setUserPlan] = useState(STORAGE_PLANS[0]);
+    const [customStorageGB, setCustomStorageGB] = useState(null);
     const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
     const [isInitialPlanSelection, setIsInitialPlanSelection] = useState(false);
     const [pendingPaymentPlan, setPendingPaymentPlan] = useState(null);
@@ -128,7 +129,7 @@ export default function Dashboard() {
 
     const usedMB = userSongs.reduce((acc, s) =>
         acc + (s.tracks || []).reduce((a, t) => a + parseFloat(t.sizeMB || 0), 0), 0);
-    const storageLimit = userPlan?.storageMB || 1000;
+    const storageLimit = customStorageGB ? (customStorageGB * 1024) : (userPlan?.storageMB || 1000);
     const usedPercent = Math.min(100, (usedMB / storageLimit) * 100);
 
     useEffect(() => {
@@ -144,6 +145,7 @@ export default function Dashboard() {
                         const data = snap.data();
                         const plan = STORAGE_PLANS.find(p => p.id === data.planId) || STORAGE_PLANS[0];
                         setUserPlan(plan);
+                        setCustomStorageGB(data.customStorageGB || null);
 
                         // Check local storage to ensure we don't spam the user with the modal on every login
                         const hasSeenModal = localStorage.getItem(`mixer_seen_pricing_${user.uid}`);
@@ -158,7 +160,12 @@ export default function Dashboard() {
                         }
                     } else {
                         // User exists in auth but not in users collection yet
-                        setDoc(doc(db, 'users', user.uid), { planId: 'free', createdAt: serverTimestamp() }, { merge: true })
+                        setDoc(doc(db, 'users', user.uid), {
+                            email: user.email,
+                            displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
+                            planId: 'free',
+                            createdAt: serverTimestamp()
+                        }, { merge: true })
                             .then(() => {
                                 setUserPlan(STORAGE_PLANS[0]);
                                 setTimeout(() => {
@@ -216,8 +223,20 @@ export default function Dashboard() {
         try {
             const cleanName = file.name.replace(/\.zip$/i, '');
             const parts = cleanName.split('-').map(p => p.trim());
+
             if (parts.length >= 1) setSongName(parts[0]);
             if (parts.length >= 2) setArtist(parts[1]);
+
+            // Try to extract tempo (usually contains numbers) and key from remaining parts
+            if (parts.length >= 3) {
+                if (/\d/.test(parts[2])) setTempo(parts[2].replace(/[^\d.]/g, ''));
+                else setSongKey(parts[2]);
+            }
+
+            if (parts.length >= 4) {
+                if (/\d/.test(parts[3])) setTempo(parts[3].replace(/[^\d.]/g, ''));
+                else setSongKey(parts[3]);
+            }
             const contents = await zip.loadAsync(file);
             const extractedFiles = [];
             for (const filename of Object.keys(contents.files)) {
@@ -251,8 +270,18 @@ export default function Dashboard() {
                 formData.append('fileName', b2Filename);
                 const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
                 const uploadRes = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
+                if (!uploadRes.ok) {
+                    const errorStatus = await uploadRes.json();
+                    throw new Error(`Fallo al subir pista ${track.displayName}: ${errorStatus.error || uploadRes.statusText}`);
+                }
                 const uploadData = await uploadRes.json();
-                uploadedTracksInfo.push({ name: track.displayName, originalName: track.originalName, url: uploadData.url, b2FileId: uploadData.fileId, sizeMB: (track.blob.size / 1024 / 1024).toFixed(2) });
+                uploadedTracksInfo.push({
+                    name: track.displayName || 'Pista',
+                    originalName: track.originalName || 'file',
+                    url: uploadData.url || '',
+                    b2FileId: uploadData.fileId || '',
+                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
+                });
                 setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100));
             }
             const mixBlob = await generateMixBlob(fileList);
@@ -269,9 +298,18 @@ export default function Dashboard() {
                 }
             }
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName, artist, key: songKey, tempo, timeSignature, useType,
+                name: songName || 'Sín título',
+                artist: artist || 'Desconocido',
+                key: songKey || '',
+                tempo: tempo || '',
+                timeSignature: timeSignature || '',
+                useType: useType || 'personal',
                 status: useType === 'sell' ? 'pending' : 'active',
-                userId: currentUser.uid, userEmail: currentUser.email, tracks: uploadedTracksInfo, createdAt: serverTimestamp(), isGlobal: false
+                userId: currentUser.uid,
+                userEmail: currentUser.email || '',
+                tracks: uploadedTracksInfo,
+                createdAt: serverTimestamp(),
+                isGlobal: false
             });
             if (lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
             setStep('done');
@@ -344,9 +382,8 @@ export default function Dashboard() {
             <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: 'white', display: 'flex', fontFamily: '"Inter", sans-serif' }}>
                 {/* SIDEBAR */}
                 <aside style={{ width: '280px', backgroundColor: '#020617', borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', padding: '30px 20px', position: 'fixed', bottom: 0, top: 0 }}>
-                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px', cursor: 'pointer', paddingLeft: '10px' }}>
-                        <div style={{ width: '32px', height: '32px', backgroundColor: '#00d2d3', borderRadius: '50%' }}></div>
-                        <span style={{ fontSize: '1.25rem', fontWeight: '800' }}>Zion Stage</span>
+                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', marginBottom: '40px', cursor: 'pointer', paddingLeft: '10px' }}>
+                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '32px' }} />
                     </div>
 
                     <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
@@ -382,7 +419,9 @@ export default function Dashboard() {
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: userPlan?.isVIP ? 'linear-gradient(135deg,#f1c40f,#e67e22)' : 'linear-gradient(135deg,#00d2d3,#9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{displayName[0]?.toUpperCase()}</div>
                             <div style={{ overflow: 'hidden' }}>
                                 <div style={{ fontSize: '0.9rem', fontWeight: '700', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
-                                <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#f1c40f' : '#64748b', fontWeight: '800' }}>{userPlan?.type} {userPlan?.storageGB}GB</div>
+                                <div style={{ fontSize: '0.75rem', color: (userPlan?.isVIP || customStorageGB) ? '#f1c40f' : '#64748b', fontWeight: '800' }}>
+                                    {customStorageGB ? `Plan Personalizado (${customStorageGB}GB)` : `${userPlan?.type} ${userPlan?.storageGB}GB`}
+                                </div>
                             </div>
                         </div>
                         <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
@@ -444,11 +483,11 @@ export default function Dashboard() {
                             {step === 'details' && (
                                 <div>
                                     <h3 style={{ marginBottom: '24px' }}>Detalles de la Canción</h3>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
-                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>NOMBRE</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={songName} onChange={e => setSongName(e.target.value)} /></div>
-                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
-                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>KEY</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={songKey} onChange={e => setSongKey(e.target.value)} /></div>
-                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>TEMPO (BPM)</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={tempo} onChange={e => setTempo(e.target.value)} /></div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '24px' }}>
+                                        <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>NOMBRE</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={songName} onChange={e => setSongName(e.target.value)} /></div>
+                                        <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
+                                        <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>KEY</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={songKey} onChange={e => setSongKey(e.target.value)} /></div>
+                                        <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>TEMPO (BPM)</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={tempo} onChange={e => setTempo(e.target.value)} /></div>
                                     </div>
 
                                     {useType === 'sell' && (

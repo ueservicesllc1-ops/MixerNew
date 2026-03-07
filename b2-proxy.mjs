@@ -105,52 +105,33 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
 
         const uploadNode = await getUploadNode();
 
-        // Temp paths for ffmpeg conversion
-        const tempId = crypto.randomBytes(8).toString('hex');
-        tempInputPath = path.join(os.tmpdir(), `in_${tempId}`);
-        tempOutputPath = path.join(os.tmpdir(), `out_${tempId}.m4a`);
+        // Detect correct content type from original file
+        const contentType = file.mimetype || 'audio/mpeg';
 
-        // 1. Write original buffer to disk
-        fs.writeFileSync(tempInputPath, file.buffer);
-
-        // 2. Transcode to MP3 (Safe Choice)
-        await new Promise((resolve, reject) => {
-            ffmpeg()
-                .input(tempInputPath)
-                .audioCodec('libmp3lame')
-                .audioBitrate('128k')
-                .output(tempOutputPath)
-                .on('end', () => resolve())
-                .on('error', (err) => reject(err))
-                .run();
-        });
-
-        // 3. Read MP3 file into buffer
-        const mp3Buffer = fs.readFileSync(tempOutputPath);
-
-        // 4. Calculate required B2 metadata (SHA1 and Length)
-        const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
+        // 4. Calculate required B2 metadata (SHA1 and Length) from ORIGINAL buffer
+        const sha1 = crypto.createHash('sha1').update(file.buffer).digest('hex');
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': uploadNode.authorizationToken,
                 'X-Bz-File-Name': encodeURI(b2Filename),
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': contentType,
                 'X-Bz-Content-Sha1': sha1,
-                'Content-Length': mp3Buffer.length
+                'Content-Length': file.buffer.length
             },
-            body: mp3Buffer
+            body: file.buffer
         });
+
         const b2Data = await b2Response.json();
+        if (!b2Response.ok) throw new Error(b2Data.message || 'Error uploading to B2');
+
         const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
         res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
     } catch (error) {
         console.error("Upload error:", error);
         res.status(500).json({ error: error.message });
     } finally {
-        // 5. Clean up temp files
-        if (tempInputPath && fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-        if (tempOutputPath && fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+        // No more temp files to clean up
     }
 });
 

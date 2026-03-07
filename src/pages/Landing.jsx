@@ -118,9 +118,8 @@ export default function Landing() {
                 borderBottom: scrolled ? '1px solid rgba(255,255,255,0.1)' : 'none'
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '35px' }}>
-                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                        <div style={{ width: '32px', height: '32px', backgroundColor: '#00d2d3', borderRadius: '50%', border: '4px solid #0f172a', boxShadow: '0 0 0 2px #00d2d3' }}></div>
-                        <span style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Zion Stage</span>
+                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
                     </div>
 
                     <div className="hide-mobile" style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.95rem', fontWeight: '600', color: '#94a3b8' }}>
@@ -505,9 +504,8 @@ export default function Landing() {
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '30px', marginBottom: '40px' }}>
                         {/* Brand */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '28px', height: '28px', backgroundColor: '#00d2d3', borderRadius: '50%' }}></div>
+                            <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '32px' }} />
                             <div>
-                                <span style={{ fontSize: '1.2rem', fontWeight: '800' }}>Zion Stage</span>
                                 <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase' }}>by Freedom Labs</div>
                             </div>
                         </div>
@@ -550,9 +548,8 @@ export default function Landing() {
                         {/* Auth Card */}
                         <div style={{ flex: '1 1 420px', backgroundColor: 'white', borderRadius: '16px', padding: '48px', boxShadow: '0 20px 50px rgba(0,0,0,0.08)', border: '1px solid #f3f4f6' }}>
                             <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', marginBottom: '16px' }}>
-                                    <div style={{ width: '32px', height: '32px', backgroundColor: '#00bcd4', borderRadius: '50%' }}></div>
-                                    <span style={{ fontSize: '1.6rem', fontWeight: '800' }}>Zion Stage</span>
+                                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
+                                    <img src="/zion-logo-blue.png" alt="Zion Stage" style={{ height: '40px' }} />
                                 </div>
                                 <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>{isLogin ? '¡Bienvenido de nuevo!' : 'Crea tu cuenta gratis'}</h1>
                                 <p style={{ color: '#6b7280' }}>Únete a la comunidad de líderes de alabanza.</p>

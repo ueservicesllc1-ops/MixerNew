@@ -1266,7 +1266,10 @@ export default function Multitrack() {
                         {currentUser && (
                             <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
                         )}
-                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesi├│n'}</h2>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                            <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
+                        </div>
+                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
                         <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                             <input type="email" placeholder="Correo electr├│nico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
                             <input type="password" placeholder="Contrase├▒a" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
@@ -1295,11 +1298,8 @@ export default function Multitrack() {
                     fontFamily: '"Inter", "Segoe UI", sans-serif'
                 }}>
                     {/* Logo */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '52px' }}>
-                        <div style={{ width: '38px', height: '38px', background: '#00bcd4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: '14px', height: '14px', background: 'white', borderRadius: '50%' }} />
-                        </div>
-                        <span className="preloader-text" style={{ fontWeight: '800', fontSize: '1.5rem', color: 'white', letterSpacing: '-0.5px' }}>Zion Stage</span>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '52px' }}>
+                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '45px', animation: 'pulse 2s infinite' }} className="preloader-text" />
                     </div>
 
                     {/* Spinner + Countdown stacked */}

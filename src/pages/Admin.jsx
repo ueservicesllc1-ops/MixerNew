@@ -63,6 +63,18 @@ export default function Admin() {
         }
     };
 
+    const updateCustomStorage = async (userId, val) => {
+        try {
+            const parsed = val ? parseFloat(val) : null;
+            await updateDoc(doc(db, 'users', userId), {
+                customStorageGB: parsed
+            });
+        } catch (error) {
+            console.error(error);
+            alert("Error al actualizar espacio asignado");
+        }
+    };
+
     const deleteSong = async (id) => {
         if (!window.confirm("¿Eliminar drásticamente esta canción?")) return;
         try {
@@ -128,13 +140,23 @@ export default function Admin() {
                     <h2>Usuarios ({users.length})</h2>
                     <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px' }}>
                         {users.map(u => (
-                            <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between' }}>
+                            <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div>
                                     <div style={{ fontWeight: '800' }}>
-                                        {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : (u.displayName || u.email || u.id)}
-                                        <span style={{ fontWeight: '400', color: '#94a3b8', fontSize: '0.9rem', marginLeft: '10px' }}>({u.email || 'Email oculto'})</span>
+                                        {u.firstName && u.lastName ? `${u.firstName} ${u.lastName}` : (u.displayName || u.email || 'Email Oculto')}
+                                        <span style={{ fontWeight: '400', color: '#94a3b8', fontSize: '0.9rem', marginLeft: '10px' }}>({u.email || 'Sin correo asociado en DB'})</span>
                                     </div>
                                     <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Plan actual: <span style={{ color: '#00d2d3', fontWeight: '800' }}>{u.planId || 'free'}</span></div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Límite GB:</span>
+                                    <input
+                                        type="number"
+                                        placeholder="Plan base"
+                                        value={u.customStorageGB || ''}
+                                        onChange={(e) => updateCustomStorage(u.id, e.target.value)}
+                                        style={{ width: '80px', padding: '6px', borderRadius: '6px', border: '1px solid #334155', background: '#0f172a', color: 'white', textAlign: 'center' }}
+                                    />
                                 </div>
                             </div>
                         ))}
