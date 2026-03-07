@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import {
-    Upload, Music2, User, Tag, CheckCircle2, Play, ShoppingCart,
+    Upload, Music2, Music, User, Tag, CheckCircle2, Play, ShoppingCart,
     ChevronRight, ArrowLeft, Layers, Cloud,
     Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
     Home, Globe, CreditCard, HelpCircle, LogOut
