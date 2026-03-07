@@ -270,10 +270,22 @@ export default function Dashboard() {
                 const safeTrackName = track.displayName.replace(/\s+/g, '_');
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.mp3`;
                 formData.append('fileName', b2Filename);
-                const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'http://localhost:3001'
+                    : 'https://mixernew-production.up.railway.app';
                 const uploadRes = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
+                if (!uploadRes.ok) {
+                    const errorText = await uploadRes.text();
+                    throw new Error(`Error en el servidor (${uploadRes.status}): ${errorText || 'Fallo al subir pista'}`);
+                }
                 const uploadData = await uploadRes.json();
-                uploadedTracksInfo.push({ name: track.displayName, originalName: track.originalName, url: uploadData.url, b2FileId: uploadData.fileId, sizeMB: (track.blob.size / 1024 / 1024).toFixed(2) });
+                uploadedTracksInfo.push({
+                    name: track.displayName || 'Pista',
+                    originalName: track.originalName || 'file',
+                    url: uploadData.url || '',
+                    b2FileId: uploadData.fileId || '',
+                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
+                });
                 setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100));
             }
             const mixBlob = await generateMixBlob(fileList);
@@ -282,7 +294,9 @@ export default function Dashboard() {
                 formData.append('audioFile', mixBlob);
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${songName.replace(/\s+/g, '_')}__PreviewMix.mp3`;
                 formData.append('fileName', b2Filename);
-                const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'http://localhost:3001'
+                    : 'https://mixernew-production.up.railway.app';
                 const res = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
                 if (res.ok) {
                     const data = await res.json();
@@ -290,14 +304,29 @@ export default function Dashboard() {
                 }
             }
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName, artist, key: songKey, tempo, timeSignature, useType,
+                name: songName || 'Sin título',
+                artist: artist || 'Desconocido',
+                key: songKey || '',
+                tempo: tempo || '',
+                timeSignature: timeSignature || '',
+                useType: useType || 'personal',
                 status: useType === 'sell' ? 'pending' : 'active',
-                userId: currentUser.uid, userEmail: currentUser.email, tracks: uploadedTracksInfo, createdAt: serverTimestamp(), isGlobal: false
+                userId: currentUser.uid,
+                userEmail: currentUser.email || '',
+                tracks: uploadedTracksInfo,
+                createdAt: serverTimestamp(),
+                isGlobal: false
             });
-            if (lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
+            if (lyrics && lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
             setStep('done');
             setTimeout(() => { resetWizard(); setActiveTab('home'); }, 2000);
-        } catch (e) { console.error(e); alert("Error"); setStep('details'); } finally { setIsUploading(false); }
+        } catch (e) {
+            console.error("Error completo de subida:", e);
+            alert("Ocurrió un error: " + (e.message || "Error desconocido"));
+            setStep('details');
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const resetWizard = () => {

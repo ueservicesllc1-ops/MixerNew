@@ -107,8 +107,9 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
 
         // Temp paths for ffmpeg conversion
         const tempId = crypto.randomBytes(8).toString('hex');
-        tempInputPath = path.join(os.tmpdir(), `in_${tempId}`);
-        tempOutputPath = path.join(os.tmpdir(), `out_${tempId}.m4a`);
+        const tmpDir = os.tmpdir();
+        tempInputPath = path.join(tmpDir, `in_${tempId}`);
+        tempOutputPath = path.join(tmpDir, `out_${tempId}.mp3`); // Use .mp3 to match the codec
 
         // 1. Write original buffer to disk
         fs.writeFileSync(tempInputPath, file.buffer);
