@@ -1384,18 +1384,27 @@ export default function Multitrack() {
                 </button>
 
                 {/* MOBILE DRAWER BUTTONS */}
-                <div className="mobile-only-flex" style={{ display: 'none', gap: '8px' }}>
-                    <button className="transport-btn" onClick={() => setIsSetlistMenuOpen(true)} title="Setlists">
-                        <ListMusic size={20} />
+                <div className="mobile-only-flex" style={{ display: 'flex', gap: '4px' }}>
+                    <button className="transport-btn-mini" onClick={() => setIsSetlistMenuOpen(true)} title="Setlists">
+                        <ListMusic size={18} />
                     </button>
-                    <button className="transport-btn" onClick={() => setIsLibraryMenuOpen(true)} title="Librer├¡a">
-                        <LibraryIcon size={20} />
+                    <button className="transport-btn-mini" onClick={() => setIsLibraryMenuOpen(true)} title="Librería">
+                        <LibraryIcon size={18} />
                     </button>
                 </div>
 
                 {/* MASTER VOLUME SLIDER */}
-                <div className="master-fader-mini" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 15px', minWidth: '210px', height: '40px', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                    <span className="desktop-only" style={{ color: 'white', fontSize: '0.65rem', fontWeight: '900', letterSpacing: '0.1em', whiteSpace: 'nowrap', opacity: 0.9 }}>MASTER</span>
+                <div className="master-fader-mini" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '0 10px',
+                    minWidth: window.innerWidth < 800 ? '110px' : '200px',
+                    height: '38px',
+                    flexShrink: 1,
+                    whiteSpace: 'nowrap'
+                }}>
+                    <span className="desktop-only" style={{ display: window.innerWidth < 1000 ? 'none' : 'block', color: 'white', fontSize: '0.65rem', fontWeight: '900', letterSpacing: '0.1em', whiteSpace: 'nowrap', opacity: 0.9 }}>MASTER</span>
                     <input
                         type="range"
                         min="0" max="1" step="0.01"
@@ -1403,7 +1412,7 @@ export default function Multitrack() {
                         onChange={handleMasterVolume}
                         style={{ flex: 1, accentColor: 'white', cursor: 'pointer', height: '4px' }}
                     />
-                    <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: '900', paddingLeft: '8px' }}>{Math.round(masterVolume * 100)}%</span>
+                    <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: '900', paddingLeft: '4px' }}>{Math.round(masterVolume * 100)}%</span>
                 </div>
 
                 <div className="controls-group">

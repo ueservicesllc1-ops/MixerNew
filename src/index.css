@@ -168,6 +168,17 @@ div:has(> .avatar-overlay):hover {
   margin-bottom: 8px;
   flex-shrink: 0;
   transition: background 0.3s, border-color 0.3s;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.transport-bar::-webkit-scrollbar {
+  height: 4px;
+}
+
+.transport-bar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
 }
 
 body.dark-mode .transport-bar {
@@ -217,6 +228,26 @@ body.dark-mode .transport-btn {
 body.dark-mode .transport-btn:hover {
   background: #3a4a5a;
   color: white;
+}
+
+.transport-btn-mini {
+  background: #f0f0f0;
+  border: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #555;
+  transition: 0.2s;
+  flex-shrink: 0;
+}
+
+body.dark-mode .transport-btn-mini {
+  background: #2d3748;
+  color: #e2e8f0;
 }
 
 .transport-btn.play {
