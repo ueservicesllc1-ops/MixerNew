@@ -100,6 +100,9 @@ export default function Dashboard() {
     const [tempo, setTempo] = useState('');
     const [timeSignature, setTimeSignature] = useState('');
     const [lyrics, setLyrics] = useState('');
+    const [chords, setChords] = useState('');
+    const [isLyricsModalOpen, setIsLyricsModalOpen] = useState(false);
+    const [isChordsModalOpen, setIsChordsModalOpen] = useState(false);
 
     const [editingLyricsSong, setEditingLyricsSong] = useState(null);
     const [tempLyrics, setTempLyrics] = useState('');
@@ -318,6 +321,7 @@ export default function Dashboard() {
                 isGlobal: false
             });
             if (lyrics && lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
+            if (chords && chords.trim()) await addDoc(collection(db, 'chords'), { songId: songDoc.id, text: chords, updatedAt: serverTimestamp() });
             setStep('done');
             setTimeout(() => { resetWizard(); setActiveTab('home'); }, 2000);
         } catch (e) {
@@ -330,7 +334,7 @@ export default function Dashboard() {
     };
 
     const resetWizard = () => {
-        setStep('idle'); setFileList([]); setSongName(''); setArtist(''); setSongKey(''); setTempo(''); setTimeSignature(''); setLyrics(''); setUseType(null); setHasRights(false);
+        setStep('idle'); setFileList([]); setSongName(''); setArtist(''); setSongKey(''); setTempo(''); setTimeSignature(''); setLyrics(''); setChords(''); setUseType(null); setHasRights(false);
     };
 
     const handleCreateSetlist = async (e) => {
@@ -535,6 +539,15 @@ export default function Dashboard() {
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>KEY</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={songKey} onChange={e => setSongKey(e.target.value)} /></div>
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>TEMPO (BPM)</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={tempo} onChange={e => setTempo(e.target.value)} /></div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '15px', marginBottom: '24px' }}>
+                                        <button onClick={() => setIsLyricsModalOpen(true)} className="btn-ghost" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: lyrics ? '1px solid #00d2d3' : '1px solid rgba(255,255,255,0.1)', color: lyrics ? '#00d2d3' : 'white' }}>
+                                            <ScrollText size={18} /> {lyrics ? 'Letra Agregada' : 'Subir Letra'}
+                                        </button>
+                                        <button onClick={() => setIsChordsModalOpen(true)} className="btn-ghost" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', border: chords ? '1px solid #00d2d3' : '1px solid rgba(255,255,255,0.1)', color: chords ? '#00d2d3' : 'white' }}>
+                                            <Music size={18} /> {chords ? 'Cifrado Agregado' : 'Subir Cifrado'}
+                                        </button>
                                     </div>
 
                                     {useType === 'sell' && (
@@ -1037,6 +1050,48 @@ export default function Dashboard() {
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL PARA EDITAR LETRAS (UPLOAD) */}
+                {isLyricsModalOpen && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
+                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '700px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+                            <button onClick={() => setIsLyricsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={24} /></button>
+                            <h2 style={{ marginBottom: '10px' }}>Agregar Letra</h2>
+                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega o escribe la letra de la canción aquí.</p>
+                            <textarea
+                                value={lyrics}
+                                onChange={(e) => setLyrics(e.target.value)}
+                                placeholder="Escribe la letra aquí..."
+                                style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                <button onClick={() => setIsLyricsModalOpen(false)} className="btn-ghost">Cancelar</button>
+                                <button onClick={() => setIsLyricsModalOpen(false)} className="btn-teal">Guardar Letra</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL PARA EDITAR CIFRADOS (UPLOAD) */}
+                {isChordsModalOpen && (
+                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
+                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '700px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
+                            <button onClick={() => setIsChordsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={24} /></button>
+                            <h2 style={{ marginBottom: '10px' }}>Agregar Cifrado</h2>
+                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega o escribe el cifrado/acordes aquí.</p>
+                            <textarea
+                                value={chords}
+                                onChange={(e) => setChords(e.target.value)}
+                                placeholder="Escribe los acordes aquí..."
+                                style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
+                            />
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                <button onClick={() => setIsChordsModalOpen(false)} className="btn-ghost">Cancelar</button>
+                                <button onClick={() => setIsChordsModalOpen(false)} className="btn-teal">Guardar Cifrado</button>
+                            </div>
                         </div>
                     </div>
                 )}
