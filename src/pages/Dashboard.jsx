@@ -114,7 +114,6 @@ export default function Dashboard() {
 
     // New User Plan state
     const [userPlan, setUserPlan] = useState(STORAGE_PLANS[0]);
-    const [customStorageGB, setCustomStorageGB] = useState(null);
     const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
     const [isInitialPlanSelection, setIsInitialPlanSelection] = useState(false);
     const [pendingPaymentPlan, setPendingPaymentPlan] = useState(null);
@@ -127,9 +126,11 @@ export default function Dashboard() {
     const [editingSetlistData, setEditingSetlistData] = useState(null);
     const [songSearchQuery, setSongSearchQuery] = useState('');
 
+    const [customStorageGB, setCustomStorageGB] = useState(0);
+
     const usedMB = userSongs.reduce((acc, s) =>
         acc + (s.tracks || []).reduce((a, t) => a + parseFloat(t.sizeMB || 0), 0), 0);
-    const storageLimit = customStorageGB ? (customStorageGB * 1024) : (userPlan?.storageMB || 1000);
+    const storageLimit = customStorageGB > 0 ? (customStorageGB * 1024) : (userPlan?.storageMB || 1000);
     const usedPercent = Math.min(100, (usedMB / storageLimit) * 100);
 
     useEffect(() => {
@@ -145,7 +146,7 @@ export default function Dashboard() {
                         const data = snap.data();
                         const plan = STORAGE_PLANS.find(p => p.id === data.planId) || STORAGE_PLANS[0];
                         setUserPlan(plan);
-                        setCustomStorageGB(data.customStorageGB || null);
+                        setCustomStorageGB(data.customStorageGB || 0);
 
                         // Check local storage to ensure we don't spam the user with the modal on every login
                         const hasSeenModal = localStorage.getItem(`mixer_seen_pricing_${user.uid}`);
@@ -161,13 +162,14 @@ export default function Dashboard() {
                     } else {
                         // User exists in auth but not in users collection yet
                         setDoc(doc(db, 'users', user.uid), {
-                            email: user.email,
-                            displayName: user.displayName || user.email?.split('@')[0] || 'Usuario',
                             planId: 'free',
+                            email: user.email || '',
+                            displayName: user.displayName || '',
                             createdAt: serverTimestamp()
                         }, { merge: true })
                             .then(() => {
                                 setUserPlan(STORAGE_PLANS[0]);
+                                setCustomStorageGB(0);
                                 setTimeout(() => {
                                     setIsInitialPlanSelection(true);
                                     setIsPricingModalOpen(true);
@@ -270,18 +272,8 @@ export default function Dashboard() {
                 formData.append('fileName', b2Filename);
                 const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
                 const uploadRes = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
-                if (!uploadRes.ok) {
-                    const errorStatus = await uploadRes.json();
-                    throw new Error(`Fallo al subir pista ${track.displayName}: ${errorStatus.error || uploadRes.statusText}`);
-                }
                 const uploadData = await uploadRes.json();
-                uploadedTracksInfo.push({
-                    name: track.displayName || 'Pista',
-                    originalName: track.originalName || 'file',
-                    url: uploadData.url || '',
-                    b2FileId: uploadData.fileId || '',
-                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
-                });
+                uploadedTracksInfo.push({ name: track.displayName, originalName: track.originalName, url: uploadData.url, b2FileId: uploadData.fileId, sizeMB: (track.blob.size / 1024 / 1024).toFixed(2) });
                 setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100));
             }
             const mixBlob = await generateMixBlob(fileList);
@@ -298,18 +290,9 @@ export default function Dashboard() {
                 }
             }
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName || 'Sín título',
-                artist: artist || 'Desconocido',
-                key: songKey || '',
-                tempo: tempo || '',
-                timeSignature: timeSignature || '',
-                useType: useType || 'personal',
+                name: songName, artist, key: songKey, tempo, timeSignature, useType,
                 status: useType === 'sell' ? 'pending' : 'active',
-                userId: currentUser.uid,
-                userEmail: currentUser.email || '',
-                tracks: uploadedTracksInfo,
-                createdAt: serverTimestamp(),
-                isGlobal: false
+                userId: currentUser.uid, userEmail: currentUser.email, tracks: uploadedTracksInfo, createdAt: serverTimestamp(), isGlobal: false
             });
             if (lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
             setStep('done');
@@ -419,9 +402,7 @@ export default function Dashboard() {
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: userPlan?.isVIP ? 'linear-gradient(135deg,#f1c40f,#e67e22)' : 'linear-gradient(135deg,#00d2d3,#9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{displayName[0]?.toUpperCase()}</div>
                             <div style={{ overflow: 'hidden' }}>
                                 <div style={{ fontSize: '0.9rem', fontWeight: '700', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
-                                <div style={{ fontSize: '0.75rem', color: (userPlan?.isVIP || customStorageGB) ? '#f1c40f' : '#64748b', fontWeight: '800' }}>
-                                    {customStorageGB ? `Plan Personalizado (${customStorageGB}GB)` : `${userPlan?.type} ${userPlan?.storageGB}GB`}
-                                </div>
+                                <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#f1c40f' : '#64748b', fontWeight: '800' }}>{userPlan?.type} {userPlan?.storageGB}GB</div>
                             </div>
                         </div>
                         <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
@@ -538,7 +519,9 @@ export default function Dashboard() {
                                         <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', marginBottom: '12px' }}>
                                             <div style={{ width: `${usedPercent}%`, height: '100%', background: '#00d2d3', borderRadius: '4px' }}></div>
                                         </div>
-                                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{usedMB.toFixed(0)} MB de {storageLimit} MB usado</div>
+                                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                                            {usedMB.toFixed(0)} MB de {customStorageGB > 0 ? (customStorageGB + ' GB') : (storageLimit + ' MB')} usado
+                                        </div>
                                     </div>
                                     <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                                         <div style={{ width: '50px', height: '50px', background: 'rgba(0,210,211,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}><Music2 size={24} /></div>
