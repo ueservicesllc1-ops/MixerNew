@@ -251,7 +251,7 @@ export default function Dashboard() {
                 }
             }
             setFileList(extractedFiles);
-            setStep('choose-use');
+            setStep('details');
         } catch (err) { alert('Error: ' + err.message); }
     };
 
@@ -486,7 +486,44 @@ export default function Dashboard() {
                                     </div>
                                     <div style={{ display: 'flex', gap: '15px' }}>
                                         <button onClick={resetWizard} className="btn-ghost">Cancelar</button>
-                                        <button disabled={!useType} onClick={() => setStep('details')} className="btn-teal" style={{ flex: 1 }}>Siguiente</button>
+                                        <button disabled={!useType} onClick={() => setStep('uploading-flow')} className="btn-teal" style={{ flex: 1 }}>Siguiente</button>
+                                    </div>
+                                </div>
+                            )}
+                            {step === 'uploading-flow' && (
+                                <div>
+                                    <h3 style={{ marginBottom: '24px' }}>Revisar Pistas</h3>
+                                    <p style={{ color: '#64748b', marginBottom: '20px' }}>Puedes renombrar las pistas antes de subirlas para que se vean mejor en el mixer.</p>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px', maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' }}>
+                                        {fileList.map((track, idx) => (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '15px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <div style={{ width: '40px', height: '40px', background: 'rgba(0,210,211,0.1)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}>
+                                                    <Music size={18} />
+                                                </div>
+                                                <div style={{ flex: 1 }}>
+                                                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase' }}>Nombre de la Pista</div>
+                                                    <input
+                                                        className="btn-ghost"
+                                                        style={{ width: '100%', textAlign: 'left', padding: '8px 12px', boxSizing: 'border-box', border: '1px solid rgba(255,255,255,0.1)' }}
+                                                        value={track.displayName}
+                                                        onChange={e => {
+                                                            const newList = [...fileList];
+                                                            newList[idx].displayName = e.target.value;
+                                                            setFileList(newList);
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                                                    .{track.extension}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        <button onClick={() => setStep('details')} className="btn-ghost">Atrás</button>
+                                        <button onClick={uploadToB2} className="btn-teal" style={{ flex: 1 }}><Upload size={18} /> Subir ahora</button>
                                     </div>
                                 </div>
                             )}
@@ -511,8 +548,8 @@ export default function Dashboard() {
                                     )}
 
                                     <div style={{ display: 'flex', gap: '15px' }}>
-                                        <button onClick={() => setStep('choose-use')} className="btn-ghost">Atrás</button>
-                                        <button disabled={useType === 'sell' && !hasRights} onClick={uploadToB2} className="btn-teal" style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}><Upload size={18} /> Subir ahora</button>
+                                        <button onClick={() => setStep('idle')} className="btn-ghost">Cancelar</button>
+                                        <button disabled={useType === 'sell' && !hasRights} onClick={() => setStep('choose-use')} className="btn-teal" style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}>Siguiente</button>
                                     </div>
                                 </div>
                             )}
