@@ -103,6 +103,7 @@ export default function Dashboard() {
     const [chords, setChords] = useState('');
     const [isLyricsModalOpen, setIsLyricsModalOpen] = useState(false);
     const [isChordsModalOpen, setIsChordsModalOpen] = useState(false);
+    const [editingSongId, setEditingSongId] = useState(null);
 
     const [editingLyricsSong, setEditingLyricsSong] = useState(null);
     const [tempLyrics, setTempLyrics] = useState('');
@@ -352,10 +353,69 @@ export default function Dashboard() {
         } catch (e) { console.error(e); }
     };
 
+    const openLyricsHandler = async (songId) => {
+        setEditingSongId(songId);
+        setLyrics('');
+        try {
+            const q = query(collection(db, 'lyrics'), where('songId', '==', songId));
+            const snap = await getDocs(q);
+            if (!snap.empty) setLyrics(snap.docs[0].data().text);
+            setIsLyricsModalOpen(true);
+        } catch (e) { console.error(e); }
+    };
+
+    const openChordsHandler = async (songId) => {
+        setEditingSongId(songId);
+        setChords('');
+        try {
+            const q = query(collection(db, 'chords'), where('songId', '==', songId));
+            const snap = await getDocs(q);
+            if (!snap.empty) setChords(snap.docs[0].data().text);
+            setIsChordsModalOpen(true);
+        } catch (e) { console.error(e); }
+    };
+
+    const saveLyricsHandler = async () => {
+        if (!editingSongId) return setIsLyricsModalOpen(false);
+        try {
+            const q = query(collection(db, 'lyrics'), where('songId', '==', editingSongId));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                await updateDoc(doc(db, 'lyrics', snap.docs[0].id), { text: lyrics, updatedAt: serverTimestamp() });
+            } else {
+                await addDoc(collection(db, 'lyrics'), { songId: editingSongId, text: lyrics, updatedAt: serverTimestamp() });
+            }
+            setIsLyricsModalOpen(false);
+            setEditingSongId(null);
+        } catch (e) { console.error(e); alert("Error saving lyrics"); }
+    };
+
+    const saveChordsHandler = async () => {
+        if (!editingSongId) return setIsChordsModalOpen(false);
+        try {
+            const q = query(collection(db, 'chords'), where('songId', '==', editingSongId));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                await updateDoc(doc(db, 'chords', snap.docs[0].id), { text: chords, updatedAt: serverTimestamp() });
+            } else {
+                await addDoc(collection(db, 'chords'), { songId: editingSongId, text: chords, updatedAt: serverTimestamp() });
+            }
+            setIsChordsModalOpen(false);
+            setEditingSongId(null);
+        } catch (e) { console.error(e); alert("Error saving chords"); }
+    };
+
     const handleDeleteSetlist = async (id) => {
         if (!window.confirm("¿Eliminar este setlist?")) return;
         try {
             await deleteDoc(doc(db, 'setlists', id));
+        } catch (e) { console.error(e); }
+    };
+
+    const handleDeleteSong = async (id) => {
+        if (!window.confirm("¿Eliminar esta canción permanentemente?")) return;
+        try {
+            await deleteDoc(doc(db, 'songs', id));
         } catch (e) { console.error(e); }
     };
 
@@ -674,7 +734,7 @@ export default function Dashboard() {
 
                                     <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
                                         {/* LIST HEADER */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
                                             <span></span>
                                             <span>Canción</span>
                                             <span>Artista</span>
@@ -693,7 +753,7 @@ export default function Dashboard() {
                                                 onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }}
                                                 style={{
                                                     display: 'grid',
-                                                    gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px',
+                                                    gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px',
                                                     padding: '20px 30px',
                                                     borderBottom: idx === userSongs.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.03)',
                                                     alignItems: 'center',
@@ -714,9 +774,15 @@ export default function Dashboard() {
                                                     {song.key && <span style={{ color: '#00d2d3', fontWeight: '700', background: 'rgba(0,210,211,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}
                                                 </div>
                                                 <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
-                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                                                    <button onClick={(e) => { e.stopPropagation(); openLyricsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Agregar/Editar Letra">
+                                                        <ScrollText size={18} />
+                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); openChordsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Agregar/Editar Cifrado">
+                                                        <Music size={18} />
+                                                    </button>
                                                     <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteSong(song.id); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
                                                 </div>
                                             </div>
                                         ))}
@@ -783,7 +849,7 @@ export default function Dashboard() {
                                                 </div>
                                             </div>
                                             <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                                <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
                                                     <span></span>
                                                     <span>Canción</span>
                                                     <span>Artista</span>
@@ -795,7 +861,7 @@ export default function Dashboard() {
                                                     s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                                     (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
                                                 ).map((song, idx) => (
-                                                    <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
+                                                    <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
                                                         <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(241,196,15,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f' }}><Music2 size={20} /></div>
                                                         <div><div style={{ fontWeight: '700' }}>{song.name}</div><div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subido por {song.userId === currentUser?.uid ? 'TI' : 'Comunidad'}</div></div>
                                                         <div style={{ color: '#94a3b8' }}>{song.artist || '—'}</div>
@@ -1068,8 +1134,8 @@ export default function Dashboard() {
                                 style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
                             />
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-                                <button onClick={() => setIsLyricsModalOpen(false)} className="btn-ghost">Cancelar</button>
-                                <button onClick={() => setIsLyricsModalOpen(false)} className="btn-teal">Guardar Letra</button>
+                                <button onClick={() => { setIsLyricsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>
+                                <button onClick={saveLyricsHandler} className="btn-teal">Guardar Letra</button>
                             </div>
                         </div>
                     </div>
@@ -1089,8 +1155,8 @@ export default function Dashboard() {
                                 style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
                             />
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-                                <button onClick={() => setIsChordsModalOpen(false)} className="btn-ghost">Cancelar</button>
-                                <button onClick={() => setIsChordsModalOpen(false)} className="btn-teal">Guardar Cifrado</button>
+                                <button onClick={() => { setIsChordsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>
+                                <button onClick={saveChordsHandler} className="btn-teal">Guardar Cifrado</button>
                             </div>
                         </div>
                     </div>
