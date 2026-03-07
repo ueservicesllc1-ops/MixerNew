@@ -1,16 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { Search, ShoppingCart } from 'lucide-react';
+import { auth, db, storage } from '../firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera } from 'lucide-react';
 
 export default function Landing() {
     const navigate = useNavigate();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [avatarFile, setAvatarFile] = useState(null);
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const avatarInputRef = React.useRef();
     const [isLogin, setIsLogin] = useState(true);
     const [errorMsg, setErrorMsg] = useState('');
     const [showLoginPanel, setShowLoginPanel] = useState(false);
+    const [scrolled, setScrolled] = useState(false);
+    const [isAnnual, setIsAnnual] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+    const [showDropdown, setShowDropdown] = useState(false);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            setScrolled(window.scrollY > 50);
+        };
+        window.addEventListener('scroll', handleScroll);
+
+        const unsubscribe = onAuthStateChanged(auth, user => {
+            setCurrentUser(user);
+        });
+
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            unsubscribe();
+        };
+    }, []);
 
     const handleEmailAuth = async (e) => {
         e.preventDefault();
@@ -19,9 +47,34 @@ export default function Landing() {
             if (isLogin) {
                 await signInWithEmailAndPassword(auth, email, password);
             } else {
-                await createUserWithEmailAndPassword(auth, email, password);
+                if (password !== confirmPassword) {
+                    setErrorMsg("Las contraseñas no coinciden.");
+                    return;
+                }
+                const userCred = await createUserWithEmailAndPassword(auth, email, password);
+                const fullName = `${firstName} ${lastName}`.trim();
+
+                // Upload avatar if provided
+                let photoURL = null;
+                if (avatarFile) {
+                    const avatarRef = ref(storage, `avatars/${userCred.user.uid}`);
+                    await uploadBytes(avatarRef, avatarFile);
+                    photoURL = await getDownloadURL(avatarRef);
+                }
+
+                await updateProfile(userCred.user, { displayName: fullName, ...(photoURL && { photoURL }) });
+
+                // Set initial user doc in Firestore
+                await setDoc(doc(db, 'users', userCred.user.uid), {
+                    firstName,
+                    lastName,
+                    email,
+                    ...(photoURL && { photoURL }),
+                    planId: 'free',
+                    createdAt: serverTimestamp()
+                }, { merge: true });
             }
-            navigate('/dashboard');
+            setShowLoginPanel(false);
         } catch (error) {
             console.error("Auth error:", error);
             setErrorMsg(error.message);
@@ -33,7 +86,7 @@ export default function Landing() {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
-            navigate('/dashboard');
+            setShowLoginPanel(false);
         } catch (error) {
             console.error("Google Auth error:", error);
             setErrorMsg(error.message);
@@ -41,179 +94,257 @@ export default function Landing() {
     };
 
     return (
-        <div style={{ backgroundColor: '#1c1c1e', minHeight: '100vh', width: '100vw', margin: 0, padding: 0, overflowX: 'hidden', color: 'white', fontFamily: '"Inter", "Segoe UI", sans-serif' }}>
+        <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', width: '100vw', margin: 0, padding: 0, overflowX: 'hidden', color: 'white', fontFamily: '"Inter", sans-serif' }}>
 
-            {/* TOP INFOBAR */}
-            <div style={{ backgroundColor: '#21262d', padding: '10px 0', fontSize: '0.8rem', textAlign: 'center', letterSpacing: '1px' }}>
-                <span style={{ color: '#ccc' }}>PRUEBA LA NUEVA VERSIÓN DE MIXER</span>
-                <span style={{ color: '#00d2d3', marginLeft: '10px', textDecoration: 'underline', cursor: 'pointer' }}>ÚNETE AHORA</span>
+            {/* TOP BAR PROMO */}
+            <div style={{ backgroundColor: '#1e293b', padding: '8px 0', fontSize: '0.75rem', textAlign: 'center', letterSpacing: '1px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span style={{ color: '#94a3b8' }}>NUEVA ACTUALIZACIÓN: MOTOR DE AUDIO NATIVO Y WAVEFORMS MEJORADOS — </span>
+                <span style={{ color: '#00d2d3', marginLeft: '5px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>VER MÁS</span>
             </div>
 
-            {/* NAVBAR */}
-            <nav style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 50px', backgroundColor: '#2a2a2c', borderBottom: '1px solid #333' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                        <div style={{ width: '28px', height: '28px', backgroundColor: '#00d2d3', borderRadius: '50%', border: '4px solid #1c1c1e', boxShadow: '0 0 0 2px #00d2d3' }}></div>
-                        <span style={{ fontSize: '1.2rem', fontWeight: '800', letterSpacing: '0.5px' }}>MixCommunity</span>
+            {/* GLASS NAVBAR */}
+            <nav className={scrolled ? 'glass-nav' : ''} style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: scrolled ? '12px 60px' : '20px 60px',
+                transition: 'all 0.3s ease',
+                position: 'fixed',
+                top: scrolled ? 0 : '35px',
+                left: 0,
+                right: 0,
+                zIndex: 1000,
+                backgroundColor: scrolled ? 'rgba(15, 23, 42, 0.9)' : 'transparent',
+                borderBottom: scrolled ? '1px solid rgba(255,255,255,0.1)' : 'none'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '35px' }}>
+                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                        <div style={{ width: '32px', height: '32px', backgroundColor: '#00d2d3', borderRadius: '50%', border: '4px solid #0f172a', boxShadow: '0 0 0 2px #00d2d3' }}></div>
+                        <span style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Zion Stage</span>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.9rem', fontWeight: '600', color: '#ccc' }}>
-                        <span style={{ cursor: 'pointer' }}>Canciones ▾</span>
-                        <span style={{ cursor: 'pointer' }}>Productos ▾</span>
-                        <span style={{ cursor: 'pointer' }}>Recursos ▾</span>
-                        <span style={{ cursor: 'pointer' }}>Mixer™</span>
-                        <span style={{ cursor: 'pointer' }}>Ayuda</span>
-                    </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <span onClick={() => setShowLoginPanel(true)} style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: 'bold' }}>Iniciar sesión</span>
-                    <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} style={{ backgroundColor: '#00bcd4', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem' }}>
-                        Únete gratis
-                    </button>
-                    <ShoppingCart size={20} color="#ccc" style={{ cursor: 'pointer' }} />
-                    <Search size={20} color="#ccc" style={{ cursor: 'pointer' }} />
-                </div>
-            </nav>
-
-            {/* HERO SECTION */}
-            <main style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '60px 80px', maxWidth: '1400px', margin: '0 auto', gap: '40px' }}>
-
-                {/* LEFT TEXT */}
-                <div style={{ flex: '1', maxWidth: '500px' }}>
-                    <h1 style={{ fontSize: '3.8rem', fontWeight: 'bold', lineHeight: '1.1', margin: '0 0 30px 0' }}>
-                        Pistas para<br />la adoración<br />simplificadas
-                    </h1>
-                    <p style={{ fontSize: '1.1rem', color: '#aaa', lineHeight: '1.6', marginBottom: '40px' }}>
-                        MixCommunity ofrece a los líderes de alabanza pistas, hardware, software y capacitación de calidad y a precios accesibles. Simplificamos lo complicado para que usted pueda concentrarse en lo importante.
-                    </p>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                        <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} style={{ backgroundColor: '#00bcd4', color: 'white', border: 'none', padding: '15px 30px', borderRadius: '4px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>
-                            Regístrate gratis
-                        </button>
-                        <span style={{ color: '#00bcd4', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            ▶ ¿Por qué utilizar Mixer?
+                    <div className="hide-mobile" style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.95rem', fontWeight: '600', color: '#94a3b8' }}>
+                        {[
+                            { label: 'Canciones', path: '/store' },
+                            { label: 'Software', path: '/software' },
+                            { label: 'Recursos', path: '/recursos' },
+                        ].map(item => (
+                            <span
+                                key={item.label}
+                                onClick={() => navigate(item.path)}
+                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none' }}
+                                onMouseEnter={e => e.target.style.color = '#fff'}
+                                onMouseLeave={e => e.target.style.color = '#94a3b8'}
+                            >
+                                {item.label}
+                            </span>
+                        ))}
+                        <span
+                            onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
+                            style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
+                            onMouseEnter={e => e.target.style.color = '#f1c40f'}
+                            onMouseLeave={e => e.target.style.color = '#94a3b8'}
+                        >
+                            Precios
                         </span>
                     </div>
                 </div>
 
-                {/* RIGHT IMAGE/MOCKUP AREA */}
-                <div style={{ flex: '1.2', position: 'relative', display: 'flex', justifyContent: 'center' }}>
-                    {/* Fake Laptop Screen mockup */}
-                    <div style={{
-                        width: '100%',
-                        maxWidth: '700px',
-                        aspectRatio: '16/10',
-                        backgroundColor: '#111',
-                        borderRadius: '12px 12px 0 0',
-                        border: '8px solid #333',
-                        borderBottomWidth: '20px',
-                        boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column'
-                    }}>
-                        {/* Fake Browser Toolbar */}
-                        <div style={{ height: '24px', backgroundColor: '#222', borderBottom: '1px solid #444', display: 'flex', alignItems: 'center', padding: '0 10px', gap: '6px' }}>
-                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ff5f56' }}></div>
-                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ffbd2e' }}></div>
-                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#27c93f' }}></div>
-                        </div>
-                        {/* Fake App Interface */}
-                        <div style={{ flex: 1, backgroundColor: '#1c1c1e', padding: '15px' }}>
-                            <div style={{ height: '60px', backgroundColor: '#2a2a2c', borderRadius: '8px', marginBottom: '10px', display: 'flex', alignItems: 'center', padding: '0 15px', gap: '15px' }}>
-                                <div style={{ flex: 1, height: '30px', backgroundColor: '#333', borderRadius: '4px', display: 'flex', overflow: 'hidden' }}>
-                                    <div style={{ width: '15%', backgroundColor: '#ff5252' }}></div>
-                                    <div style={{ width: '25%', backgroundColor: '#2ecc71' }}></div>
-                                    <div style={{ width: '40%', backgroundColor: '#00bcd4' }}></div>
-                                    <div style={{ width: '20%', backgroundColor: '#9b59b6' }}></div>
-                                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    {!currentUser ? (
+                        <>
+                            <span onClick={() => setShowLoginPanel(true)} style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: '#ccc' }}>Iniciar sesión</span>
+                            <button className="btn-teal" onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
+                                Únete gratis
+                            </button>
+                        </>
+                    ) : (
+                        <div style={{ position: 'relative' }}>
+                            <div
+                                onClick={() => setShowDropdown(!showDropdown)}
+                                style={{
+                                    width: '38px', height: '38px', borderRadius: '50%',
+                                    background: currentUser?.photoURL ? 'transparent' : 'linear-gradient(135deg,#00d2d3,#9b59b6)',
+                                    backgroundImage: currentUser?.photoURL ? `url(${currentUser.photoURL})` : undefined,
+                                    backgroundSize: 'cover',
+                                    backgroundPosition: 'center',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontWeight: '800', cursor: 'pointer',
+                                    border: '2px solid rgba(255,255,255,0.2)'
+                                }}
+                            >
+                                {!currentUser?.photoURL && (currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()}
                             </div>
-                            <div style={{ display: 'flex', gap: '10px', height: 'calc(100% - 70px)' }}>
-                                <div style={{ flex: 1, backgroundColor: '#2a2a2c', borderRadius: '8px', position: 'relative' }}>
-                                    <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', height: '60%', backgroundColor: '#00d2d3', opacity: 0.8, borderRadius: '4px' }}></div>
-                                </div>
-                                <div style={{ flex: 1, backgroundColor: '#2a2a2c', borderRadius: '8px', position: 'relative' }}>
-                                    <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', height: '80%', backgroundColor: '#e74c3c', opacity: 0.8, borderRadius: '4px' }}></div>
-                                </div>
-                                <div style={{ flex: 1, backgroundColor: '#2a2a2c', borderRadius: '8px', position: 'relative' }}>
-                                    <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', height: '40%', backgroundColor: '#f39c12', opacity: 0.8, borderRadius: '4px' }}></div>
-                                </div>
-                                <div style={{ flex: 1.5, backgroundColor: '#111', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
-                                    {/* Fake Setlist */}
-                                    {['House Of The Lord', 'Firm Foundation', 'Praise'].map((s, i) => (
-                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #222', fontSize: '0.7rem' }}>
-                                            <span style={{ color: '#eee' }}>{s}</span>
-                                            <span style={{ color: '#00bcd4' }}>120 BPM</span>
+
+                            {showDropdown && (
+                                <div style={{
+                                    position: 'absolute', top: '50px', right: 0, background: '#0f172a',
+                                    border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', width: '250px',
+                                    boxShadow: '0 10px 40px rgba(0,0,0,0.5)', overflow: 'hidden', zIndex: 2000
+                                }}>
+                                    <div style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '14px', alignItems: 'center' }}>
+                                        {/* Avatar inside dropdown */}
+                                        <div style={{
+                                            width: '46px', height: '46px', borderRadius: '50%', flexShrink: 0,
+                                            background: currentUser?.photoURL ? `url(${currentUser.photoURL}) center/cover` : 'linear-gradient(135deg,#00d2d3,#9b59b6)',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                            fontWeight: '800', fontSize: '1.1rem', border: '2px solid rgba(255,255,255,0.1)'
+                                        }}>
+                                            {!currentUser?.photoURL && (currentUser?.displayName || currentUser?.email || 'U')[0].toUpperCase()}
                                         </div>
-                                    ))}
+                                        <div style={{ overflow: 'hidden' }}>
+                                            <div style={{ fontWeight: '800', fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {currentUser?.displayName || currentUser?.email?.split('@')[0]}
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                {currentUser?.email}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                        {[
+                                            { label: 'Nube principal', icon: <Globe size={18} />, onClick: () => navigate('/dashboard') },
+                                            { label: 'Tienda de Pistas', icon: <ShoppingCart size={18} />, onClick: () => navigate('/store') },
+                                            { label: 'Lista de deseos', icon: <CheckCircle2 size={18} />, onClick: () => navigate('/store') },
+                                            { label: 'Ajustes', icon: <Menu size={18} />, onClick: () => navigate('/dashboard') },
+                                        ].map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                onClick={item.onClick}
+                                                style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '600', borderBottom: '1px solid rgba(255,255,255,0.02)', transition: 'background 0.2s' }}
+                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                            >
+                                                <span style={{ color: '#94a3b8' }}>{item.icon}</span> {item.label}
+                                            </div>
+                                        ))}
+
+                                        <div
+                                            onClick={() => { auth.signOut(); setShowDropdown(false); }}
+                                            style={{ padding: '15px 20px', display: 'flex', alignItems: 'center', gap: '15px', cursor: 'pointer', color: '#e2e8f0', fontSize: '0.95rem', fontWeight: '600', transition: 'background 0.2s' }}
+                                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                        >
+                                            <span style={{ color: '#94a3b8' }}><ArrowRight size={18} /></span> Finalizar la sesión
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginLeft: '10px' }}>
+                        <Search size={19} color="#94a3b8" style={{ cursor: 'pointer' }} />
+                        <ShoppingCart size={19} color="#94a3b8" style={{ cursor: 'pointer' }} />
+                    </div>
+                </div>
+            </nav>
+
+            {/* HERO SECTION */}
+            <header className="hero-gradient" style={{ paddingTop: '160px', paddingBottom: '100px', textAlign: 'center', padding: '160px 20px 100px' }}>
+                <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
+                    <h1 className="text-gradient" style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', fontWeight: '900', lineHeight: '1.1', margin: '0 0 24px 0', letterSpacing: '-1px' }}>
+                        Pistas para adoración<br />hechas con excelencia
+                    </h1>
+                    <p style={{ fontSize: '1.25rem', color: '#94a3b8', lineHeight: '1.6', maxWidth: '700px', margin: '0 auto 40px' }}>
+                        Zion Stage es la plataforma definitiva para líderes de alabanza. Sube tus propias pistas, sincroniza con tu equipo y lleva tu sonido al siguiente nivel con nuestro motor de audio nativo.
+                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                        {!currentUser ? (
+                            <button className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem' }} onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
+                                Comienza gratis ahora
+                            </button>
+                        ) : (
+                            <button className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem' }} onClick={() => navigate('/dashboard')}>
+                                Ir a la Nube Principal
+                            </button>
+                        )}
+                        <button className="btn-ghost" style={{ padding: '16px 40px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Play size={18} fill="currentColor" /> Ver cómo funciona
+                        </button>
+                    </div>
+                </div>
+
+                {/* APP MOCKUP PREVIEW */}
+                <div style={{ marginTop: '80px', position: 'relative', maxWidth: '1100px', margin: '80px auto 0' }}>
+                    <div style={{
+                        borderRadius: '20px',
+                        overflow: 'hidden',
+                        boxShadow: '0 40px 100px rgba(0,0,0,0.6)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                        background: '#0e1421'
+                    }}>
+                        <img
+                            src="/hero_mockup_mixer_1772898901088.png"
+                            alt="Mixer App Mockup"
+                            style={{ width: '100%', height: 'auto', display: 'block' }}
+                        />
+                    </div>
+                    {/* Floating accents */}
+                    <div style={{ position: 'absolute', top: '-30px', left: '-30px', width: '100px', height: '100px', background: 'rgba(0,188,212,0.3)', filter: 'blur(40px)', zIndex: -1 }}></div>
+                    <div style={{ position: 'absolute', bottom: '-40px', right: '-30px', width: '150px', height: '150px', background: 'rgba(155,89,182,0.2)', filter: 'blur(50px)', zIndex: -1 }}></div>
+                </div>
+            </header>
+
+            {/* FEATURED TRACKS CAROUSEL SECTION */}
+            <section style={{ padding: '100px 60px', backgroundColor: '#0f172a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '48px', maxWidth: '1300px', margin: '0 auto 48px' }}>
+                    <div>
+                        <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>Pistas Top de la Comunidad</h2>
+                        <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Descubre lo que otros líderes de alabanza están usando.</p>
+                    </div>
+                    <span style={{ color: '#00d2d3', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        Ver todas <ArrowRight size={18} />
+                    </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '24px', maxWidth: '1300px', margin: '0 auto' }}>
+                    {[
+                        { title: 'RADIANT LIGHT', artist: 'Zion Stage Music', badge: 'MASTER', img: '/worship_album_cover_1_1772899057302.png' },
+                        { title: 'Firm Foundation', artist: 'Cody Carnes', badge: 'PREMIUM', img: 'https://picsum.photos/300/300?random=11' },
+                        { title: 'House Of The Lord', artist: 'Phil Wickham', badge: 'MASTER', img: 'https://picsum.photos/300/300?random=12' },
+                        { title: 'Gratitude', artist: 'Brandon Lake', badge: 'COMMUNITY', img: 'https://picsum.photos/300/300?random=13' },
+                        { title: 'I Believe', artist: 'Phil Wickham', badge: 'MASTER', img: 'https://picsum.photos/300/300?random=14' }
+                    ].map((track, i) => (
+                        <div key={i} className="card-premium">
+                            <div style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', marginBottom: '16px' }}>
+                                <img src={track.img} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={track.title} />
+                                <div style={{ position: 'absolute', top: '10px', right: '10px', background: track.badge === 'MASTER' ? '#00d2d3' : (track.badge === 'PREMIUM' ? '#f59e0b' : '#94a3b8'), color: 'white', fontSize: '0.65rem', fontWeight: '800', padding: '4px 8px', borderRadius: '4px', letterSpacing: '0.5px' }}>
+                                    {track.badge}
                                 </div>
                             </div>
+                            <h4 style={{ margin: '0 0 4px', fontSize: '1rem', fontWeight: '700' }}>{track.title}</h4>
+                            <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>{track.artist}</p>
                         </div>
+                    ))}
+                </div>
+            </section>
+
+            {/* INFO SECTION: BEYOND THE TRACKS */}
+            <section style={{ backgroundColor: '#020617', padding: '100px 60px' }}>
+                <div style={{ maxWidth: '1300px', margin: '0 auto', display: 'flex', gap: '60px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ flex: '1 1 500px' }}>
+                        <img
+                            src="/worship_community_banner_1772898920206.png"
+                            alt="Worship Community"
+                            style={{ width: '100%', borderRadius: '24px', boxShadow: '0 30px 60px rgba(0,0,0,0.5)' }}
+                        />
                     </div>
-                </div>
-            </main>
-
-            {/* TRACKS SECTION (LoopCommunity Clone Content) */}
-            <section style={{ backgroundColor: '#1c1c1e', padding: '60px 80px', maxWidth: '1400px', margin: '0 auto' }}>
-                <div style={{ textAlign: 'center', marginBottom: '50px' }}>
-                    <h2 style={{ fontSize: '2.5rem', margin: '0 0 15px 0' }}>Pistas para la adoración simplificadas</h2>
-                    <p style={{ color: '#aaa', fontSize: '1.1rem', maxWidth: '700px', margin: '0 auto' }}>
-                        MixCommunity ofrece a los líderes de alabanza pistas, hardware, software y capacitación de calidad y a precios accesibles. Hacemos lo complicado simple.
-                    </p>
-                </div>
-
-                <div style={{ display: 'flex', gap: '40px' }}>
-                    {/* Left Column - Playlists/Categories */}
-                    <div style={{ flex: 1 }}>
-                        <h3 style={{ fontSize: '1.5rem', borderBottom: '1px solid #333', paddingBottom: '15px', marginBottom: '20px' }}>Top Tracks</h3>
-                        <p style={{ color: '#aaa', marginBottom: '30px' }}>Miles de multitracks para las canciones que aman los líderes de alabanza.</p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                    <div style={{ flex: '1 1 500px' }}>
+                        <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '32px', lineHeight: '1.2' }}>Más que simples pistas de audio.</h2>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
                             {[
-                                { title: 'Tracks Originales (Master)', info: 'Pistas originales directo del artista.', color: '#00bcd4' },
-                                { title: 'Tracks de la Comunidad', info: ' Creadas por líderes aprobados.', color: '#9b59b6' },
-                                { title: 'Tracks Premium', info: 'Grabadas en estudio profesional.', color: '#f39c12' },
-                                { title: 'Enhancement Tracks', info: 'Mejora el sonido de tu banda.', color: '#2ecc71' }
+                                { title: 'Motor Nativo de Alto Rendimiento', info: 'Reproducción sin latencia y procesamiento en tiempo real directo en tu hardware.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: 'Sube tu Propia Biblioteca Cloud', info: 'Personaliza tu mezcla. Sube tus WAVs, mézclalos en el dashboard y llévalos a cualquier lugar.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: 'Letras y Cifrados Integrados', info: 'Visualiza letras y acordes perfectamente sincronizados mientras mezclas tus pistas en vivo.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: 'Sincronización Multiplataforma', info: 'Edita tu setlist en la oficina y ensaya en el teléfono. Todo en perfecta sincronía.', icon: <CheckCircle2 size={24} color="#00d2d3" /> }
                             ].map((item, i) => (
-                                <div key={i} style={{ backgroundColor: '#2a2a2c', padding: '20px', borderRadius: '8px', borderLeft: `4px solid ${item.color}`, cursor: 'pointer', transition: '0.2s' }}>
-                                    <h4 style={{ margin: '0 0 8px 0', fontSize: '1.1rem' }}>{item.title}</h4>
-                                    <p style={{ margin: 0, color: '#888', fontSize: '0.9rem' }}>{item.info}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Right Column - Top Songs */}
-                    <div style={{ flex: 1.2, backgroundColor: '#212124', padding: '30px', borderRadius: '12px', border: '1px solid #333' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                            <h3 style={{ fontSize: '1.5rem', margin: 0 }}>Top 10 Canciones de este Mes</h3>
-                            <span style={{ color: '#00bcd4', fontSize: '0.9rem', cursor: 'pointer' }}>Ver todas</span>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            {[
-                                { song: 'WASHED', artist: 'ELEVATION RHYTHM' },
-                                { song: "God I'm Just Grateful", artist: 'Elevation Worship' },
-                                { song: 'Jesus Be The Name', artist: 'Elevation Worship' },
-                                { song: 'Alleluia', artist: 'Elevation Worship' },
-                                { song: 'I Know A Name', artist: 'Elevation Worship' },
-                                { song: 'It Really Is Amazing Grace', artist: 'Phil Wickham & Crowder' },
-                                { song: "Thank God I'm Free", artist: 'ELEVATION RHYTHM' },
-                                { song: 'What A God (Live)', artist: 'SEU Worship' }
-                            ].map((s, i) => (
-                                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '15px', padding: '12px 0', borderBottom: '1px solid #333' }}>
-                                    <div style={{ width: '30px', color: '#666', fontWeight: 'bold' }}>{i + 1}</div>
-                                    <div style={{ width: '40px', height: '40px', backgroundColor: '#333', borderRadius: '4px', overflow: 'hidden' }}>
-                                        <img src={`https://picsum.photos/40/40?random=${i}`} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    </div>
+                                <div key={i} style={{ display: 'flex', gap: '20px' }}>
+                                    <div style={{ flexShrink: 0 }}>{item.icon}</div>
                                     <div>
-                                        <div style={{ fontWeight: 'bold', fontSize: '1rem', color: '#eee' }}>{s.song}</div>
-                                        <div style={{ fontSize: '0.8rem', color: '#888' }}>{s.artist}</div>
-                                    </div>
-                                    <div style={{ marginLeft: 'auto', color: '#00bcd4', fontSize: '0.8rem', cursor: 'pointer', padding: '5px 10px', border: '1px solid #00bcd4', borderRadius: '4px' }}>
-                                        Ver Tracks
+                                        <h4 style={{ margin: '0 0 8px', fontSize: '1.25rem', fontWeight: '700' }}>{item.title}</h4>
+                                        <p style={{ margin: 0, color: '#94a3b8', lineHeight: '1.6' }}>{item.info}</p>
                                     </div>
                                 </div>
                             ))}
@@ -222,115 +353,351 @@ export default function Landing() {
                 </div>
             </section>
 
-            {/* FULLSCREEN LOGIN/REGISTER OVERLAY (LoopCommunity Style) */}
-            {
-                showLoginPanel && (
-                    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: '#f0f0f0', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', overflowY: 'auto', fontFamily: '"Segoe UI", Tahoma, Geneva, Verdana, sans-serif', paddingBottom: '50px' }}>
-
-                        {/* HEADER BANNER */}
-                        <div style={{ width: '100%', maxWidth: '900px', backgroundColor: '#fff3cd', border: '1px solid #ffeeba', color: '#856404', padding: '15px 20px', borderRadius: '4px', marginTop: '40px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <strong>¡Nuevo!</strong> Nos hemos asociado con WorshipTools para facilitar el inicio de sesión único. Si ya usaste tu correo electrónico en ambos sitios, ¡usa tus credenciales de WorshipTools para iniciar sesión ahora!
+            {/* TOP 10 RANKING SECTION */}
+            <section style={{ padding: '100px 60px', backgroundColor: '#0f172a' }}>
+                <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
+                    <h2 style={{ textAlign: 'center', fontSize: '2.5rem', fontWeight: '800', marginBottom: '60px' }}>Top 10 de este Mes</h2>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
+                        <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
+                            {[
+                                { rank: 1, song: 'Washed', artist: 'Elevation Rhythm' },
+                                { rank: 2, song: 'Gratitude', artist: 'Brandon Lake' },
+                                { rank: 3, song: 'Joy Out Of Nowhere', artist: 'Seu Worship' },
+                                { rank: 4, song: 'Hold On To Me', artist: 'Lauren Daigle' },
+                                { rank: 5, song: 'Firm Foundation', artist: 'Cody Carnes' }
+                            ].map((s, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '16px 0', borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: i === 0 ? '#00d2d3' : '#334155', width: '40px' }}>{s.rank}</span>
+                                    <div style={{ marginLeft: '12px' }}>
+                                        <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{s.song}</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{s.artist}</div>
+                                    </div>
+                                    <button className="btn-ghost" style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem' }}>Ver Pistas</button>
+                                </div>
+                            ))}
                         </div>
-
-                        {/* CLOSE BUTTON */}
-                        <button onClick={() => setShowLoginPanel(false)} style={{ position: 'absolute', top: '20px', right: '30px', background: 'transparent', border: 'none', color: '#666', fontSize: '2rem', cursor: 'pointer', fontWeight: 'bold' }}>&times;</button>
-
-                        <div style={{ display: 'flex', width: '100%', maxWidth: '1000px', marginTop: '30px', gap: '50px', alignItems: 'flex-start', justifyContent: 'center', flexWrap: 'wrap', padding: '0 20px' }}>
-
-                            {/* LEFT SIDE: FORM */}
-                            <div style={{ flex: '1 1 400px', maxWidth: '450px', backgroundColor: 'white', padding: '40px', borderRadius: '4px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', marginBottom: '30px' }}>
-                                    <div style={{ width: '35px', height: '35px', backgroundColor: '#00bcd4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <div style={{ width: '15px', height: '15px', backgroundColor: 'white', borderRadius: '50%' }}></div>
+                        <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
+                            {[
+                                { rank: 6, song: 'I Believe', artist: 'Phil Wickham' },
+                                { rank: 7, song: 'Holy Forever', artist: 'Chris Tomlin' },
+                                { rank: 8, song: 'Trust In God', artist: 'Elevation Worship' },
+                                { rank: 9, song: 'Always', artist: 'Kristian Stanfill' },
+                                { rank: 10, song: 'Praise', artist: 'Elevation Worship' }
+                            ].map((s, i) => (
+                                <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '16px 0', borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#334155', width: '40px' }}>{s.rank}</span>
+                                    <div style={{ marginLeft: '12px' }}>
+                                        <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{s.song}</div>
+                                        <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{s.artist}</div>
                                     </div>
-                                    <span style={{ fontSize: '1.8rem', fontWeight: '800', color: '#333' }}>MixCommunity</span>
+                                    <button className="btn-ghost" style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem' }}>Ver Pistas</button>
                                 </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-                                <div style={{ backgroundColor: '#e0f2f1', padding: '15px', borderRadius: '4px', fontSize: '0.85rem', color: '#00695c', marginBottom: '25px', lineHeight: '1.4' }}>
-                                    Si anteriormente utilizó su nombre de usuario para iniciar sesión y no conoce el correo electrónico conectado, <strong>haga clic aquí</strong> para buscarlo.
-                                </div>
-
-                                {errorMsg && <div style={{ color: '#d32f2f', marginBottom: '15px', fontSize: '0.9rem', textAlign: 'center', backgroundColor: '#ffebee', padding: '10px', borderRadius: '4px' }}>{errorMsg}</div>}
-
-                                <form onSubmit={handleEmailAuth} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                    <input
-                                        type="email"
-                                        placeholder="Correo electrónico"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        required
-                                        style={{ padding: '12px 15px', width: '100%', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc', background: '#f5f7fa', fontSize: '1rem', color: '#333' }}
-                                    />
-                                    <input
-                                        type="password"
-                                        placeholder="Contraseña"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        style={{ padding: '12px 15px', width: '100%', boxSizing: 'border-box', borderRadius: '4px', border: '1px solid #ccc', background: 'white', fontSize: '1rem', color: '#333' }}
-                                    />
-                                    <button type="submit" style={{ padding: '14px', background: '#00bcd4', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>
-                                        {isLogin ? 'Acceso' : 'Registrarse'}
-                                    </button>
-
-                                    <button type="button" onClick={handleGoogleAuth} style={{ padding: '12px', background: 'white', color: '#555', border: '1px solid #ccc', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '5px' }}>
-                                        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style={{ width: '18px' }} />
-                                        Entrar con Google
-                                    </button>
-                                </form>
-
-                                <div style={{ marginTop: '25px', textAlign: 'center', fontSize: '0.95rem' }}>
-                                    <p style={{ color: '#555', margin: '0 0 5px 0' }}>
-                                        {isLogin ? '¿No tienes un login?' : '¿Ya tienes una cuenta?'}
-                                        <span onClick={() => setIsLogin(!isLogin)} style={{ color: '#00bcd4', cursor: 'pointer', marginLeft: '5px' }}>
-                                            {isLogin ? 'Inscribirse' : 'Acceso'}
-                                        </span>
-                                    </p>
-                                    {isLogin && (
-                                        <p style={{ margin: 0 }}>
-                                            <span style={{ color: '#00bcd4', cursor: 'pointer' }}>¿Olvidaste tu contraseña?</span>
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* RIGHT SIDE: TEXT / FEATURES */}
-                            <div style={{ flex: '1 1 400px', maxWidth: '450px', display: 'flex', flexDirection: 'column', paddingTop: '20px' }}>
-                                <h1 style={{ color: '#333', fontSize: '1.6rem', marginBottom: '10px' }}>¡Qué bueno verte!</h1>
-                                <p style={{ color: '#666', fontSize: '1rem', marginBottom: '20px' }}>Todo sobre la adoración™ de MixCommunity y WorshipTools</p>
-
-                                <ul style={{ color: '#444', fontSize: '0.95rem', lineHeight: '1.6', paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '0' }}>
-                                    <li>Recursos para más de 20.000 canciones: pistas, gráficos, diapositivas de letras y más</li>
-                                    <li>Aplicaciones dinámicas para potenciar a su equipo de adoración: Prime Multitracks App y Charts Apps</li>
-                                    <li>Integración perfecta con software integrado de planificación, presentación y gestión de iglesias</li>
-                                </ul>
-
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginTop: '40px' }}>
-                                    {/* Mock logos */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#555', fontWeight: 'bold', fontSize: '1.5rem' }}>
-                                        <div style={{ width: '25px', height: '25px', border: '3px solid #555', borderRadius: '4px', position: 'relative' }}>
-                                            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '10px', height: '10px', backgroundColor: '#555', borderRadius: '50%' }}></div>
-                                        </div>
-                                        WorshipTools
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#555', fontWeight: 'bold', fontSize: '1.5rem' }}>
-                                        <div style={{ width: '25px', height: '25px', backgroundColor: '#555', borderRadius: '50%', position: 'relative' }}>
-                                            <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '8px', height: '8px', backgroundColor: '#f0f0f0', borderRadius: '50%' }}></div>
-                                        </div>
-                                        Loop
-                                    </div>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '15px', marginTop: 'auto', paddingTop: '40px', fontSize: '0.8rem', color: '#999' }}>
-                                    <span style={{ cursor: 'pointer' }}>Ayuda</span>
-                                    <span style={{ cursor: 'pointer' }}>Privacidad</span>
-                                    <span style={{ cursor: 'pointer' }}>Términos</span>
-                                </div>
+            {/* PRICING SECTION */}
+            <section id="precios" style={{ padding: '100px 60px', backgroundColor: '#020617' }}>
+                <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                    <div style={{ textAlign: 'center', marginBottom: '60px' }}>
+                        <h2 style={{ fontSize: '3rem', fontWeight: '900', margin: '0 0 16px' }}>Planes diseñados para tu equipo</h2>
+                        <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '600px', margin: '0 0 30px' }}>
+                            Comienza gratis y mejora según tus necesidades de almacenamiento o acceso a la biblioteca global.
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Mensual</button>
+                                <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Anual (-30%)</button>
                             </div>
                         </div>
                     </div>
-                )
-            }
-        </div >
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
+                        {/* ESTANDAR */}
+                        <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(0,210,211,0.2)' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#00d2d3' }}>
+                                <Globe size={24} />
+                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>Estándar</h3>
+                            </div>
+                            <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
+                                Almacenamiento seguro en la nube para tus pistas personales. Todo privado.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {[
+                                    { name: 'Básico', gb: 2, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
+                                    { name: 'Estándar', gb: 5, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
+                                    { name: 'Plus', gb: 10, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
+                                ].map((plan, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
+                                        <div>
+                                            <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{plan.name}</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{plan.gb} GB Storage</div>
+                                        </div>
+                                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                                            {isAnnual && (
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b', textDecoration: 'line-through', marginBottom: '-2px' }}>
+                                                    ${plan.originalAnnual}
+                                                </span>
+                                            )}
+                                            <div>
+                                                <span style={{ fontSize: '1.2rem', fontWeight: '800' }}>${isAnnual ? plan.annual : plan.price}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> /{isAnnual ? 'año' : 'mes'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} className="btn-teal" style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem' }}>
+                                Empezar
+                            </button>
+                        </div>
+
+                        {/* VIP */}
+                        <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(241,196,15,0.3)', position: 'relative' }}>
+                            <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#f1c40f', color: '#000', padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', letterSpacing: '1px' }}>
+                                MÁS POPULAR
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#f1c40f' }}>
+                                <KeyRound size={24} />
+                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>Premium VIP</h3>
+                            </div>
+                            <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
+                                Todo lo de Estándar + <strong>Acceso total a la biblioteca global</strong> de canciones de la comunidad.
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {[
+                                    { name: 'Básico VIP', gb: 2, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
+                                    { name: 'Estándar VIP', gb: 5, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
+                                    { name: 'Plus VIP', gb: 10, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
+                                ].map((plan, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(241,196,15,0.05)', borderRadius: '12px', border: '1px solid rgba(241,196,15,0.1)' }}>
+                                        <div>
+                                            <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>{plan.name}</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.7)' }}>{plan.gb} GB Storage</div>
+                                        </div>
+                                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                                            {isAnnual && (
+                                                <span style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.5)', textDecoration: 'line-through', marginBottom: '-2px' }}>
+                                                    ${plan.originalAnnual}
+                                                </span>
+                                            )}
+                                            <div>
+                                                <span style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f1c40f' }}>${isAnnual ? plan.annual : plan.price}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> /{isAnnual ? 'año' : 'mes'}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem', backgroundColor: '#f1c40f', color: '#000', border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }}>
+                                Elegir VIP
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* FOOTER */}
+            <footer style={{ backgroundColor: '#020617', padding: '60px 60px 30px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '30px', marginBottom: '40px' }}>
+                        {/* Brand */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '28px', height: '28px', backgroundColor: '#00d2d3', borderRadius: '50%' }}></div>
+                            <div>
+                                <span style={{ fontSize: '1.2rem', fontWeight: '800' }}>Zion Stage</span>
+                                <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase' }}>by Freedom Labs</div>
+                            </div>
+                        </div>
+                        {/* Links */}
+                        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+                            {[
+                                { label: 'Políticas de Privacidad', path: '/privacy' },
+                                { label: 'Términos y Condiciones', path: '/terms' },
+                                { label: 'Contacto', path: '/contact' },
+                                { label: 'Nosotros', path: '/about' },
+                            ].map(link => (
+                                <span
+                                    key={link.label}
+                                    onClick={() => navigate(link.path)}
+                                    style={{ color: '#64748b', fontSize: '0.9rem', textDecoration: 'none', transition: 'color 0.2s', cursor: 'pointer' }}
+                                    onMouseEnter={e => e.target.style.color = '#e2e8f0'}
+                                    onMouseLeave={e => e.target.style.color = '#64748b'}
+                                >
+                                    {link.label}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '24px', textAlign: 'center', color: '#334155', fontSize: '0.8rem' }}>
+                        © 2026 Freedom Labs LLC · Zion Stage. Todos los derechos reservados.
+                    </div>
+                </div>
+            </footer>
+
+            {/* FULLSCREEN AUTH OVERLAY (Improved Design) */}
+            {showLoginPanel && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: '#f9fafb', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', color: '#111827' }}>
+                    <div style={{ position: 'absolute', top: '24px', right: '32px' }}>
+                        <button onClick={() => setShowLoginPanel(false)} style={{ background: '#e5e7eb', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <X size={20} color="#6b7280" />
+                        </button>
+                    </div>
+
+                    <div style={{ width: '100%', maxWidth: '1000px', padding: '80px 24px', display: 'flex', gap: '60px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                        {/* Auth Card */}
+                        <div style={{ flex: '1 1 420px', backgroundColor: 'white', borderRadius: '16px', padding: '48px', boxShadow: '0 20px 50px rgba(0,0,0,0.08)', border: '1px solid #f3f4f6' }}>
+                            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', marginBottom: '16px' }}>
+                                    <div style={{ width: '32px', height: '32px', backgroundColor: '#00bcd4', borderRadius: '50%' }}></div>
+                                    <span style={{ fontSize: '1.6rem', fontWeight: '800' }}>Zion Stage</span>
+                                </div>
+                                <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>{isLogin ? '¡Bienvenido de nuevo!' : 'Crea tu cuenta gratis'}</h1>
+                                <p style={{ color: '#6b7280' }}>Únete a la comunidad de líderes de alabanza.</p>
+                            </div>
+
+                            {errorMsg && <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#b91c1c', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.85rem', textAlign: 'center' }}>{errorMsg}</div>}
+
+                            <form onSubmit={handleEmailAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {!isLogin && (
+                                    <>
+                                        {/* ─── Avatar Picker ─── */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                                            <div
+                                                onClick={() => avatarInputRef.current.click()}
+                                                style={{
+                                                    width: '90px', height: '90px', borderRadius: '50%',
+                                                    background: avatarPreview ? `url(${avatarPreview}) center/cover` : '#e5e7eb',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                    cursor: 'pointer', border: '3px dashed #d1d5db',
+                                                    position: 'relative', overflow: 'hidden', flexShrink: 0,
+                                                    transition: 'border-color 0.2s'
+                                                }}
+                                                title="Agregar foto de perfil (opcional)"
+                                            >
+                                                {!avatarPreview && <Camera size={30} color="#9ca3af" />}
+                                                {avatarPreview && (
+                                                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s' }} className="avatar-overlay">
+                                                        <Camera size={22} color="white" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Foto de perfil <em>(opcional)</em></span>
+                                            <input
+                                                ref={avatarInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                style={{ display: 'none' }}
+                                                onChange={e => {
+                                                    const file = e.target.files[0];
+                                                    if (!file) return;
+                                                    setAvatarFile(file);
+                                                    setAvatarPreview(URL.createObjectURL(file));
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* ─── Name row ─── */}
+                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Nombre"
+                                                value={firstName}
+                                                onChange={e => setFirstName(e.target.value)}
+                                                required
+                                                style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                                            />
+                                            <input
+                                                type="text"
+                                                placeholder="Apellido"
+                                                value={lastName}
+                                                onChange={e => setLastName(e.target.value)}
+                                                required
+                                                style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                                <input
+                                    type="email"
+                                    placeholder="Correo electrónico"
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                    required
+                                    style={{ padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                                />
+                                <input
+                                    type="password"
+                                    placeholder="Contraseña"
+                                    value={password}
+                                    onChange={e => setPassword(e.target.value)}
+                                    required
+                                    style={{ padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                                />
+                                {!isLogin && (
+                                    <input
+                                        type="password"
+                                        placeholder="Confirmar Contraseña"
+                                        value={confirmPassword}
+                                        onChange={e => setConfirmPassword(e.target.value)}
+                                        required
+                                        style={{ padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
+                                    />
+                                )}
+                                <button type="submit" className="btn-teal" style={{ padding: '14px', width: '100%', fontSize: '1rem', marginTop: '8px' }}>
+                                    {isLogin ? 'Entrar ahora' : 'Registrarme'}
+                                </button>
+                                <div style={{ position: 'relative', textAlign: 'center', margin: '10px 0' }}>
+                                    <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb' }} />
+                                    <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '0 12px', color: '#9ca3af', fontSize: '0.8rem' }}>O CONTINÚA CON</span>
+                                </div>
+                                <button type="button" onClick={handleGoogleAuth} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white', cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem' }}>
+                                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="Google" />
+                                    Google
+                                </button>
+                            </form>
+
+                            <div style={{ marginTop: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.95rem' }}>
+                                {isLogin ? (
+                                    <>¿No tienes una cuenta? <span onClick={() => setIsLogin(false)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>Regístrate</span></>
+                                ) : (
+                                    <>¿Ya tienes cuenta? <span onClick={() => setIsLogin(true)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>Inicia sesión</span></>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Info Column */}
+                        <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '40px', paddingTop: '20px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '16px' }}>Todo lo que necesitas en un solo lugar.</h3>
+                                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                                    {[
+                                        { title: 'Gestión de Canciones Cloud', info: 'Accede a tus multipistas desde cualquier dispositivo.', icon: <CheckCircle2 size={22} color="#00bcd4" /> },
+                                        { title: 'App para Móvil y Web', icon: <CheckCircle2 size={22} color="#00bcd4" /> },
+                                        { title: 'Letras y Cifrados Integrados', icon: <CheckCircle2 size={22} color="#00bcd4" /> }
+                                    ].map((item, i) => (
+                                        <li key={i} style={{ display: 'flex', gap: '14px' }}>
+                                            <div style={{ flexShrink: 0, marginTop: '2px' }}>{item.icon}</div>
+                                            <div>
+                                                <div style={{ fontWeight: '700', fontSize: '1.05rem' }}>{item.title}</div>
+                                                {item.info && <div style={{ color: '#6b7280', fontSize: '0.9rem', marginTop: '4px' }}>{item.info}</div>}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            <div style={{ background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '24px', borderRadius: '12px' }}>
+                                <p style={{ margin: 0, color: '#0f766e', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                    <strong>¿Sabías que?</strong> Miles de líderes de alabanza ya usan Zion Stage para simplificar sus servicios de domingo. ¡Únete a la revolución!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }

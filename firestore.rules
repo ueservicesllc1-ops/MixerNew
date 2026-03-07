@@ -3,30 +3,42 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ── SETLISTS: solo el dueño puede leer/escribir sus propios setlists
-    match /setlists/{setlistId} {
-      allow read, write: if request.auth != null
-                         && request.auth.uid == resource.data.userId;
-
-      // Permitir crear si el userId del documento coincide con el usuario autenticado
-      allow create: if request.auth != null
-                    && request.resource.data.userId == request.auth.uid;
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'ueservicesllc1@gmail.com';
     }
 
-    // ── SONGS: lectura global, escritura libre para administracion global
+    // ── USERS: owner or admin
+    match /users/{userId} {
+      allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
+    }
+
+    // ── SETLISTS: owner or admin
+    match /setlists/{setlistId} {
+      allow read, write: if (request.auth != null && request.auth.uid == resource.data.userId) || isAdmin();
+      allow create: if (request.auth != null && request.resource.data.userId == request.auth.uid) || isAdmin();
+    }
+
+    // ── SONGS: any authenticated user can read; write own songs or admin
     match /songs/{songId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null;
     }
 
-    // ── LYRICS: solo usuarios autenticados, vinculadas a canciones del usuario
+    // ── LYRICS: authenticated users
     match /lyrics/{doc} {
       allow read, write: if request.auth != null;
     }
 
-    // ── CHORDS: solo usuarios autenticados
+    // ── CHORDS: authenticated users
     match /chords/{doc} {
       allow read, write: if request.auth != null;
+    }
+
+    // ── CONTACTS: anyone can create (contact form, no login required);
+    //              only admin can read
+    match /contacts/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
   }
 }

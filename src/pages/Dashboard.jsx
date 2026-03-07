@@ -2,47 +2,46 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import JSZip from 'jszip';
 import { db, auth } from '../firebase';
-import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import {
-    Upload, Music2, User, Tag, CheckCircle2,
+    Upload, Music2, User, Tag, CheckCircle2, Play, ShoppingCart,
     ChevronRight, ArrowLeft, Layers, Cloud,
-    Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus
+    Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
+    Home, Globe, CreditCard, HelpCircle, LogOut
 } from 'lucide-react';
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
-const STORAGE_LIMIT_MB = 300;
+const STORAGE_PLANS = [
+    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 0.3, storageMB: 300, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false, paypalPlanId: null, paypalAnnualPlanId: null },
+    { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 2, storageMB: 2000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false, paypalPlanId: 'P-5V883824L48630642NGWF2TI', paypalAnnualPlanId: 'P-1V555579FE024291HNGWGARY' },
+    { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 5, storageMB: 5000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false, paypalPlanId: 'P-0LN81126VT8376340NGWF2TI', paypalAnnualPlanId: 'P-7P753711U8740183VNGWGARY' },
+    { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false, paypalPlanId: 'P-1JF86890TD7917355NGWF2TI', paypalAnnualPlanId: 'P-72H39137542477505NGWGARY' },
+    { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 2, storageMB: 2000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true, paypalPlanId: 'P-6DN90892YD0960819NGWF2TI', paypalAnnualPlanId: 'P-4A716576TL7686632NGWGARY' },
+    { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 5, storageMB: 5000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true, paypalPlanId: 'P-7TA23786BR697132BNGWF2TI', paypalAnnualPlanId: 'P-4L582472BL815500PNGWGARY' },
+    { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true, paypalPlanId: 'P-2MJ57547S3825450TNGWF2TI', paypalAnnualPlanId: 'P-7DW310052Y263572BNGWGARY' },
+];
 
 // ── Audio Multi-Track Mixing System for Waveforms ───────────────
 async function generateMixBlob(tracks) {
     if (!tracks || tracks.length === 0) return null;
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
     try {
         const validTracks = tracks.filter(t => {
             const name = (t.displayName || '').toLowerCase();
             return !name.includes('click') && !name.includes('guide') && !name.includes('cue') && !name.includes('guia');
         });
-
-        if (validTracks.length === 0) {
-            console.log("[MIX] No hay pistas musicales para mezclar, usando todas como fallback.");
-            // Si por algun motivo solo hay guia, pues usamos lo que haya
-        }
-
         const buffers = await Promise.all((validTracks.length > 0 ? validTracks : tracks).map(async t => {
             const arrayBuf = await t.blob.arrayBuffer();
             return audioCtx.decodeAudioData(arrayBuf);
         }));
-
         const maxDuration = Math.max(...buffers.map(b => b.duration));
-        // Use 22050Hz Mono for the waveform mix
         const offlineCtx = new OfflineAudioContext(1, 22050 * maxDuration, 22050);
-
         buffers.forEach(buf => {
             const source = offlineCtx.createBufferSource();
             source.buffer = buf;
             source.connect(offlineCtx.destination);
             source.start();
         });
-
         const rendered = await offlineCtx.startRendering();
         return audioBufferToWav(rendered);
     } catch (e) {
@@ -56,25 +55,22 @@ function audioBufferToWav(buffer) {
     const arrayBuffer = new ArrayBuffer(length);
     const view = new DataView(arrayBuffer);
     const sampleRate = buffer.sampleRate;
-
     const writeString = (v, off, str) => {
         for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i));
     };
-
     writeString(view, 0, 'RIFF');
     view.setUint32(4, length - 8, true);
     writeString(view, 8, 'WAVE');
     writeString(view, 12, 'fmt ');
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true);
-    view.setUint16(22, 1, true); // Mono
+    view.setUint16(22, 1, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * 2, true);
     view.setUint16(32, 2, true);
     view.setUint16(34, 16, true);
     writeString(view, 36, 'data');
     view.setUint32(40, length - 44, true);
-
     const data = buffer.getChannelData(0);
     let offset = 44;
     for (let i = 0; i < data.length; i++) {
@@ -90,8 +86,10 @@ export default function Dashboard() {
     const navigate = useNavigate();
     const fileInputRef = useRef();
 
+    const [activeTab, setActiveTab] = useState('home');
     const [step, setStep] = useState('idle');
     const [useType, setUseType] = useState(null);
+    const [hasRights, setHasRights] = useState(false);
     const [fileList, setFileList] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
@@ -105,7 +103,6 @@ export default function Dashboard() {
 
     const [editingLyricsSong, setEditingLyricsSong] = useState(null);
     const [tempLyrics, setTempLyrics] = useState('');
-
     const [editingSongInfo, setEditingSongInfo] = useState(null);
     const [editingSetlist, setEditingSetlist] = useState(null);
 
@@ -114,41 +111,103 @@ export default function Dashboard() {
     const [currentUser, setCurrentUser] = useState(null);
     const [globalSongs, setGlobalSongs] = useState([]);
     const [isGlobalModalOpen, setIsGlobalModalOpen] = useState(false);
-    const [isDeletingGlobal, setIsDeletingGlobal] = useState(false);
+
+    // New User Plan state
+    const [userPlan, setUserPlan] = useState(STORAGE_PLANS[0]);
+    const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
+    const [isInitialPlanSelection, setIsInitialPlanSelection] = useState(false);
+    const [pendingPaymentPlan, setPendingPaymentPlan] = useState(null);
+    const [isAnnual, setIsAnnual] = useState(false);
+
+    // New Setlist UI states
+    const [isSetlistModalOpen, setIsSetlistModalOpen] = useState(false);
+    const [newSetlistName, setNewSetlistName] = useState('');
+    const [isEditSetlistModalOpen, setIsEditSetlistModalOpen] = useState(false);
+    const [editingSetlistData, setEditingSetlistData] = useState(null);
+    const [songSearchQuery, setSongSearchQuery] = useState('');
 
     const usedMB = userSongs.reduce((acc, s) =>
         acc + (s.tracks || []).reduce((a, t) => a + parseFloat(t.sizeMB || 0), 0), 0);
-    const usedPercent = Math.min(100, (usedMB / STORAGE_LIMIT_MB) * 100);
+    const storageLimit = userPlan?.storageMB || 1000;
+    const usedPercent = Math.min(100, (usedMB / storageLimit) * 100);
 
     useEffect(() => {
         let unsubSongs = () => { };
         let unsubSetlists = () => { };
-
+        let unsubUser = () => { };
         const unsubAuth = auth.onAuthStateChanged((user) => {
             setCurrentUser(user);
             if (user) {
-                const q = query(collection(db, 'songs'), where('userId', '==', user.uid));
+                // Fetch User Plan from Firestore safely
+                unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        const plan = STORAGE_PLANS.find(p => p.id === data.planId) || STORAGE_PLANS[0];
+                        setUserPlan(plan);
+
+                        // Check local storage to ensure we don't spam the user with the modal on every login
+                        const hasSeenModal = localStorage.getItem(`mixer_seen_pricing_${user.uid}`);
+
+                        if (!data.planId || data.planId === 'free') {
+                            if (!hasSeenModal) {
+                                setTimeout(() => {
+                                    setIsInitialPlanSelection(true);
+                                    setIsPricingModalOpen(true);
+                                }, 500);
+                            }
+                        }
+                    } else {
+                        // User exists in auth but not in users collection yet
+                        setDoc(doc(db, 'users', user.uid), { planId: 'free', createdAt: serverTimestamp() }, { merge: true })
+                            .then(() => {
+                                setUserPlan(STORAGE_PLANS[0]);
+                                setTimeout(() => {
+                                    setIsInitialPlanSelection(true);
+                                    setIsPricingModalOpen(true);
+                                }, 800);
+                            })
+                            .catch(err => console.error("Error creating user profile:", err));
+                    }
+                }, (error) => {
+                    console.error("Error fetching user plan:", error);
+                    // Fallback to free plan on permission error or other errors
+                    setUserPlan(STORAGE_PLANS[0]);
+                });
+
+                // Fetch Songs based on Plan Access
+                const q = query(collection(db, 'songs'));
                 unsubSongs = onSnapshot(q, (snap) => {
                     const songs = [];
-                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
-                    songs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+                    snap.forEach(doc => {
+                        const s = { id: doc.id, ...doc.data() };
+                        if (userPlan?.isVIP || s.userId === user.uid) {
+                            songs.push(s);
+                        }
+                    });
+                    songs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
                     setUserSongs(songs);
+                    setGlobalSongs(songs);
+                }, (error) => {
+                    console.error("Error fetching songs:", error);
                 });
 
                 const q2 = query(collection(db, 'setlists'), where('userId', '==', user.uid));
                 unsubSetlists = onSnapshot(q2, (snap) => {
                     const slists = [];
                     snap.forEach(doc => slists.push({ id: doc.id, ...doc.data() }));
-                    slists.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+                    slists.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
                     setUserSetlists(slists);
+                }, (error) => {
+                    console.error("Error fetching setlists:", error);
                 });
             } else {
                 setUserSongs([]);
                 setUserSetlists([]);
+                navigate('/');
             }
         });
-        return () => { unsubAuth(); unsubSongs(); unsubSetlists(); };
-    }, []);
+        return () => { unsubAuth(); unsubSongs(); unsubSetlists(); unsubUser(); };
+    }, [navigate, userPlan?.isVIP]); // Re-run if VIP status changes
 
     const handleZipUpload = async (e) => {
         const file = e.target.files[0];
@@ -159,76 +218,25 @@ export default function Dashboard() {
             const parts = cleanName.split('-').map(p => p.trim());
             if (parts.length >= 1) setSongName(parts[0]);
             if (parts.length >= 2) setArtist(parts[1]);
-
-            // Try to extract Key, Tempo & TimeSignature from the remaining parts
-            if (parts.length >= 3) {
-                const combinedMetas = parts.slice(2).join(' ');
-
-                // Regex for tempo e.g. "120 bpm" or "120bpm"
-                const tempoMatch = combinedMetas.match(/(\d+)\s*bpm/i);
-                if (tempoMatch) setTempo(tempoMatch[1]);
-
-                // Regex for time signature e.g. "4/4" or "6/8"
-                const tsMatch = combinedMetas.match(/(\d\/\d)/);
-                if (tsMatch) setTimeSignature(tsMatch[1]);
-
-                // Guess the Key by stripping the info we already recognized
-                let keyStr = combinedMetas;
-                if (tempoMatch) keyStr = keyStr.replace(tempoMatch[0], '');
-                if (tsMatch) keyStr = keyStr.replace(tsMatch[0], '');
-
-                setSongKey(keyStr.replace(/[^a-zA-Z#b]/g, '').trim());
-            }
-
             const contents = await zip.loadAsync(file);
             const extractedFiles = [];
             for (const filename of Object.keys(contents.files)) {
                 if (filename.endsWith('.wav') || filename.endsWith('.mp3')) {
                     const fileData = await contents.files[filename].async('blob');
-
-                    // Clean the displayName internally automatically
                     let rawName = filename.split('/').pop().replace(/\.(wav|mp3)$/i, '');
-                    // Forbid spaces and non-alphanumeric (allowing dashes and underscores)
                     let safeDisplayName = rawName.replace(/[^a-zA-Z0-9_-]/g, '');
-                    // Fallback if empty after replace
                     if (!safeDisplayName) safeDisplayName = `Track_${extractedFiles.length + 1}`;
-
-                    extractedFiles.push({
-                        originalName: filename,
-                        displayName: safeDisplayName,
-                        blob: fileData,
-                        extension: filename.split('.').pop()
-                    });
+                    extractedFiles.push({ originalName: filename, displayName: safeDisplayName, blob: fileData, extension: filename.split('.').pop() });
                 }
             }
             setFileList(extractedFiles);
             setStep('choose-use');
-        } catch (err) {
-            alert('Error desencriptando el ZIP: ' + err.message);
-        }
-    };
-
-    const handleNameChange = (index, newName) => {
-        const updated = [...fileList];
-        updated[index].displayName = newName;
-        setFileList(updated);
+        } catch (err) { alert('Error: ' + err.message); }
     };
 
     const uploadToB2 = async () => {
-        if (!songName.trim()) return alert('Por favor, ingresa un nombre para la canción.');
-
-        // Validation: No special symbols allowed (Spaces are now allowed)
-        const invalidNameRegex = /[^a-zA-Z0-9 _-]/;
-        if (invalidNameRegex.test(songName)) {
-            return alert("El nombre contiene símbolos inválidos. Por favor, usa letras, números, espacios, guiones o guiones bajos.");
-        }
-        for (const track of fileList) {
-            if (invalidNameRegex.test(track.displayName)) {
-                return alert(`El nombre de la pista "${track.displayName}" contiene símbolos inválidos.`);
-            }
-        }
-
-        if (!currentUser) return alert('Debes iniciar sesión para subir canciones.');
+        if (!songName.trim()) return alert('Nombre requerido');
+        if (!currentUser) return;
         setIsUploading(true);
         setStep('uploading');
         const uploadedTracksInfo = [];
@@ -239,897 +247,713 @@ export default function Dashboard() {
                 formData.append('audioFile', track.blob);
                 const safeName = songName.replace(/\s+/g, '_');
                 const safeTrackName = track.displayName.replace(/\s+/g, '_');
-                // Force extension to MP3 as it will be transcoded
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.mp3`;
                 formData.append('fileName', b2Filename);
-                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
-                const currentProxy = localStorage.getItem('mixer_proxyUrl') || devProxy;
-                const uploadRes = await fetch(`${currentProxy}/upload`, { method: 'POST', body: formData });
-
-                if (!uploadRes.ok) {
-                    const text = await uploadRes.text();
-                    throw new Error(`Error del servidor (${uploadRes.status}): ${text.substring(0, 100)}`);
-                }
-
-                const contentType = uploadRes.headers.get("content-type");
-                if (!contentType || !contentType.includes("application/json")) {
-                    throw new Error("El servidor no devolvi├│ JSON. Verifica que el b2-proxy est├⌐ funcionando correctamente.");
-                }
-
+                const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const uploadRes = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
                 const uploadData = await uploadRes.json();
-                uploadedTracksInfo.push({
-                    name: track.displayName,
-                    originalName: track.originalName,
-                    url: uploadData.url,
-                    b2FileId: uploadData.fileId,
-                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
-                });
-                setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100)); // +1 for the mix
+                uploadedTracksInfo.push({ name: track.displayName, originalName: track.originalName, url: uploadData.url, b2FileId: uploadData.fileId, sizeMB: (track.blob.size / 1024 / 1024).toFixed(2) });
+                setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100));
             }
-
-            // ── GENERATE AND UPLOAD PREVIEW MIX ──
-            try {
-                const mixBlob = await generateMixBlob(fileList);
-                if (mixBlob) {
-                    const formData = new FormData();
-                    formData.append('audioFile', mixBlob);
-                    const safeNameForB2 = songName.replace(/\s+/g, '_');
-                    const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeNameForB2}__PreviewMix.mp3`;
-                    formData.append('fileName', b2Filename);
-                    const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
-                    const currentProxy = localStorage.getItem('mixer_proxyUrl') || devProxy;
-                    const res = await fetch(`${currentProxy}/upload`, { method: 'POST', body: formData });
-                    if (res.ok) {
-                        const data = await res.json().catch(() => ({}));
-                        if (!data.url) throw new Error("No se pudo obtener la URL de la mezcla");
-                        uploadedTracksInfo.push({
-                            name: '__PreviewMix',
-                            url: data.url,
-                            b2FileId: data.fileId,
-                            isWaveformSource: true,
-                            sizeMB: (mixBlob.size / 1024 / 1024).toFixed(2)
-                        });
-                    }
+            const mixBlob = await generateMixBlob(fileList);
+            if (mixBlob) {
+                const formData = new FormData();
+                formData.append('audioFile', mixBlob);
+                const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${songName.replace(/\s+/g, '_')}__PreviewMix.mp3`;
+                formData.append('fileName', b2Filename);
+                const devProxy = (window.location.hostname === 'localhost') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const res = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
+                if (res.ok) {
+                    const data = await res.json();
+                    uploadedTracksInfo.push({ name: '__PreviewMix', url: data.url, b2FileId: data.fileId, isWaveformSource: true, sizeMB: (mixBlob.size / 1024 / 1024).toFixed(2) });
                 }
-            } catch (e) {
-                console.error("Preview Mix falló, continuando sin él:", e);
             }
-            setUploadProgress(100);
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName || 'Sin nombre',
-                artist: artist || '',
-                key: songKey || '',
-                tempo: tempo || '',
-                timeSignature: timeSignature || '',
-                useType: useType || '',
-                userId: currentUser.uid,
-                userEmail: currentUser.email,
-                tracks: uploadedTracksInfo,
-                createdAt: serverTimestamp(),
-                isGlobal: false
+                name: songName, artist, key: songKey, tempo, timeSignature, useType,
+                status: useType === 'sell' ? 'pending' : 'active',
+                userId: currentUser.uid, userEmail: currentUser.email, tracks: uploadedTracksInfo, createdAt: serverTimestamp(), isGlobal: false
             });
-
-            if (lyrics && lyrics.trim()) {
-                await addDoc(collection(db, 'lyrics'), {
-                    songId: songDoc.id,
-                    text: lyrics,
-                    updatedAt: serverTimestamp()
-                });
-            }
-
+            if (lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
             setStep('done');
-            setTimeout(() => {
-                setFileList([]); setSongName(''); setArtist(''); setSongKey(''); setTempo(''); setTimeSignature(''); setLyrics('');
-                setUseType(null); setStep('idle'); setUploadProgress(0);
-            }, 2500);
-        } catch (error) {
-            console.error('Error subiendo:', error);
-            alert('Ocurrió un error subiendo los archivos. Revisa la consola.');
-            setStep('details');
-        } finally {
-            setIsUploading(false);
-        }
+            setTimeout(() => { resetWizard(); setActiveTab('home'); }, 2000);
+        } catch (e) { console.error(e); alert("Error"); setStep('details'); } finally { setIsUploading(false); }
     };
 
     const resetWizard = () => {
-        setStep('idle'); setFileList([]);
-        setSongName(''); setArtist(''); setSongKey(''); setTempo(''); setTimeSignature(''); setLyrics('');
-        setUseType(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        setStep('idle'); setFileList([]); setSongName(''); setArtist(''); setSongKey(''); setTempo(''); setTimeSignature(''); setLyrics(''); setUseType(null); setHasRights(false);
     };
 
-    const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Usuario';
-
-    // ── Shared styles ──────────────────────────────────────────────────────
-    const inputStyle = {
-        width: '100%', padding: '12px 14px',
-        background: '#15151a', color: 'white',
-        border: '1px solid #2e2e36', borderRadius: '8px',
-        boxSizing: 'border-box', fontSize: '0.95rem', outline: 'none'
-    };
-    const btnPrimary = (enabled) => ({
-        flex: 2, padding: '14px',
-        background: enabled ? '#00bcd4' : '#23232b',
-        border: 'none', color: enabled ? 'white' : '#555',
-        borderRadius: '8px', cursor: enabled ? 'pointer' : 'not-allowed',
-        fontSize: '1rem', fontWeight: '600', transition: 'background 0.2s',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
-    });
-    const btnSecondary = {
-        flex: 1, padding: '14px',
-        background: '#23232b', border: '1px solid #333',
-        color: '#aaa', borderRadius: '8px', cursor: 'pointer', fontSize: '1rem'
+    const handleCreateSetlist = async (e) => {
+        e.preventDefault();
+        if (!newSetlistName.trim() || !currentUser) return;
+        try {
+            await addDoc(collection(db, 'setlists'), {
+                name: newSetlistName.trim(),
+                userId: currentUser.uid,
+                songs: [],
+                createdAt: serverTimestamp()
+            });
+            setIsSetlistModalOpen(false);
+            setNewSetlistName('');
+        } catch (e) { console.error(e); }
     };
 
-    const StorageMeter = ({ compact = false }) => (
-        <div style={{ background: '#1e1e26', padding: compact ? '16px 20px' : '22px 25px', borderRadius: '12px', marginBottom: '28px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '0.85rem', color: '#888' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Cloud size={14} /> Almacenamiento
-                </span>
-                <span style={{ color: usedPercent > 90 ? '#e74c3c' : '#bbb' }}>
-                    {usedMB.toFixed(1)} MB / {STORAGE_LIMIT_MB} MB
-                </span>
-            </div>
-            <div style={{ background: '#2a2a34', borderRadius: '100px', height: '8px', overflow: 'hidden' }}>
-                <div style={{
-                    height: '100%', width: `${usedPercent}%`,
-                    background: usedPercent > 90
-                        ? 'linear-gradient(to right,#e74c3c,#c0392b)'
-                        : 'linear-gradient(to right,#00bcd4,#00e5ff)',
-                    borderRadius: '100px', transition: 'width 0.6s ease'
-                }} />
-            </div>
-            {usedPercent > 85 && (
-                <p style={{ fontSize: '0.78rem', color: '#e74c3c', marginTop: '8px', marginBottom: 0 }}>
-                    Almacenamiento casi lleno. Considera eliminar pistas antiguas.
-                </p>
-            )}
-        </div>
-    );
-
-    const handleDeleteSong = async (songId, songName, e) => {
-        if (e) e.stopPropagation();
-        if (window.confirm(`¿Seguro que deseas eliminar permanentemente la canción "${songName}" y todos sus archivos de audio?`)) {
-            try {
-                // Find the song record to get track info
-                const song = userSongs.find(s => s.id === songId);
-                if (song && song.tracks) {
-                    const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
-                    const currentProxy = localStorage.getItem('mixer_proxyUrl') || devProxy;
-
-                    // Delete each track from B2
-                    for (const track of song.tracks) {
-                        if (track.b2FileId) {
-                            // The fileName in B2 is the last part of the URL (encoded)
-                            const fileName = track.url.split('/').pop();
-                            try {
-                                await fetch(`${currentProxy}/delete-file`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ fileId: track.b2FileId, fileName: decodeURIComponent(fileName) })
-                                });
-                            } catch (err) {
-                                console.error(`Falló borrar track ${track.name} de B2`, err);
-                            }
-                        }
-                    }
-                }
-
-                // Delete from Firestore
-                await deleteDoc(doc(db, 'songs', songId));
-            } catch (err) {
-                console.error("Error borrando cancion:", err);
-                alert("Hubo un error al borrar la canción.");
-            }
-        }
+    const handleDeleteSetlist = async (id) => {
+        if (!window.confirm("¿Eliminar este setlist?")) return;
+        try {
+            await deleteDoc(doc(db, 'setlists', id));
+        } catch (e) { console.error(e); }
     };
 
-    const handleDeleteSetlist = async (setlistId, setlistName, e) => {
-        if (e) e.stopPropagation();
-        if (window.confirm(`¿Seguro que deseas eliminar el setlist "${setlistName}"?`)) {
-            try {
-                await deleteDoc(doc(db, 'setlists', setlistId));
-            } catch (err) {
-                console.error("Error borrando setlist:", err);
-                alert("Hubo un error al borrar el setlist.");
-            }
-        }
+    const handleOpenEditSetlist = (setlist) => {
+        setEditingSetlistData(setlist);
+        setIsEditSetlistModalOpen(true);
+    };
+
+    const handleAddSongToSetlist = async (song) => {
+        if (!editingSetlistData) return;
+        if ((editingSetlistData.songs || []).some(s => s.id === song.id)) return;
+        const updatedSongs = [...(editingSetlistData.songs || []), { id: song.id, name: song.name, artist: song.artist }];
+        try {
+            await updateDoc(doc(db, 'setlists', editingSetlistData.id), { songs: updatedSongs });
+            setEditingSetlistData({ ...editingSetlistData, songs: updatedSongs });
+        } catch (e) { console.error(e); }
+    };
+
+    const handleRemoveSongFromSetlist = async (index) => {
+        if (!editingSetlistData) return;
+        const updatedSongs = [...(editingSetlistData.songs || [])];
+        updatedSongs.splice(index, 1);
+        try {
+            await updateDoc(doc(db, 'setlists', editingSetlistData.id), { songs: updatedSongs });
+            setEditingSetlistData({ ...editingSetlistData, songs: updatedSongs });
+        } catch (e) { console.error(e); }
+    };
+
+    const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+
+    const initialOptions = {
+        "client-id": "AbXQ6fanTIWx-dAoMagwbOTZ_M51YI4A-Dwzf2AY2CyIG7qNhV8QIiXuyBX-fina0FUxgTs8euJuAGc3",
+        currency: "USD",
+        intent: "subscription",
+        vault: true,
     };
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#13131a', color: 'white', fontFamily: '"Inter", "Segoe UI", system-ui, sans-serif' }}>
-
-            {/* NAV */}
-            <div style={{ backgroundColor: '#0e0e14', borderBottom: '1px solid #21212a', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '58px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ width: '30px', height: '30px', backgroundColor: '#00bcd4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div style={{ width: '11px', height: '11px', backgroundColor: 'white', borderRadius: '50%' }} />
-                    </div>
-                    <span style={{ fontWeight: '700', fontSize: '1.05rem', letterSpacing: '-0.3px' }}>MixCommunity</span>
-                </div>
-                <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
-                    <button onClick={async () => {
-                        const q = query(collection(db, 'songs'));
-                        const snap = await getDocs(q);
-                        const all = [];
-                        snap.forEach(doc => all.push({ id: doc.id, ...doc.data() }));
-                        setGlobalSongs(all);
-                        setIsGlobalModalOpen(true);
-                    }} style={{ background: '#222', border: '1px solid #333', color: '#ffb300', padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 'bold' }}>
-                        Canciones Globales
-                    </button>
-                    <button onClick={() => navigate('/multitrack')} style={{ background: 'transparent', border: '1px solid #303038', color: '#aaa', padding: '7px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.88rem' }}>
-                        Ir al Mixer
-                    </button>
-                    <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'linear-gradient(135deg,#00bcd4,#9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '0.85rem' }}>
-                        {displayName[0]?.toUpperCase()}
-                    </div>
-                </div>
-            </div>
-
-            {/* CONTENT */}
-            <div style={{ maxWidth: '820px', margin: '0 auto', padding: '44px 24px' }}>
-
-                {/* ── IDLE ─────────────────────────────────────── */}
-                {step === 'idle' && (<>
-                    <div style={{ marginBottom: '36px' }}>
-                        <h1 style={{ fontSize: '1.9rem', margin: '0 0 6px', fontWeight: '700' }}>
-                            ¡Hola, {displayName.toUpperCase()}!
-                        </h1>
-                        <p style={{ color: '#666', margin: 0 }}>Gestiona tus canciones y sube nuevas pistas.</p>
+        <PayPalScriptProvider options={initialOptions}>
+            <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: 'white', display: 'flex', fontFamily: '"Inter", sans-serif' }}>
+                {/* SIDEBAR */}
+                <aside style={{ width: '280px', backgroundColor: '#020617', borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', padding: '30px 20px', position: 'fixed', bottom: 0, top: 0 }}>
+                    <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '40px', cursor: 'pointer', paddingLeft: '10px' }}>
+                        <div style={{ width: '32px', height: '32px', backgroundColor: '#00d2d3', borderRadius: '50%' }}></div>
+                        <span style={{ fontSize: '1.25rem', fontWeight: '800' }}>Zion Stage</span>
                     </div>
 
-                    {/* Drop zone */}
-                    <div
-                        onClick={() => fileInputRef.current?.click()}
-                        style={{ border: '2px dashed #00bcd455', borderRadius: '14px', padding: '52px 40px', textAlign: 'center', cursor: 'pointer', background: 'rgba(0,188,212,0.04)', transition: 'background 0.2s, border-color 0.2s', marginBottom: '32px' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,188,212,0.09)'; e.currentTarget.style.borderColor = '#00bcd4aa'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,188,212,0.04)'; e.currentTarget.style.borderColor = '#00bcd455'; }}
-                    >
-                        <div style={{ width: '62px', height: '62px', backgroundColor: '#00bcd420', border: '1px solid #00bcd440', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
-                            <Upload size={26} color="#00bcd4" />
+                    <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+                        {[
+                            { id: 'home', label: 'Inicio', icon: <Home size={20} /> },
+                            { id: 'songs', label: 'Mis Canciones', icon: <Music2 size={20} /> },
+                            { id: 'setlists', label: 'Setlists', icon: <ListMusic size={20} /> },
+                            { id: 'global', label: 'Comunidad', icon: <Globe size={20} /> },
+                        ].map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => { setActiveTab(item.id); setStep('idle'); }}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px',
+                                    background: activeTab === item.id ? 'rgba(0,210,211,0.1)' : 'transparent',
+                                    border: 'none', color: activeTab === item.id ? '#00d2d3' : '#94a3b8',
+                                    textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s'
+                                }}
+                            >
+                                {item.icon} {item.label}
+                            </button>
+                        ))}
+                        <button onClick={() => navigate('/store')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'transparent', border: 'none', color: '#94a3b8', textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s', marginTop: '10px' }}>
+                            <ShoppingCart size={20} /> Marketplace
+                        </button>
+                        <button onClick={() => navigate('/multitrack')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: '#00d2d3', border: 'none', color: 'white', marginTop: '20px', cursor: 'pointer', fontWeight: '700' }}>
+                            <Play size={20} fill="currentColor" /> Ir al Mixer
+                        </button>
+                    </nav>
+
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px' }}>
+                        <div onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '15px', padding: '10px', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s' }} className="user-profile-btn">
+                            <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: userPlan?.isVIP ? 'linear-gradient(135deg,#f1c40f,#e67e22)' : 'linear-gradient(135deg,#00d2d3,#9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{displayName[0]?.toUpperCase()}</div>
+                            <div style={{ overflow: 'hidden' }}>
+                                <div style={{ fontSize: '0.9rem', fontWeight: '700', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
+                                <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#f1c40f' : '#64748b', fontWeight: '800' }}>{userPlan?.type} {userPlan?.storageGB}GB</div>
+                            </div>
                         </div>
-                        <h3 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: '600' }}>Subir Canción (ZIP)</h3>
-                        <p style={{ color: '#666', margin: 0, fontSize: '0.9rem' }}>
-                            Haz clic o arrastra un archivo .zip con pistas WAV/MP3
-                        </p>
-                        <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />
-                    </div>
-
-                    <StorageMeter />
-
-                    {/* Songs list */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '0.8rem', color: '#555', margin: 0, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '600' }}>
-                            Mis Canciones ({userSongs.length})
-                        </h3>
-                    </div>
-
-                    {userSongs.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '48px', color: '#444', background: '#1a1a22', borderRadius: '12px', border: '1px solid #21212a' }}>
-                            <Music2 size={36} color="#333" style={{ marginBottom: '14px' }} />
-                            <p style={{ margin: 0 }}>Aún no has subido ninguna canción.</p>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {userSongs.map(song => (
-                                <div
-                                    key={song.id}
-                                    onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }}
-                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1a1a22', padding: '15px 20px', borderRadius: '10px', border: '1px solid #28282f', cursor: 'pointer', transition: 'border-color 0.2s, background 0.2s' }}
-                                    onMouseEnter={e => { e.currentTarget.style.background = '#1f1f28'; e.currentTarget.style.borderColor = '#00bcd455'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = '#1a1a22'; e.currentTarget.style.borderColor = '#28282f'; }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                        <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: 'linear-gradient(135deg,#00bcd430,#9b59b630)', border: '1px solid #00bcd440', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <Music2 size={18} color="#00bcd4" />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: '600', fontSize: '0.97rem', marginBottom: '3px' }}>{song.name}</div>
-                                            <div style={{ fontSize: '0.78rem', color: '#666', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                                {song.artist && <span>{song.artist}</span>}
-                                                {song.key && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><KeyRound size={10} /> {song.key}</span>}
-                                                {song.tempo && <span style={{ display: 'flex', alignItems: 'center', gap: '3px' }}><Timer size={10} /> {song.tempo} BPM</span>}
-                                                {song.timeSignature && <span style={{ display: 'flex', alignItems: 'center', gap: '3px', background: '#222', padding: '2px 6px', borderRadius: '4px', border: '1px solid #333' }}>{song.timeSignature}</span>}
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <button
-                                            onClick={(e) => handleDeleteSong(song.id, song.name, e)}
-                                            style={{ background: 'transparent', border: 'none', color: '#e74c3c', padding: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', opacity: 0.8 }}
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingSongInfo({
-                                                    ...song,
-                                                    tracks: song.tracks ? song.tracks.map(t => ({ ...t })) : []
-                                                });
-                                            }}
-                                            style={{ background: 'rgba(255,193,7,0.1)', border: '1px solid #ffc10733', color: '#ffb300', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                        >
-                                            <Settings2 size={14} /> Editar
-                                        </button>
-                                        <button
-                                            onClick={async (e) => {
-                                                e.stopPropagation();
-                                                setEditingLyricsSong({ ...song, mode: 'lyrics' });
-                                                setTempLyrics('Cargando...');
-                                                try {
-                                                    const q = query(collection(db, 'lyrics'), where('songId', '==', song.id));
-                                                    const snap = await getDocs(q);
-                                                    if (!snap.empty) {
-                                                        setTempLyrics(snap.docs[0].data().text);
-                                                    } else {
-                                                        setTempLyrics('');
-                                                    }
-                                                } catch (err) {
-                                                    console.error(err);
-                                                    setTempLyrics('');
-                                                }
-                                            }}
-                                            style={{ background: 'rgba(0,188,212,0.1)', border: '1px solid #00bcd433', color: '#00bcd4', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                        >
-                                            <ScrollText size={14} /> Letra
-                                        </button>
-                                        <div onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'flex', alignItems: 'center', gap: '14px', marginLeft: '10px' }}>
-                                            <span style={{ fontSize: '0.78rem', color: '#444' }}>{song.tracks?.length || 0} pistas</span>
-                                            <ChevronRight size={16} color="#444" />
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    {/* Setlists List */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', marginTop: '36px' }}>
-                        <h3 style={{ fontSize: '0.8rem', color: '#555', margin: 0, textTransform: 'uppercase', letterSpacing: '1.2px', fontWeight: '600' }}>
-                            Mis Setlists ({userSetlists.length})
-                        </h3>
-                        <button
-                            onClick={() => setEditingSetlist({ id: null, name: 'Nuevo Setlist', songs: [] })}
-                            style={{ background: '#00bcd4', border: 'none', color: 'white', padding: '6px 14px', borderRadius: '6px', fontSize: '0.8rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}
-                        >
-                            <Plus size={14} /> Crear Nuevo
+                        <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
+                            Actualizar Plan
+                        </button>
+                        <button onClick={() => auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>
+                            <LogOut size={16} /> Cerrar sesión
                         </button>
                     </div>
+                </aside>
 
-                    {userSetlists.length === 0 ? (
-                        <div style={{ textAlign: 'center', padding: '48px', color: '#444', background: '#1a1a22', borderRadius: '12px', border: '1px solid #21212a' }}>
-                            <ListMusic size={36} color="#333" style={{ marginBottom: '14px' }} />
-                            <p style={{ margin: 0 }}>No tienes listas de reproducción (setlists).</p>
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {userSetlists.map(sl => (
-                                <div
-                                    key={sl.id}
-                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1a1a22', padding: '15px 20px', borderRadius: '10px', border: '1px solid #28282f' }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                        <div style={{ width: '42px', height: '42px', borderRadius: '8px', background: '#333', border: '1px solid #444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                            <ListMusic size={18} color="#aaa" />
-                                        </div>
-                                        <div>
-                                            <div style={{ fontWeight: '600', fontSize: '0.97rem', marginBottom: '3px' }}>{sl.name || 'Setlist Sin Nombre'}</div>
-                                            <div style={{ fontSize: '0.78rem', color: '#666', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                                {sl.songs ? sl.songs.length : 0} canciones incluidas
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setEditingSetlist({ ...sl, songs: sl.songs ? [...sl.songs] : [] });
-                                            }}
-                                            style={{ background: 'rgba(255,193,7,0.1)', border: '1px solid #ffc10733', color: '#ffb300', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                        >
-                                            <Settings2 size={14} /> Editar
-                                        </button>
-                                        <button
-                                            onClick={(e) => handleDeleteSetlist(sl.id, sl.name, e)}
-                                            style={{ background: 'transparent', border: '1px solid #e74c3c40', color: '#e74c3c', padding: '6px 12px', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-                                        >
-                                            <Trash2 size={14} /> Eliminar
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </>)}
-
-                {/* ── CHOOSE USE ───────────────────────────────── */}
-                {step === 'choose-use' && (
-                    <div>
-                        <div style={{ marginBottom: '36px' }}>
-                            <h1 style={{ fontSize: '1.9rem', margin: '0 0 6px', fontWeight: '700' }}>
-                                ¡Hola, {displayName.toUpperCase()}!
+                {/* MAIN CONTENT */}
+                <main style={{ marginLeft: '280px', flex: 1, padding: '40px 60px', maxWidth: '1200px' }}>
+                    {/* ── HEADER OVERVIEW ── */}
+                    <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                            <h1 style={{ fontSize: '2rem', fontWeight: '800', margin: '0 0 8px' }}>
+                                {activeTab === 'home' ? `¡Hola, ${displayName}!` :
+                                    activeTab === 'songs' ? 'Mis Canciones' :
+                                        activeTab === 'setlists' ? 'Setlists' : 'Explorar Comunidad'}
                             </h1>
-                            <h2 style={{ fontSize: '1.3rem', margin: 0, color: '#888', fontWeight: '400' }}>
-                                ¿Cómo quieres usar esta canción?
-                            </h2>
+                            <p style={{ color: '#64748b', margin: 0 }}>
+                                {activeTab === 'home' ? 'Este es el resumen de tu biblioteca y actividad.' : ''}
+                            </p>
                         </div>
-
-                        <div style={{ display: 'flex', gap: '18px', marginBottom: '36px', flexWrap: 'wrap' }}>
-                            {[
-                                { id: 'personal', Icon: User, label: 'Uso personal' },
-                                { id: 'sell', Icon: Tag, label: 'Vender' }
-                            ].map(({ id, Icon, label }) => (
-                                <div
-                                    key={id}
-                                    onClick={() => setUseType(id)}
-                                    style={{
-                                        flex: '1 1 150px', maxWidth: '200px',
-                                        background: useType === id ? 'rgba(0,188,212,0.12)' : '#1e1e26',
-                                        border: `2px solid ${useType === id ? '#00bcd4' : '#2a2a34'}`,
-                                        borderRadius: '12px', padding: '32px 20px',
-                                        cursor: 'pointer', textAlign: 'center', transition: 'all 0.18s'
-                                    }}
-                                >
-                                    <Icon size={30} color={useType === id ? '#00bcd4' : '#555'} style={{ marginBottom: '14px' }} />
-                                    <div style={{ fontWeight: '600', color: useType === id ? '#00bcd4' : '#ccc' }}>{label}</div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <StorageMeter compact />
-
-                        <div style={{ display: 'flex', gap: '14px' }}>
-                            <button onClick={resetWizard} style={btnSecondary}>Cancelar</button>
-                            <button onClick={() => useType && setStep('details')} disabled={!useType} style={btnPrimary(!!useType)}>
-                                Continuar <ChevronRight size={18} />
+                        {(activeTab === 'songs' || activeTab === 'home') && step === 'idle' && (
+                            <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Plus size={20} /> Subir Canción
                             </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── DETAILS ──────────────────────────────────── */}
-                {step === 'details' && (
-                    <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '32px' }}>
-                            <button onClick={() => setStep('choose-use')} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}>
-                                <ArrowLeft size={22} />
+                        )}
+                        {(activeTab === 'setlists') && (
+                            <button onClick={() => setIsSetlistModalOpen(true)} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <Plus size={20} /> Nuevo Setlist
                             </button>
-                            <div>
-                                <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700' }}>Detalles de la canción</h2>
-                                <p style={{ margin: 0, color: '#666', fontSize: '0.85rem' }}>
-                                    {fileList.length} pistas · {useType === 'personal' ? 'Uso personal' : 'Venta'}
-                                </p>
-                            </div>
-                        </div>
+                        )}
+                        <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />
+                    </header>
 
-                        <div style={{ background: '#1a1a22', padding: '28px', borderRadius: '14px', border: '1px solid #21212a', marginBottom: '22px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginBottom: '26px' }}>
-                                {[
-                                    { label: 'Nombre de la Canción', value: songName, set: setSongName, placeholder: 'Ej: Mientras Viva', type: 'text' },
-                                    { label: 'Artista / Banda', value: artist, set: setArtist, placeholder: 'Ej: G12 Music', type: 'text' },
-                                    { label: 'Tonalidad (Key)', value: songKey, set: setSongKey, placeholder: 'Ej: D# o Bm', type: 'text' },
-                                    { label: 'Tempo (BPM)', value: tempo, set: setTempo, placeholder: 'Ej: 120', type: 'number' },
-                                    { label: 'Compás', value: timeSignature, set: setTimeSignature, type: 'select', options: ['4/4', '3/4', '6/8', '2/4', '12/8', '2/2', '5/8', '9/8'] }
-                                ].map(field => (
-                                    <div key={field.label}>
-                                        <label style={{ display: 'block', marginBottom: '7px', color: '#666', fontSize: '0.8rem', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                                            {field.label}
-                                        </label>
-                                        {field.type === 'select' ? (
-                                            <select value={field.value || ''} onChange={e => field.set(e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                                                <option value="" disabled>Selecciona compás...</option>
-                                                {field.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                            </select>
-                                        ) : (
-                                            <input type={field.type} placeholder={field.placeholder} value={field.value} onChange={e => field.set(e.target.value)} style={inputStyle} />
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div style={{ marginBottom: '26px' }}>
-                                <label style={{ display: 'block', marginBottom: '7px', color: '#666', fontSize: '0.8rem', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
-                                    Letra de la Canción (Opcional)
-                                </label>
-                                <textarea
-                                    value={lyrics}
-                                    onChange={e => setLyrics(e.target.value)}
-                                    placeholder="Escribe o pega la letra aquí..."
-                                    style={{ ...inputStyle, width: '100%', minHeight: '120px', resize: 'vertical', fontFamily: 'inherit' }}
-                                />
-                                <p style={{ fontSize: '0.75rem', color: '#444', marginTop: '6px' }}>
-                                    Esto se mostrará como teleprompter en el reproductor.
-                                </p>
-                            </div>
-
-                            <div style={{ borderTop: '1px solid #21212a', paddingTop: '22px' }}>
-                                <p style={{ margin: '0 0 14px', color: '#555', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600' }}>
-                                    <Layers size={12} style={{ marginRight: '5px', verticalAlign: 'middle' }} />
-                                    Pistas ({fileList.length})
-                                </p>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    {fileList.map((file, i) => (
-                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#13131a', padding: '10px 14px', borderRadius: '8px', border: '1px solid #21212a' }}>
-                                            <span style={{ color: '#444', fontWeight: '600', width: '20px', textAlign: 'center', fontSize: '0.82rem' }}>{i + 1}</span>
-                                            <input type="text" value={file.displayName} onChange={e => handleNameChange(i, e.target.value)} style={{ ...inputStyle, flex: 1, padding: '8px 12px', fontSize: '0.88rem' }} />
-                                            <span style={{ fontSize: '0.75rem', color: '#444', whiteSpace: 'nowrap' }}>{(file.blob.size / 1024 / 1024).toFixed(2)} MB</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '14px' }}>
-                            <button onClick={resetWizard} style={btnSecondary}>Cancelar</button>
-                            <button onClick={uploadToB2} disabled={!songName.trim()} style={btnPrimary(!!songName.trim())}>
-                                <Upload size={16} /> Subir a la Nube
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* ── UPLOADING ────────────────────────────────── */}
-                {step === 'uploading' && (
-                    <div style={{ textAlign: 'center', padding: '90px 20px' }}>
-                        <div style={{ position: 'relative', width: '90px', height: '90px', margin: '0 auto 30px' }}>
-                            <svg width="90" height="90" viewBox="0 0 90 90" style={{ transform: 'rotate(-90deg)' }}>
-                                <circle cx="45" cy="45" r="38" fill="none" stroke="#21212a" strokeWidth="8" />
-                                <circle cx="45" cy="45" r="38" fill="none" stroke="#00bcd4" strokeWidth="8"
-                                    strokeDasharray={`${2 * Math.PI * 38}`}
-                                    strokeDashoffset={`${2 * Math.PI * 38 * (1 - uploadProgress / 100)}`}
-                                    strokeLinecap="round"
-                                    style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-                                />
-                            </svg>
-                            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '1.1rem', color: '#00bcd4' }}>
-                                {uploadProgress}%
-                            </div>
-                        </div>
-                        <h2 style={{ margin: '0 0 10px', fontWeight: '600' }}>Subiendo a la nube...</h2>
-                        <p style={{ color: '#555', margin: 0 }}>Por favor espera mientras cargamos tus pistas.</p>
-                    </div>
-                )}
-
-                {/* ── DONE ─────────────────────────────────────── */}
-                {step === 'done' && (
-                    <div style={{ textAlign: 'center', padding: '90px 20px' }}>
-                        <CheckCircle2 size={64} color="#2ecc71" style={{ marginBottom: '22px' }} />
-                        <h2 style={{ margin: '0 0 10px', color: '#2ecc71', fontWeight: '700' }}>
-                            Canción subida exitosamente
-                        </h2>
-                        <p style={{ color: '#555', margin: 0 }}>Redirigiendo...</p>
-                    </div>
-                )}
-            </div>
-            {/* ── EDIT LYRICS MODAL ───────────────────────── */}
-            {editingLyricsSong && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: '#1a1a22', width: '100%', maxWidth: '600px', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
-                        <div style={{ padding: '20px 25px', borderBottom: '1px solid #28282f', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', gap: '15px' }}>
-                                <button
-                                    onClick={() => setEditingLyricsSong({ ...editingLyricsSong, mode: 'lyrics' })}
-                                    style={{ background: 'none', border: 'none', color: editingLyricsSong.mode !== 'chords' ? '#00bcd4' : '#666', fontSize: '1.2rem', fontWeight: '700', cursor: 'pointer', padding: 0 }}
-                                >
-                                    Letra
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setEditingLyricsSong({ ...editingLyricsSong, mode: 'chords' });
-                                        setTempLyrics('Cargando...');
-                                        // Refetch chords
-                                        const q = query(collection(db, 'chords'), where('songId', '==', editingLyricsSong.id));
-                                        getDocs(q).then(snap => {
-                                            if (!snap.empty) setTempLyrics(snap.docs[0].data().text);
-                                            else setTempLyrics('');
-                                        }).catch(() => setTempLyrics(''));
-                                    }}
-                                    style={{ background: 'none', border: 'none', color: editingLyricsSong.mode === 'chords' ? '#00bcd4' : '#666', fontSize: '1.2rem', fontWeight: '700', cursor: 'pointer', padding: 0 }}
-                                >
-                                    Acordes
-                                </button>
-                            </div>
-                            <button onClick={() => setEditingLyricsSong(null)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div style={{ padding: '25px' }}>
-                            <textarea
-                                value={tempLyrics}
-                                onChange={e => setTempLyrics(e.target.value)}
-                                placeholder={editingLyricsSong.mode === 'chords' ? "Pega aquí los acordes de la canción..." : "Pega aquí la letra de la canción..."}
-                                style={{ ...inputStyle, width: '100%', minHeight: '350px', resize: 'vertical', fontSize: '0.95rem', lineHeight: '1.5', fontFamily: 'monospace' }}
-                            />
-                            <div style={{ display: 'flex', gap: '12px', marginTop: '20px' }}>
-                                <button onClick={() => setEditingLyricsSong(null)} style={btnSecondary}>Cancelar</button>
-                                <button
-                                    style={btnPrimary(true)}
-                                    onClick={async () => {
-                                        try {
-                                            const collectionName = editingLyricsSong.mode === 'chords' ? 'chords' : 'lyrics';
-                                            const q = query(collection(db, collectionName), where('songId', '==', editingLyricsSong.id));
-                                            const snap = await getDocs(q);
-
-                                            if (!snap.empty) {
-                                                await updateDoc(doc(db, collectionName, snap.docs[0].id), {
-                                                    text: tempLyrics,
-                                                    updatedAt: serverTimestamp()
-                                                });
-                                            } else {
-                                                await addDoc(collection(db, collectionName), {
-                                                    songId: editingLyricsSong.id,
-                                                    text: tempLyrics,
-                                                    updatedAt: serverTimestamp()
-                                                });
-                                            }
-
-                                            // BACKUP: Also update the song document itself for immediate sync
-                                            const backupObj = {};
-                                            backupObj[collectionName] = tempLyrics;
-                                            await updateDoc(doc(db, 'songs', editingLyricsSong.id), backupObj);
-
-                                            setEditingLyricsSong(null);
-                                        } catch (err) {
-                                            console.error(err);
-                                            alert(`Error al guardar ${editingLyricsSong.mode === 'chords' ? 'acordes' : 'letra'}`);
-                                        }
-                                    }}
-                                >
-                                    Guardar {editingLyricsSong.mode === 'chords' ? 'Acordes' : 'Letra'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ── EDIT SONG METADATA MODAL ────────────────── */}
-            {editingSongInfo && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: '#1a1a22', width: '100%', maxWidth: '600px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
-                        <div style={{ padding: '20px 25px', borderBottom: '1px solid #28282f', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <Settings2 size={18} color="#00bcd4" /> Editar Propiedades
-                            </h3>
-                            <button onClick={() => setEditingSongInfo(null)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div style={{ padding: '25px', overflowY: 'auto' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '25px' }}>
+                    {/* ── WIZARD STEPS ── */}
+                    {step !== 'idle' ? (
+                        <section className="card-premium" style={{ maxWidth: '800px' }}>
+                            {step === 'choose-use' && (
                                 <div>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Nombre</label>
-                                    <input type="text" value={editingSongInfo.name || ''} onChange={e => setEditingSongInfo({ ...editingSongInfo, name: e.target.value })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Artista</label>
-                                    <input type="text" value={editingSongInfo.artist || ''} onChange={e => setEditingSongInfo({ ...editingSongInfo, artist: e.target.value })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Key</label>
-                                    <input type="text" value={editingSongInfo.key || ''} onChange={e => setEditingSongInfo({ ...editingSongInfo, key: e.target.value })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>BPM</label>
-                                    <input type="number" value={editingSongInfo.tempo || ''} onChange={e => setEditingSongInfo({ ...editingSongInfo, tempo: e.target.value })} style={inputStyle} />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Compás</label>
-                                    <select value={editingSongInfo.timeSignature || ''} onChange={e => setEditingSongInfo({ ...editingSongInfo, timeSignature: e.target.value })} style={{ ...inputStyle, cursor: 'pointer' }}>
-                                        <option value="" disabled>Selecciona compás...</option>
-                                        {['4/4', '3/4', '6/8', '2/4', '12/8', '2/2', '5/8', '9/8'].map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div style={{ borderTop: '1px solid #28282f', paddingTop: '20px' }}>
-                                <h4 style={{ margin: '0 0 15px 0', fontSize: '1rem', color: '#ccc' }}>Letreros de Pistas</h4>
-                                {editingSongInfo.tracks && editingSongInfo.tracks.length > 0 ? (
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                        {editingSongInfo.tracks.map((track, i) => (
-                                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <span style={{ color: '#555', fontSize: '0.85rem', width: '20px', textAlign: 'right' }}>{i + 1}</span>
-                                                <input
-                                                    type="text"
-                                                    value={track.name || ''}
-                                                    onChange={e => {
-                                                        const newTracks = [...editingSongInfo.tracks];
-                                                        newTracks[i].name = e.target.value;
-                                                        setEditingSongInfo({ ...editingSongInfo, tracks: newTracks });
-                                                    }}
-                                                    style={{ ...inputStyle, padding: '8px 12px', fontSize: '0.9rem' }}
-                                                />
+                                    <h3 style={{ marginBottom: '24px' }}>¿Cómo usarás esta canción?</h3>
+                                    <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
+                                        {[{ id: 'personal', label: 'Uso personal', icon: <User size={24} /> }, { id: 'sell', label: 'Vender', icon: <Tag size={24} /> }].map(type => (
+                                            <div key={type.id} onClick={() => setUseType(type.id)} style={{ flex: 1, padding: '30px', border: `2px solid ${useType === type.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', textAlign: 'center', cursor: 'pointer', backgroundColor: useType === type.id ? 'rgba(0,210,211,0.05)' : 'transparent' }}>
+                                                <div style={{ color: useType === type.id ? '#00d2d3' : '#64748b', marginBottom: '12px' }}>{type.icon}</div>
+                                                <div style={{ fontWeight: '700' }}>{type.label}</div>
                                             </div>
                                         ))}
                                     </div>
-                                ) : (
-                                    <p style={{ color: '#555', fontSize: '0.9rem' }}>No hay pistas para editar.</p>
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        <button onClick={resetWizard} className="btn-ghost">Cancelar</button>
+                                        <button disabled={!useType} onClick={() => setStep('details')} className="btn-teal" style={{ flex: 1 }}>Siguiente</button>
+                                    </div>
+                                </div>
+                            )}
+                            {step === 'details' && (
+                                <div>
+                                    <h3 style={{ marginBottom: '24px' }}>Detalles de la Canción</h3>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>NOMBRE</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={songName} onChange={e => setSongName(e.target.value)} /></div>
+                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
+                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>KEY</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={songKey} onChange={e => setSongKey(e.target.value)} /></div>
+                                        <div><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>TEMPO (BPM)</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px' }} value={tempo} onChange={e => setTempo(e.target.value)} /></div>
+                                    </div>
+
+                                    {useType === 'sell' && (
+                                        <div style={{ marginBottom: '25px', padding: '15px', background: 'rgba(241, 196, 15, 0.1)', border: '1px solid rgba(241, 196, 15, 0.3)', borderRadius: '8px' }}>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', color: '#f1c40f', fontSize: '0.95rem' }}>
+                                                <input type="checkbox" checked={hasRights} onChange={e => setHasRights(e.target.checked)} style={{ width: '18px', height: '18px' }} />
+                                                <strong>Confirmo que tengo los derechos para vender estas secuencias multitrack.</strong>
+                                            </label>
+                                            <p style={{ margin: '8px 0 0 28px', fontSize: '0.8rem', color: '#94a3b8' }}>Tu canción pasará a revisión por el administrador y estará disponible para la venta una vez aprobada.</p>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', gap: '15px' }}>
+                                        <button onClick={() => setStep('choose-use')} className="btn-ghost">Atrás</button>
+                                        <button disabled={useType === 'sell' && !hasRights} onClick={uploadToB2} className="btn-teal" style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}><Upload size={18} /> Subir ahora</button>
+                                    </div>
+                                </div>
+                            )}
+                            {step === 'uploading' && (
+                                <div style={{ textAlign: 'center', padding: '40px' }}>
+                                    <Loader2 size={48} className="animate-spin" color="#00d2d3" style={{ margin: '0 auto 20px' }} />
+                                    <h2>Subiendo {uploadProgress}%</h2>
+                                    <p style={{ color: '#64748b' }}>Por favor, no cierres esta ventana.</p>
+                                </div>
+                            )}
+                            {step === 'done' && (
+                                <div style={{ textAlign: 'center', padding: '40px' }}>
+                                    <CheckCircle2 size={64} color="#10b981" style={{ margin: '0 auto 20px' }} />
+                                    <h2>Subida Completa</h2>
+                                    {useType === 'sell' ? (
+                                        <p style={{ color: '#f1c40f' }}>Tu canción está siendo verificada. Estará lista para la venta cuando sea aprobada por un administrador.</p>
+                                    ) : (
+                                        <p style={{ color: '#64748b' }}>Tu canción ya está disponible en tu biblioteca personal.</p>
+                                    )}
+                                </div>
+                            )}
+                        </section>
+                    ) : (
+                        <>
+                            {/* ── STORAGE SUMMARY (Home Only) ── */}
+                            {activeTab === 'home' && (
+                                <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '48px' }}>
+                                    <div className="card-premium">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+                                            <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><Cloud size={18} /> Almacenamiento</div>
+                                            <div style={{ fontWeight: '700' }}>{usedPercent.toFixed(1)}%</div>
+                                        </div>
+                                        <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', marginBottom: '12px' }}>
+                                            <div style={{ width: `${usedPercent}%`, height: '100%', background: '#00d2d3', borderRadius: '4px' }}></div>
+                                        </div>
+                                        <div style={{ color: '#64748b', fontSize: '0.85rem' }}>{usedMB.toFixed(0)} MB de {storageLimit} MB usado</div>
+                                    </div>
+                                    <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                        <div style={{ width: '50px', height: '50px', background: 'rgba(0,210,211,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}><Music2 size={24} /></div>
+                                        <div>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{userSongs.length}</div>
+                                            <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Canciones subidas</div>
+                                        </div>
+                                    </div>
+                                    <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                                        <div style={{ width: '50px', height: '50px', background: 'rgba(155,89,182,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b59b6' }}><ListMusic size={24} /></div>
+                                        <div>
+                                            <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{userSetlists.length}</div>
+                                            <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Setlists creados</div>
+                                        </div>
+                                    </div>
+                                </section>
+                            )}
+
+                            {/* ── SONG LIST & UPLOAD ── */}
+                            {(activeTab === 'home' || activeTab === 'songs') && (
+                                <section>
+                                    {activeTab === 'songs' && (
+                                        <div
+                                            onClick={() => fileInputRef.current.click()}
+                                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                                    handleZipUpload({ target: { files: e.dataTransfer.files } });
+                                                }
+                                            }}
+                                            style={{
+                                                width: '100%',
+                                                padding: '60px',
+                                                border: '2px dashed rgba(0,210,211,0.3)',
+                                                borderRadius: '24px',
+                                                textAlign: 'center',
+                                                background: 'rgba(0,210,211,0.02)',
+                                                cursor: 'pointer',
+                                                marginBottom: '50px',
+                                                transition: 'all 0.3s'
+                                            }}
+                                            className="upload-dropzone"
+                                        >
+                                            <div style={{ color: '#00d2d3', marginBottom: '20px' }}><Upload size={56} /></div>
+                                            <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px' }}>Sube tu nueva canción</h2>
+                                            <p style={{ color: '#64748b', fontSize: '1.1rem' }}>Arrastra tu archivo .ZIP aquí o <span style={{ color: '#00d2d3', fontWeight: '700' }}>haz clic para buscar</span></p>
+                                        </div>
+                                    )}
+
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
+                                        <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>
+                                            {activeTab === 'home' ? 'Agregadas Recientemente' : 'Biblioteca de Canciones'}
+                                        </h3>
+
+                                        {activeTab === 'songs' && (
+                                            <div style={{ position: 'relative', width: '350px' }}>
+                                                <input
+                                                    type="text"
+                                                    className="btn-ghost"
+                                                    style={{ width: '100%', textAlign: 'left', padding: '12px 45px 12px 20px', fontSize: '0.95rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)' }}
+                                                    placeholder="Buscar por nombre o artista..."
+                                                    value={songSearchQuery}
+                                                    onChange={e => setSongSearchQuery(e.target.value)}
+                                                />
+                                                <Search size={20} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                        {/* LIST HEADER */}
+                                        <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                            <span></span>
+                                            <span>Canción</span>
+                                            <span>Artista</span>
+                                            <span>Key</span>
+                                            <span>Tempo</span>
+                                            <span style={{ textAlign: 'right' }}>Acciones</span>
+                                        </div>
+
+                                        {/* LIST BODY */}
+                                        {userSongs.filter(s =>
+                                            s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                                            (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
+                                        ).map((song, idx) => (
+                                            <div
+                                                key={song.id}
+                                                onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }}
+                                                style={{
+                                                    display: 'grid',
+                                                    gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px',
+                                                    padding: '20px 30px',
+                                                    borderBottom: idx === userSongs.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.03)',
+                                                    alignItems: 'center',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                                className="song-list-item"
+                                            >
+                                                <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(0,210,211,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}>
+                                                    <Music2 size={20} />
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontWeight: '700', fontSize: '1rem' }}>{song.name}</div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{song.tracks?.length || 0} pistas cargadas</div>
+                                                </div>
+                                                <div style={{ color: '#94a3b8' }}>{song.artist || '—'}</div>
+                                                <div>
+                                                    {song.key && <span style={{ color: '#00d2d3', fontWeight: '700', background: 'rgba(0,210,211,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}
+                                                </div>
+                                                <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                                    <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                        {userSongs.length === 0 && (
+                                            <div style={{ textAlign: 'center', padding: '100px 20px', color: '#64748b' }}>
+                                                <div style={{ marginBottom: '15px' }}><Music2 size={48} opacity={0.2} /></div>
+                                                <h4 style={{ margin: '0 0 5px', color: 'white' }}>No hay canciones en tu biblioteca</h4>
+                                                <p>Sube tu primer archivo .ZIP para comenzar.</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+                            )}
+
+                            {/* ── SETLIST LIST ── */}
+                            {activeTab === 'setlists' && (
+                                <section>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
+                                        {userSetlists.map(sl => (
+                                            <div key={sl.id} className="card-premium" style={{ position: 'relative' }}>
+                                                <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', alignItems: 'center' }}>
+                                                    <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: 'rgba(155,89,182,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b59b6' }}>
+                                                        <ListMusic size={24} />
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{sl.name}</div>
+                                                        <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{(sl.songs || []).length} canciones</div>
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <button onClick={() => handleOpenEditSetlist(sl)} className="btn-ghost" style={{ flex: 1, padding: '8px', fontSize: '0.8rem' }}>Editar</button>
+                                                    <button onClick={() => handleDeleteSetlist(sl.id)} className="btn-ghost" style={{ padding: '8px', color: '#ef4444' }}><Trash2 size={16} /></button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {userSetlists.length === 0 && (
+                                            <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '60px', color: '#64748b' }}>
+                                                <div style={{ marginBottom: '10px' }}><ListMusic size={40} /></div>
+                                                No tienes setlists creados.
+                                            </div>
+                                        )}
+                                    </div>
+                                </section>
+                            )}
+
+                            {/* ── FALLBACK FOR GLOBAL ── */}
+                            {activeTab === 'global' && (
+                                <section>
+                                    {userPlan?.isVIP ? (
+                                        <>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
+                                                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>Explorar Comunidad (Acceso VIP)</h3>
+                                                <div style={{ position: 'relative', width: '350px' }}>
+                                                    <input
+                                                        type="text"
+                                                        className="btn-ghost"
+                                                        style={{ width: '100%', textAlign: 'left', padding: '12px 45px 12px 20px', fontSize: '0.95rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)' }}
+                                                        placeholder="Buscar en toda la base de datos..."
+                                                        value={songSearchQuery}
+                                                        onChange={e => setSongSearchQuery(e.target.value)}
+                                                    />
+                                                    <Search size={20} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                                </div>
+                                            </div>
+                                            <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                                    <span></span>
+                                                    <span>Canción</span>
+                                                    <span>Artista</span>
+                                                    <span>Key</span>
+                                                    <span>Tempo</span>
+                                                    <span style={{ textAlign: 'right' }}>Acciones</span>
+                                                </div>
+                                                {userSongs.filter(s =>
+                                                    s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                                                    (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
+                                                ).map((song, idx) => (
+                                                    <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 120px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
+                                                        <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(241,196,15,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f' }}><Music2 size={20} /></div>
+                                                        <div><div style={{ fontWeight: '700' }}>{song.name}</div><div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subido por {song.userId === currentUser?.uid ? 'TI' : 'Comunidad'}</div></div>
+                                                        <div style={{ color: '#94a3b8' }}>{song.artist || '—'}</div>
+                                                        <div>{song.key && <span style={{ color: '#f1c40f', fontWeight: '700', background: 'rgba(241,196,15,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}</div>
+                                                        <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
+                                                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                                            <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div style={{ textAlign: 'center', padding: '120px 50px', background: 'rgba(255,255,255,0.02)', borderRadius: '32px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ width: '100px', height: '100px', background: 'rgba(241,196,15,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f', margin: '0 auto 30px' }}><KeyRound size={50} /></div>
+                                            <h2 style={{ fontSize: '2.4rem', fontWeight: '900', marginBottom: '20px' }}>Acceso Exclusivo VIP</h2>
+                                            <p style={{ color: '#64748b', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto 40px', lineHeight: '1.6' }}>
+                                                Los miembros Premium VIP pueden acceder y utilizar todas las canciones de nuestra base de datos global.
+                                            </p>
+                                            <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem', background: '#f1c40f', color: '#000', fontWeight: '800' }}>Descubrir Planes VIP</button>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+                        </>
+                    )}
+                </main>
+
+                {/* PRETTY SETLIST MODAL */}
+                {isSetlistModalOpen && (
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '450px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.4rem' }}>Crear Nuevo Setlist</h3>
+                                <button onClick={() => setIsSetlistModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={24} /></button>
+                            </div>
+
+                            <div style={{ marginBottom: '24px' }}>
+                                <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '600' }}>NOMBRE DEL SETLIST</label>
+                                <input
+                                    className="btn-ghost"
+                                    style={{ width: '100%', textAlign: 'left', padding: '14px', fontSize: '1rem', backgroundColor: 'rgba(0,0,0,0.2)' }}
+                                    placeholder="Ej. Servicio Domingo 15"
+                                    value={newSetlistName}
+                                    onChange={e => setNewSetlistName(e.target.value)}
+                                    autoFocus
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button onClick={() => setIsSetlistModalOpen(false)} className="btn-ghost" style={{ flex: 1 }}>Cancelar</button>
+                                <button onClick={handleCreateSetlist} className="btn-teal" style={{ flex: 1 }} disabled={!newSetlistName.trim()}>Guardar Setlist</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {/* EDIT SETLIST MODAL */}
+                {isEditSetlistModalOpen && editingSetlistData && (
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '900px', height: '80vh', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                                <div>
+                                    <h2 style={{ margin: '0 0 5px' }}>{editingSetlistData.name}</h2>
+                                    <p style={{ margin: 0, color: '#64748b' }}>Editando canciones del setlist</p>
+                                </div>
+                                <button onClick={() => setIsEditSetlistModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={30} /></button>
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '30px', flex: 1, overflow: 'hidden' }}>
+                                {/* CURRENT SONGS */}
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                    <h4 style={{ marginBottom: '15px', color: '#00d2d3' }}>Canciones en el Setlist ({(editingSetlistData.songs || []).length})</h4>
+                                    <div style={{ flex: 1, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                        {(editingSetlistData.songs || []).map((s, idx) => (
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '12px', background: '#1e293b', borderRadius: '8px', marginBottom: '10px' }}>
+                                                <div style={{ width: '30px', height: '30px', background: 'rgba(0,210,211,0.1)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
+                                                <div style={{ marginLeft: '12px', flex: 1 }}>
+                                                    <div style={{ fontWeight: '700' }}>{s.name}</div>
+                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{s.artist}</div>
+                                                </div>
+                                                <button onClick={() => handleRemoveSongFromSetlist(idx)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
+                                            </div>
+                                        ))}
+                                        {(editingSetlistData.songs || []).length === 0 && <p style={{ textAlign: 'center', color: '#475569', marginTop: '40px' }}>No hay canciones aún.</p>}
+                                    </div>
+                                </div>
+
+                                {/* ADD SONGS LIBRARY */}
+                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                    <h4 style={{ marginBottom: '15px' }}>Agregar desde Biblioteca</h4>
+                                    <div style={{ marginBottom: '15px', position: 'relative' }}>
+                                        <input
+                                            type="text"
+                                            className="btn-ghost"
+                                            style={{ width: '100%', textAlign: 'left', padding: '10px 40px 10px 15px', fontSize: '0.9rem' }}
+                                            placeholder="Buscar en mis canciones..."
+                                            value={songSearchQuery}
+                                            onChange={e => setSongSearchQuery(e.target.value)}
+                                        />
+                                        <Search size={18} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                    </div>
+                                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                                        {userSongs.filter(s =>
+                                            s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                                            (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
+                                        ).map(song => {
+                                            const isInSetlist = (editingSetlistData.songs || []).some(s => s.id === song.id);
+                                            return (
+                                                <div key={song.id} style={{ display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.05)', opacity: isInSetlist ? 0.5 : 1 }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: '0.9rem', fontWeight: '700' }}>{song.name}</div>
+                                                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{song.artist}</div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleAddSongToSetlist(song)}
+                                                        disabled={isInSetlist}
+                                                        style={{ background: isInSetlist ? 'transparent' : '#00d2d3', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isInSetlist ? 'default' : 'pointer' }}
+                                                    >
+                                                        {isInSetlist ? <CheckCircle2 size={16} color="#00d2d3" /> : <Plus size={18} />}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                {/* PRICING & PLANS MODAL */}
+                {isPricingModalOpen && (
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '1000px', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+                                <div>
+                                    <h2 style={{ margin: '0 0 5px', fontSize: '2rem' }}>Mejora tu Experiencia</h2>
+                                    <p style={{ margin: 0, color: '#64748b', fontSize: '1.1rem' }}>Elige el plan que mejor se adapte a tu ministerio</p>
+                                </div>
+                                {!isInitialPlanSelection && (
+                                    <button onClick={() => setIsPricingModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={32} /></button>
                                 )}
                             </div>
 
-                            <div style={{ display: 'flex', gap: '12px', marginTop: '30px' }}>
-                                <button onClick={() => setEditingSongInfo(null)} style={btnSecondary}>Cancelar</button>
-                                <button
-                                    style={btnPrimary(true)}
-                                    onClick={async () => {
-                                        try {
-                                            await updateDoc(doc(db, 'songs', editingSongInfo.id), {
-                                                name: editingSongInfo.name,
-                                                artist: editingSongInfo.artist,
-                                                key: editingSongInfo.key,
-                                                tempo: editingSongInfo.tempo,
-                                                timeSignature: editingSongInfo.timeSignature || '',
-                                                tracks: editingSongInfo.tracks
-                                            });
-                                            setEditingSongInfo(null);
-                                        } catch (err) {
-                                            console.error(err);
-                                            alert('Error al guardar propiedades');
-                                        }
-                                    }}
-                                >
-                                    Guardar Cambios
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+                            {pendingPaymentPlan ? (
+                                <div style={{ textAlign: 'center', padding: '20px' }}>
+                                    <h3 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>Estás adquiriendo: <span style={{ color: pendingPaymentPlan.isVIP ? '#f1c40f' : '#00d2d3' }}>Plan {pendingPaymentPlan.name} ({isAnnual ? 'Anual' : 'Mensual'})</span></h3>
+                                    <p style={{ fontSize: '1.2rem', marginBottom: '30px', fontWeight: '800' }}>Total a pagar: ${isAnnual ? pendingPaymentPlan.annualPrice : pendingPaymentPlan.price} USD /{isAnnual ? 'año' : 'mes'}</p>
 
-            {/* ── EDIT SETLIST MODAL ────────────────────── */}
-            {editingSetlist && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: '#1a1a22', width: '100%', maxWidth: '700px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', borderRadius: '16px', border: '1px solid #333', overflow: 'hidden' }}>
-                        <div style={{ padding: '20px 25px', borderBottom: '1px solid #28282f', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <ListMusic size={18} color="#00bcd4" /> {editingSetlist.id ? 'Editar Setlist' : 'Nuevo Setlist'}
-                            </h3>
-                            <button onClick={() => setEditingSetlist(null)} style={{ background: 'transparent', border: 'none', color: '#666', cursor: 'pointer' }}>
-                                <X size={20} />
-                            </button>
-                        </div>
-                        <div style={{ padding: '25px', overflowY: 'auto', flex: 1 }}>
-                            <div style={{ marginBottom: '25px' }}>
-                                <label style={{ display: 'block', marginBottom: '5px', color: '#888', fontSize: '0.8rem', fontWeight: '600', textTransform: 'uppercase' }}>Nombre del Setlist</label>
-                                <input type="text" value={editingSetlist.name || ''} onChange={e => setEditingSetlist({ ...editingSetlist, name: e.target.value })} style={inputStyle} />
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '30px' }}>
-                                {/* Left Side: Current Songs in Setlist */}
-                                <div style={{ flex: 1, borderRight: '1px solid #28282f', paddingRight: '20px' }}>
-                                    <h4 style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: '#00bcd4', textTransform: 'uppercase', letterSpacing: '1px' }}>En este Setlist</h4>
-                                    {editingSetlist.songs && editingSetlist.songs.length > 0 ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                            {editingSetlist.songs.map((song, i) => (
-                                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#222', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                                                    <span>{(i + 1)}. {song.name} {song.artist ? ` - ${song.artist}` : ''}</span>
-                                                    <button onClick={() => {
-                                                        const newSongs = [...editingSetlist.songs];
-                                                        newSongs.splice(i, 1);
-                                                        setEditingSetlist({ ...editingSetlist, songs: newSongs });
-                                                    }} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', padding: 0 }}>
-                                                        <Trash2 size={14} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p style={{ color: '#555', fontSize: '0.85rem' }}>No hay canciones en este setlist aún.</p>
-                                    )}
-                                </div>
-
-                                {/* Right Side: Add Songs from Library */}
-                                <div style={{ flex: 1 }}>
-                                    <h4 style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: '#ccc', textTransform: 'uppercase', letterSpacing: '1px' }}>Agregar desde Librería</h4>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                                        {userSongs.map(uSong => (
-                                            <div key={uSong.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#13131a', padding: '8px 12px', borderRadius: '6px', fontSize: '0.85rem' }}>
-                                                <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px' }}>
-                                                    {uSong.name} <span style={{ color: '#666', fontSize: '0.75rem' }}>({uSong.tempo || '--'} BPM)</span>
-                                                </div>
-                                                <button onClick={() => {
-                                                    setEditingSetlist({ ...editingSetlist, songs: [...(editingSetlist.songs || []), uSong] });
-                                                }} style={{ background: 'rgba(0,188,212,0.15)', border: 'none', color: '#00bcd4', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                                                    + Añadir
-                                                </button>
-                                            </div>
-                                        ))}
-                                        {userSongs.length === 0 && <p style={{ color: '#555', fontSize: '0.85rem' }}>No tienes canciones para añadir.</p>}
+                                    <div style={{ maxWidth: '400px', margin: '0 auto', background: 'white', padding: '20px', borderRadius: '12px' }}>
+                                        <PayPalButtons
+                                            key={`paypal-btn-${isAnnual ? 'annual' : 'monthly'}-${pendingPaymentPlan.id}`}
+                                            style={{ layout: "vertical", shape: "pill" }}
+                                            createSubscription={(data, actions) => {
+                                                return actions.subscription.create({
+                                                    plan_id: isAnnual ? pendingPaymentPlan.paypalAnnualPlanId : pendingPaymentPlan.paypalPlanId
+                                                });
+                                            }}
+                                            onApprove={(data, actions) => {
+                                                console.log("Suscripción exitosa:", data);
+                                                updateDoc(doc(db, 'users', currentUser.uid), {
+                                                    planId: pendingPaymentPlan.id,
+                                                    paypalSubscriptionId: data.subscriptionID
+                                                });
+                                                localStorage.setItem(`mixer_seen_pricing_${currentUser.uid}`, 'true');
+                                                setIsInitialPlanSelection(false);
+                                                setPendingPaymentPlan(null);
+                                                setIsPricingModalOpen(false);
+                                                alert(`¡Suscripción mensual activada exitosamente! Bienvenido al Plan ${pendingPaymentPlan.name}.`);
+                                            }}
+                                            onError={(err) => {
+                                                console.error("Error PayPal:", err);
+                                                alert("Ocurrió un error al procesar el pago. Por favor intenta de nuevo.");
+                                            }}
+                                        />
                                     </div>
+
+                                    <button onClick={() => setPendingPaymentPlan(null)} className="btn-ghost" style={{ marginTop: '25px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                        <ArrowLeft size={18} /> Volver a los planes
+                                    </button>
                                 </div>
-                            </div>
-                        </div>
-                        <div style={{ padding: '20px 25px', borderTop: '1px solid #28282f', display: 'flex', gap: '12px' }}>
-                            <button onClick={() => setEditingSetlist(null)} style={btnSecondary}>Cancelar</button>
-                            <button
-                                style={btnPrimary(!!editingSetlist.name)}
-                                onClick={async () => {
-                                    try {
-                                        if (!editingSetlist.name) return alert('Ponle un nombre al setlist');
-                                        if (editingSetlist.id) {
-                                            await updateDoc(doc(db, 'setlists', editingSetlist.id), {
-                                                name: editingSetlist.name,
-                                                songs: editingSetlist.songs
-                                            });
-                                        } else {
-                                            await addDoc(collection(db, 'setlists'), {
-                                                name: editingSetlist.name,
-                                                userId: currentUser.uid,
-                                                songs: editingSetlist.songs,
-                                                createdAt: serverTimestamp()
-                                            });
-                                        }
-                                        setEditingSetlist(null);
-                                    } catch (err) {
-                                        console.error(err);
-                                        alert('Error al guardar setlist');
-                                    }
-                                }}
-                            >
-                                Guardar Setlist
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* ── B2 ASSETS MANAGER MODAL ───────────────────────── */}
-            {isGlobalModalOpen && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ backgroundColor: '#13131a', width: '100%', maxWidth: '900px', maxHeight: '85vh', borderRadius: '16px', border: '1px solid #28282f', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-                        <div style={{ padding: '25px', borderBottom: '1px solid #28282f', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'linear-gradient(to right, #13131a, #2a1a1a)' }}>
-                            <div>
-                                <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800', color: '#ffb300' }}>Canciones Globales</h2>
-                                <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#666' }}>Borrado definitivo de Base de Datos y Servidor B2.</p>
-                            </div>
-                            <button onClick={() => setIsGlobalModalOpen(false)} style={{ background: '#222', border: 'none', color: '#888', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}><X size={20} /></button>
-                        </div>
-
-                        <div style={{ flex: 1, padding: '25px', overflowY: 'auto', background: '#0e0e14' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr auto auto', gap: '15px', padding: '0 10px 10px', borderBottom: '1px solid #222', fontSize: '0.75rem', fontWeight: 'bold', color: '#444', textTransform: 'uppercase' }}>
-                                <span>Titulo</span>
-                                <span>Autor</span>
-                                <span style={{ textAlign: 'right' }}>Tracks</span>
-                                <span>Accion</span>
-                            </div>
-
-                            {globalSongs.length === 0 ? (
-                                <div style={{ padding: '40px', textAlign: 'center', color: '#444' }}>No hay canciones registradas en la nube.</div>
                             ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    {globalSongs.map((s, i) => (
-                                        <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr auto auto', gap: '15px', padding: '14px 10px', borderBottom: '1px solid #1a1a22', alignItems: 'center', fontSize: '0.9rem', color: '#eee' }}>
-                                            <span style={{ fontWeight: '600', color: '#ffb300' }}>{s.name}</span>
-                                            <span style={{ color: '#666' }}>{s.artist || 'Desconocido'}</span>
-                                            <span style={{ textAlign: 'right', fontFamily: 'monospace', color: '#00bcd4' }}>{s.tracks?.length || 0}</span>
-                                            <button
-                                                disabled={isDeletingGlobal}
-                                                onClick={async () => {
-                                                    if (!window.confirm(`¿BORRADO DEFINITIVO DE "${s.name}"?`)) return;
-                                                    setIsDeletingGlobal(true);
-                                                    await handleDeleteSong(s.id, s.name);
-                                                    setGlobalSongs(prev => prev.filter(item => item.id !== s.id));
-                                                    setIsDeletingGlobal(false);
-                                                }}
-                                                style={{ background: '#e74c3c', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '6px', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer', opacity: isDeletingGlobal ? 0.5 : 1 }}
-                                            >
-                                                ELIMINAR PERMANENTE
-                                            </button>
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                            <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Mensual</button>
+                                            <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Anual (-30%)</button>
                                         </div>
-                                    ))}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
+                                        {/* BASIC & STANDARD PLANS */}
+                                        <div>
+                                            <h3 style={{ marginBottom: '20px', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><Globe size={20} /> Planes Estándar</h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                {STORAGE_PLANS.filter(p => !p.isVIP).map(p => (
+                                                    <div key={p.id} style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{p.id === 'free' ? 'Plan Gratis' : `Plan ${p.name}`}</div>
+                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.id === 'free' ? '300 MB de almacenamiento' : `${p.storageGB} GB Storage`}</div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                                                                {isAnnual && p.id !== 'free' && (
+                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', textDecoration: 'line-through', marginBottom: '-2px' }}>
+                                                                        ${p.originalAnnualPrice}
+                                                                    </span>
+                                                                )}
+                                                                <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>
+                                                                    ${p.id === 'free' ? 0 : (isAnnual ? p.annualPrice : p.price)}
+                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>/{p.id === 'free' ? 'mes' : isAnnual ? 'año' : 'mes'}</span>
+                                                                </div>
+                                                            </div>
+                                                            {userPlan?.id === p.id && !isInitialPlanSelection ?
+                                                                <span style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold' }}>PLAN ACTUAL</span> :
+                                                                p.id === 'free' ?
+                                                                    <button onClick={() => { updateDoc(doc(db, 'users', currentUser.uid), { planId: p.id }); localStorage.setItem(`mixer_seen_pricing_${currentUser.uid}`, 'true'); setIsInitialPlanSelection(false); setIsPricingModalOpen(false); }} className="btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Elegir Gratis</button> :
+                                                                    <button onClick={() => { setPendingPaymentPlan(p); }} className="btn-teal" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Elegir</button>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* VIP PLANS */}
+                                        <div>
+                                            <h3 style={{ marginBottom: '20px', color: '#f1c40f', display: 'flex', alignItems: 'center', gap: '10px' }}><CreditCard size={20} /> Planes Premium VIP</h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                                {STORAGE_PLANS.filter(p => p.isVIP).map(p => (
+                                                    <div key={p.id} style={{ padding: '20px', background: 'rgba(241,196,15,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#f1c40f' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <div>
+                                                            <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>Plan {p.name}</div>
+                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.storageGB} GB + Acceso Total</div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right' }}>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+                                                                {isAnnual && p.id !== 'free' && (
+                                                                    <span style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.5)', textDecoration: 'line-through', marginBottom: '-2px' }}>
+                                                                        ${p.originalAnnualPrice}
+                                                                    </span>
+                                                                )}
+                                                                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f1c40f' }}>
+                                                                    ${isAnnual ? p.annualPrice : p.price}
+                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>/{isAnnual ? 'año' : 'mes'}</span>
+                                                                </div>
+                                                            </div>
+                                                            {userPlan?.id === p.id && !isInitialPlanSelection ? <span style={{ color: '#f1c40f', fontSize: '0.7rem', fontWeight: 'bold' }}>PLAN ACTUAL</span> : <button onClick={() => { setPendingPaymentPlan(p); }} style={{ padding: '6px 12px', fontSize: '0.75rem', background: '#f1c40f', border: 'none', color: '#000', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Elegir VIP</button>}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
-
-                        <div style={{ padding: '20px 25px', background: '#13131a', borderTop: '1px solid #28282f', textAlign: 'right' }}>
-                            <button onClick={() => setIsGlobalModalOpen(false)} style={{ background: '#222', border: '1px solid #333', color: 'white', padding: '10px 24px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Cerrar</button>
-                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </div>
+        </PayPalScriptProvider>
     );
 }
+

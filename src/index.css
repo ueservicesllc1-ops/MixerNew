@@ -43,6 +43,98 @@ body.dark-mode {
   width: 100%;
 }
 
+/* Landing Page & Dashboard Premium Styles */
+.glass-nav {
+  background: rgba(18, 18, 18, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.hero-gradient {
+  background: radial-gradient(circle at top right, rgba(0, 188, 212, 0.15), transparent),
+    radial-gradient(circle at bottom left, rgba(155, 89, 182, 0.1), transparent),
+    #0f172a;
+}
+
+.btn-teal {
+  background: #00bcd4;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 188, 212, 0.3);
+}
+
+.btn-teal:hover {
+  background: #00d2d3;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 188, 212, 0.4);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.card-premium {
+  background: #1a1a22;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 24px;
+  transition: all 0.3s ease;
+}
+
+.card-premium:hover {
+  border-color: rgba(0, 188, 212, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #fff 0%, #00bcd4 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Avatar picker hover */
+div:has(> .avatar-overlay):hover .avatar-overlay {
+  opacity: 1 !important;
+}
+
+div:has(> .avatar-overlay):hover {
+  border-color: #00bcd4 !important;
+}
+
+.hide-mobile {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .hide-mobile {
+    display: flex !important;
+  }
+}
+
 .multitrack-layout {
   display: flex;
   flex-direction: column;

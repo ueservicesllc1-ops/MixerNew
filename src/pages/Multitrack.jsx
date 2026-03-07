@@ -1299,7 +1299,7 @@ export default function Multitrack() {
                         <div style={{ width: '38px', height: '38px', background: '#00bcd4', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <div style={{ width: '14px', height: '14px', background: 'white', borderRadius: '50%' }} />
                         </div>
-                        <span className="preloader-text" style={{ fontWeight: '800', fontSize: '1.5rem', color: 'white', letterSpacing: '-0.5px' }}>MixCommunity</span>
+                        <span className="preloader-text" style={{ fontWeight: '800', fontSize: '1.5rem', color: 'white', letterSpacing: '-0.5px' }}>Zion Stage</span>
                     </div>
 
                     {/* Spinner + Countdown stacked */}
