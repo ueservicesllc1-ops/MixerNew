@@ -28,20 +28,46 @@ async function getFilePath(filename) {
     return decodeURIComponent(uri.replace('file://', ''));
 }
 
+// Cache to avoid spamming 'stat' on missing files
+const fileCache = new Set();
+let cacheInitialized = false;
+
 /**
  * UTILITY: Check if file exists
  */
 async function fileExists(filename) {
+    if (fileCache.has(filename)) return true;
+
     try {
         await Filesystem.stat({
             path: filename,
             directory: Directory.Data,
         });
+        fileCache.add(filename);
         return true;
     } catch (e) {
         return false;
     }
 }
+
+/**
+ * Initialize cache by reading the directory Once
+ */
+async function initFileCache() {
+    if (cacheInitialized) return;
+    try {
+        const { files } = await Filesystem.readdir({
+            path: '',
+            directory: Directory.Data
+        });
+        files.forEach(f => fileCache.add(f.name));
+        cacheInitialized = true;
+        console.log(`[NativeEngine] File list cached: ${fileCache.size} files.`);
+    } catch (e) {
+        console.warn('[NativeEngine] Could not initialize file cache:', e);
+    }
+}
+initFileCache();
 
 export const NativeEngine = {
     /**
@@ -81,6 +107,7 @@ export const NativeEngine = {
             directory: Directory.Data,
         });
 
+        fileCache.add(filename);
         return await getFilePath(filename);
     },
 

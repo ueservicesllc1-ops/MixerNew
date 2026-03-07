@@ -711,6 +711,14 @@ export default function Multitrack() {
     };
 
     const handleLoadSong = async (song) => {
+        // Evitar carga duplicada si ya está en progreso (ej. de handleDownloadAndAdd)
+        if (downloadProgress.songId === song.id) {
+            console.log("[SELECT] Canción ya se está descargando/cargando.");
+            // Si ya está en medio de algo, simplemente seleccionamos el ID para UI
+            setActiveSongId(song.id);
+            return;
+        }
+
         // ΓöÇΓöÇ ACTUALIZACI├ôN INMEDIATA DE UI ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         console.log(`[SELECT] Seleccionando "${song.name}"...`);
         // Visual feedback inmediato antes de cualquier await bloqueante
@@ -1514,6 +1522,7 @@ export default function Multitrack() {
             <div className="tab-bar">
                 {[
                     { id: 'setlist', label: 'Lista' },
+                    { id: 'library', label: 'Biblioteca' },
                     { id: 'pads', label: 'Pads' },
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
@@ -1527,6 +1536,17 @@ export default function Multitrack() {
                             <button
                                 key={tab.id}
                                 onClick={() => setIsCurrentListOpen(true)}
+                                className="tab-btn"
+                            >
+                                {tab.label}
+                            </button>
+                        );
+                    }
+                    if (tab.id === 'library') {
+                        return (
+                            <button
+                                key={tab.id}
+                                onClick={() => setIsLibraryMenuOpen(true)}
                                 className="tab-btn"
                             >
                                 {tab.label}
