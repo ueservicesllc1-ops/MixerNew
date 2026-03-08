@@ -11,6 +11,7 @@ import About from './pages/About'
 import Software from './pages/Software'
 import Recursos from './pages/Recursos'
 import Library from './pages/Library'
+import Vendedores from './pages/Vendedores'
 import './index.css'
 
 // Detecta si corre dentro de Capacitor (Android/iOS) o en el navegador web
@@ -44,6 +45,7 @@ function App() {
         <Route path="/software" element={<Software />} />
         <Route path="/recursos" element={<Recursos />} />
         <Route path="/library" element={<Library />} />
+        <Route path="/vendedores" element={<Vendedores />} />
       </Routes>
     </Router>
   )

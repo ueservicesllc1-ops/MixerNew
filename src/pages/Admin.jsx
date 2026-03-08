@@ -12,6 +12,7 @@ export default function Admin() {
     const [newArtistName, setNewArtistName] = useState('');
     const [contacts, setContacts] = useState([]);
     const [libraryChords, setLibraryChords] = useState([]); // Nuevo: Cifrados importados
+    const [sellerApps, setSellerApps] = useState([]); // Nuevo: Solicitudes de vendedores
     const [activeTab, setActiveTab] = useState('pending');
     const [searchUser, setSearchUser] = useState('');
     const [searchArtist, setSearchArtist] = useState('');
@@ -71,6 +72,38 @@ export default function Admin() {
             snap.forEach(doc => c.push({ id: doc.id, ...doc.data() }));
             setLibraryChords(c);
         });
+
+        onSnapshot(collection(db, 'seller_applications'), (snap) => {
+            const sa = [];
+            snap.forEach(doc => sa.push({ id: doc.id, ...doc.data() }));
+            setSellerApps(sa.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+        });
+    };
+
+    const approveSeller = async (userId) => {
+        if (!window.confirm("¿Aprobar este vendedor oficialmente?")) return;
+        try {
+            await updateDoc(doc(db, 'users', userId), {
+                sellerStatus: 'active'
+            });
+            await updateDoc(doc(db, 'seller_applications', userId), {
+                status: 'approved'
+            });
+            alert("Vendedor aprobado correctamente.");
+        } catch (e) { console.error(e); }
+    };
+
+    const deleteSeller = async (userId) => {
+        if (!window.confirm("¿ELIMINAR este vendedor? Se le quitará el acceso al panel de ventas y se borrará su solicitud.")) return;
+        try {
+            await updateDoc(doc(db, 'users', userId), {
+                isSeller: false,
+                sellerStatus: null,
+                isVipSeller: false
+            });
+            await deleteDoc(doc(db, 'seller_applications', userId));
+            alert("Vendedor eliminado.");
+        } catch (e) { console.error(e); }
     };
 
     const syncWithLaCuerda = async () => {
@@ -271,6 +304,7 @@ export default function Admin() {
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>
                 <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Ventas ({pendingSongs.length})</button>
+                <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({users.filter(u => u.isSeller).length})</button>
                 <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({users.length})</button>
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
@@ -462,6 +496,67 @@ export default function Admin() {
                                 </div>
                                 <div style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.userEmail}</div>
                                 <button onClick={() => deleteSong(s.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textAlign: 'right' }}><Trash2 size={20} /></button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'sellers' && (
+                <div className="fade-in">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        <h2>Gestión de Vendedores</h2>
+                        <span style={{ background: 'rgba(255,255,255,0.1)', padding: '5px 15px', borderRadius: '20px', fontSize: '0.8rem' }}>
+                            {users.filter(u => u.isSeller).length} vendedores totales
+                        </span>
+                    </div>
+
+                    {/* Section 1: Formal Applications */}
+                    <h3 style={{ fontSize: '1.2rem', color: '#00d2d3', marginBottom: '15px' }}>Solicitudes con Documentación</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px', marginBottom: '40px' }}>
+                        {sellerApps.map(app => (
+                            <div key={app.id} style={{ background: '#1e293b', padding: '24px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', display: 'grid', gridTemplateColumns: '1fr 1fr 150px', gap: '20px', alignItems: 'center' }}>
+                                <div>
+                                    <div style={{ fontWeight: '800', fontSize: '1.2rem', color: '#00d2d3' }}>{app.firstName} {app.lastName}</div>
+                                    <div style={{ fontSize: '0.9rem', color: '#94a3b8' }}>ID: {app.cedula} | Tel: {app.phone}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{app.email}</div>
+                                    <div style={{ marginTop: '10px' }}>
+                                        <span style={{ fontSize: '0.75rem', padding: '4px 10px', borderRadius: '100px', background: app.status === 'approved' ? '#10b98120' : '#f1c40f20', color: app.status === 'approved' ? '#10b981' : '#f1c40f', fontWeight: '800' }}>
+                                            {app.status === 'approved' ? 'VERIFICADO' : 'PENDIENTE'}
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'center' }}>
+                                    {app.idPhotoUrl ? (
+                                        <a href={app.idPhotoUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                                            <div style={{ height: '80px', width: '120px', background: `url(${app.idPhotoUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '12px', border: '2px solid rgba(255,255,255,0.1)', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                <div style={{ background: 'rgba(0,0,0,0.5)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem' }}>VER ID</div>
+                                            </div>
+                                        </a>
+                                    ) : <div style={{ color: '#64748b' }}>Sin foto ID</div>}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {app.status !== 'approved' && (
+                                        <button onClick={() => approveSeller(app.userId)} style={{ background: '#10b981', color: 'black', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}>APROBAR</button>
+                                    )}
+                                    <button onClick={() => deleteSeller(app.userId)} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}>BORRAR VENDEDOR</button>
+                                </div>
+                            </div>
+                        ))}
+                        {sellerApps.length === 0 && <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No hay solicitudes formales.</p>}
+                    </div>
+
+                    {/* Section 2: Legacy Sellers or Direct Activations */}
+                    <h3 style={{ fontSize: '1.2rem', color: '#f1c40f', marginBottom: '15px' }}>Vendedores Activos (Directos/Antiguos)</h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '15px' }}>
+                        {users.filter(u => u.isSeller && !sellerApps.some(app => app.userId === u.id)).map(u => (
+                            <div key={u.id} style={{ background: 'rgba(255,196,15,0.05)', padding: '20px', borderRadius: '15px', border: '1px solid rgba(241,196,15,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <div style={{ fontWeight: '800' }}>{u.displayName || u.email}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{u.email}</div>
+                                    <div style={{ fontSize: '0.7rem', color: '#f1c40f', marginTop: '5px' }}>ACTIVO SIN FORMULARIO</div>
+                                </div>
+                                <button onClick={() => deleteSeller(u.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>
                             </div>
                         ))}
                     </div>

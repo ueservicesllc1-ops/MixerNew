@@ -27,6 +27,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
+const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
+
 export default function Multitrack() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
@@ -2257,10 +2259,12 @@ export default function Multitrack() {
                                     {libraryTab === 'mine' ? (
                                         <>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
-                                            <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
-                                                Para subir tus propias canciones, ingresa desde tu computadora a:<br />
-                                                <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
-                                            </div>
+                                            {!isAppNative && (
+                                                <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                                    Para subir tus propias canciones, ingresa desde tu computadora a:<br />
+                                                    <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
+                                                </div>
+                                            )}
                                         </>
                                     ) : (
                                         <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
@@ -2289,12 +2293,21 @@ export default function Multitrack() {
                                                     )}
                                                 </div>
                                                 <button
-                                                    style={{ background: isDownloading ? '#f39c12' : '#2ecc71', color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px', cursor: isDownloading ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                                    style={{
+                                                        background: isDownloading ? '#f39c12' : (downloadProgress.songId ? '#ccc' : '#2ecc71'),
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        padding: '8px 10px',
+                                                        borderRadius: '4px',
+                                                        cursor: (isDownloading || downloadProgress.songId) ? 'not-allowed' : 'pointer',
+                                                        fontSize: '0.8rem',
+                                                        fontWeight: 'bold'
+                                                    }}
                                                     title="Añadir a Setlist y Guardar Local"
-                                                    onClick={() => !isDownloading && handleDownloadAndAdd(song)}
-                                                    disabled={isDownloading}
+                                                    onClick={() => !downloadProgress.songId && handleDownloadAndAdd(song)}
+                                                    disabled={!!downloadProgress.songId}
                                                 >
-                                                    {isDownloading ? '⏳ Descargando...' : '➕ Añadir'}
+                                                    {isDownloading ? '⏳ Bajando...' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
                                                 </button>
                                             </div>
                                         );

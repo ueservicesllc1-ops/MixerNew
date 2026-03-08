@@ -7,7 +7,7 @@ import {
     Upload, Music2, Music, User, Tag, CheckCircle2, Play, ShoppingCart,
     ChevronRight, ArrowLeft, Layers, Cloud,
     Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
-    Home, Globe, CreditCard, HelpCircle, LogOut
+    Home, Globe, CreditCard, HelpCircle, LogOut, TrendingUp
 } from 'lucide-react';
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 
@@ -82,12 +82,19 @@ function audioBufferToWav(buffer) {
     return new Blob([view], { type: 'audio/wav' });
 }
 
+// Detecta si corre dentro de Capacitor (Android/iOS) o en el navegador web
+const isNativeApp = () => {
+    return typeof window !== 'undefined' &&
+        window.Capacitor?.isNativePlatform?.() === true
+}
+
 export default function Dashboard() {
     const navigate = useNavigate();
     const fileInputRef = useRef();
 
     const [activeTab, setActiveTab] = useState('home');
     const [step, setStep] = useState('idle');
+    const [userProfile, setUserProfile] = useState(null);
     const [useType, setUseType] = useState(null);
     const [hasRights, setHasRights] = useState(false);
     const [fileList, setFileList] = useState([]);
@@ -151,6 +158,7 @@ export default function Dashboard() {
                 unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
                     if (snap.exists()) {
                         const data = snap.data();
+                        setUserProfile(data);
                         const plan = STORAGE_PLANS.find(p => p.id === data.planId) || STORAGE_PLANS[0];
                         setUserPlan(plan);
                         setCustomStorageGB(data.customStorageGB || 0);
@@ -554,10 +562,18 @@ export default function Dashboard() {
                             { id: 'songs', label: 'Mis Canciones', icon: <Music2 size={20} /> },
                             { id: 'setlists', label: 'Setlists', icon: <ListMusic size={20} /> },
                             { id: 'global', label: 'Comunidad', icon: <Globe size={20} /> },
+                            { id: 'vendedores', label: 'Ventas (Hotmart)', icon: <TrendingUp size={20} /> },
                         ].map(item => (
                             <button
                                 key={item.id}
-                                onClick={() => { setActiveTab(item.id); setStep('idle'); }}
+                                onClick={() => {
+                                    if (item.id === 'vendedores') {
+                                        navigate('/vendedores');
+                                    } else {
+                                        setActiveTab(item.id);
+                                        setStep('idle');
+                                    }
+                                }}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px',
                                     background: activeTab === item.id ? 'rgba(0,210,211,0.1)' : 'transparent',
@@ -607,7 +623,7 @@ export default function Dashboard() {
                                 {activeTab === 'home' ? 'Este es el resumen de tu biblioteca y actividad.' : ''}
                             </p>
                         </div>
-                        {(activeTab === 'songs' || activeTab === 'home') && step === 'idle' && (
+                        {!isNativeApp() && (activeTab === 'songs' || activeTab === 'home') && step === 'idle' && (
                             <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <Plus size={20} /> Subir Canción
                             </button>
@@ -617,7 +633,7 @@ export default function Dashboard() {
                                 <Plus size={20} /> Nuevo Setlist
                             </button>
                         )}
-                        <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />
+                        {!isNativeApp() && <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />}
                     </header>
 
                     {/* ── WIZARD STEPS ── */}
@@ -636,7 +652,20 @@ export default function Dashboard() {
                                     </div>
                                     <div style={{ display: 'flex', gap: '15px' }}>
                                         <button onClick={resetWizard} className="btn-ghost">Cancelar</button>
-                                        <button disabled={!useType} onClick={() => setStep('uploading-flow')} className="btn-teal" style={{ flex: 1 }}>Siguiente</button>
+                                        <button
+                                            disabled={!useType}
+                                            onClick={() => {
+                                                if (useType === 'sell') {
+                                                    navigate('/vendedores');
+                                                } else {
+                                                    setStep('uploading-flow');
+                                                }
+                                            }}
+                                            className="btn-teal"
+                                            style={{ flex: 1 }}
+                                        >
+                                            Siguiente
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -773,7 +802,7 @@ export default function Dashboard() {
                             {/* ── SONG LIST & UPLOAD ── */}
                             {(activeTab === 'home' || activeTab === 'songs') && (
                                 <section>
-                                    {activeTab === 'songs' && (
+                                    {!isNativeApp() && activeTab === 'songs' && (
                                         <div
                                             onClick={() => fileInputRef.current.click()}
                                             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
