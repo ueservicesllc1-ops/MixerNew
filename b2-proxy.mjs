@@ -120,8 +120,11 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
             file.mimetype === 'audio/mp3' ||
             file.originalname.toLowerCase().endsWith('.mp3');
 
-        if (isMp3) {
-            console.log("⏩ Saltando transcodificación (ya es MP3)");
+        const isImage = file.mimetype?.startsWith('image/') ||
+            /\.(png|jpe?g|gif|webp)$/i.test(file.originalname);
+
+        if (isMp3 || isImage) {
+            console.log(`⏩ Saltando transcodificación (es ${isImage ? 'Imagen' : 'MP3'})`);
             mp3Buffer = file.buffer;
         } else {
             console.log("🔄 Transcodificando a MP3...");
@@ -140,12 +143,18 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
 
         // 4. Calculate required B2 metadata (SHA1 and Length)
         const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
+
+        let contentType = 'audio/mpeg';
+        if (typeof isImage !== 'undefined' && isImage) {
+            contentType = file.mimetype || 'image/jpeg';
+        }
+
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': uploadNode.authorizationToken,
                 'X-Bz-File-Name': encodeURI(b2Filename),
-                'Content-Type': 'audio/mpeg',
+                'Content-Type': contentType,
                 'X-Bz-Content-Sha1': sha1,
                 'Content-Length': mp3Buffer.length
             },

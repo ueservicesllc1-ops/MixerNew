@@ -327,7 +327,7 @@ export default function Vendedores() {
     };
 
     const initialOptions = {
-        "client-id": "AZe-8u1_PHR_J1-XPHRjL4U10placeholder",
+        "client-id": "AbXQ6fanTIWx-dAoMagwbOTZ_M51YI4A-Dwzf2AY2CyIG7qNhV8QIiXuyBX-fina0FUxgTs8euJuAGc3",
         "intent": "subscription",
         "vault": true
     };
@@ -378,20 +378,20 @@ export default function Vendedores() {
                                 <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '30px' }}>Datos del Vendedor</h2>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
                                     <div><label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px' }}>NOMBRE</label>
-                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', textAlign: 'left' }} value={regForm.firstName} onChange={e => setRegForm({ ...regForm, firstName: e.target.value })} />
+                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', color: '#1e293b', textAlign: 'left' }} value={regForm.firstName} onChange={e => setRegForm({ ...regForm, firstName: e.target.value })} />
                                     </div>
                                     <div><label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px' }}>APELLIDO</label>
-                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', textAlign: 'left' }} value={regForm.lastName} onChange={e => setRegForm({ ...regForm, lastName: e.target.value })} />
+                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', color: '#1e293b', textAlign: 'left' }} value={regForm.lastName} onChange={e => setRegForm({ ...regForm, lastName: e.target.value })} />
                                     </div>
                                     <div><label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px' }}>TELÉFONO</label>
-                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', textAlign: 'left' }} value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} />
+                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', color: '#1e293b', textAlign: 'left' }} value={regForm.phone} onChange={e => setRegForm({ ...regForm, phone: e.target.value })} />
                                     </div>
                                     <div><label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px' }}>NÚMERO DE CÉDULA / ID</label>
-                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', textAlign: 'left' }} value={regForm.cedula} onChange={e => setRegForm({ ...regForm, cedula: e.target.value })} />
+                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', color: '#1e293b', textAlign: 'left' }} value={regForm.cedula} onChange={e => setRegForm({ ...regForm, cedula: e.target.value })} />
                                     </div>
                                     <div style={{ gridColumn: 'span 2' }}>
                                         <label style={{ fontSize: '0.8rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px' }}>EMAIL DE CONTACTO</label>
-                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', textAlign: 'left' }} value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} />
+                                        <input className="btn-ghost" style={{ width: '100%', background: '#f8fafc', color: '#1e293b', textAlign: 'left' }} value={regForm.email} onChange={e => setRegForm({ ...regForm, email: e.target.value })} />
                                     </div>
                                 </div>
 
