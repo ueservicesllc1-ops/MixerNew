@@ -328,8 +328,7 @@ export default function Vendedores() {
 
     const initialOptions = {
         "client-id": "AbXQ6fanTIWx-dAoMagwbOTZ_M51YI4A-Dwzf2AY2CyIG7qNhV8QIiXuyBX-fina0FUxgTs8euJuAGc3",
-        "intent": "subscription",
-        "vault": true
+        "currency": "USD"
     };
 
     if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}><div className="loader"></div></div>;
@@ -436,12 +435,23 @@ export default function Vendedores() {
                                 <div style={{ margin: '0 auto 30px', maxWidth: '400px' }}>
                                     <PayPalButtons
                                         style={{ layout: "vertical", shape: "pill" }}
-                                        createSubscription={(data, actions) => {
-                                            return actions.subscription.create({
-                                                plan_id: 'P-0DC89752A0814361YNGW2OYQ'
+                                        createOrder={(data, actions) => {
+                                            return actions.order.create({
+                                                purchase_units: [
+                                                    {
+                                                        description: "Suscripción Vendedor MixCommunity",
+                                                        amount: {
+                                                            currency_code: "USD",
+                                                            value: "1.99",
+                                                        },
+                                                    },
+                                                ],
                                             });
                                         }}
-                                        onApprove={(data, actions) => handleCompleteRegistration(data)}
+                                        onApprove={async (data, actions) => {
+                                            const order = await actions.order.capture();
+                                            handleCompleteRegistration({ orderId: order.id });
+                                        }}
                                         onError={(err) => alert("Error en el pago: " + err.message)}
                                     />
                                 </div>
