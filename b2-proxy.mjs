@@ -114,20 +114,29 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
         // 1. Write original buffer to disk
         fs.writeFileSync(tempInputPath, file.buffer);
 
-        // 2. Transcode to MP3 (Safe Choice)
-        await new Promise((resolve, reject) => {
-            ffmpeg()
-                .input(tempInputPath)
-                .audioCodec('libmp3lame')
-                .audioBitrate('128k')
-                .output(tempOutputPath)
-                .on('end', () => resolve())
-                .on('error', (err) => reject(err))
-                .run();
-        });
+        let mp3Buffer;
+        // 2. Transcode ONLY if not already MP3 (to save CPU/Time)
+        const isMp3 = file.mimetype === 'audio/mpeg' ||
+            file.mimetype === 'audio/mp3' ||
+            file.originalname.toLowerCase().endsWith('.mp3');
 
-        // 3. Read MP3 file into buffer
-        const mp3Buffer = fs.readFileSync(tempOutputPath);
+        if (isMp3) {
+            console.log("⏩ Saltando transcodificación (ya es MP3)");
+            mp3Buffer = file.buffer;
+        } else {
+            console.log("🔄 Transcodificando a MP3...");
+            await new Promise((resolve, reject) => {
+                ffmpeg()
+                    .input(tempInputPath)
+                    .audioCodec('libmp3lame')
+                    .audioBitrate('128k')
+                    .output(tempOutputPath)
+                    .on('end', () => resolve())
+                    .on('error', (err) => reject(err))
+                    .run();
+            });
+            mp3Buffer = fs.readFileSync(tempOutputPath);
+        }
 
         // 4. Calculate required B2 metadata (SHA1 and Length)
         const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');

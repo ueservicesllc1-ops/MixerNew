@@ -93,6 +93,7 @@ export default function Dashboard() {
     const [fileList, setFileList] = useState([]);
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [currentUploadTrack, setCurrentUploadTrack] = useState(''); // Nuevo: Tracking de pista actual
 
     const [songName, setSongName] = useState('');
     const [artist, setArtist] = useState('');
@@ -229,6 +230,10 @@ export default function Dashboard() {
         if (!file) return;
         const zip = new JSZip();
         try {
+            // Reset states from previous upload to avoid leakage
+            setSongName(''); setArtist(''); setSongKey(''); setTempo('');
+            setTimeSignature(''); setLyrics(''); setChords(''); setFileList([]);
+
             const cleanName = file.name.replace(/\.zip$/i, '');
             const parts = cleanName.split('-').map(p => p.trim());
 
@@ -267,48 +272,100 @@ export default function Dashboard() {
         setIsUploading(true);
         setStep('uploading');
         const uploadedTracksInfo = [];
+        const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+            ? 'http://localhost:3001'
+            : 'https://mixernew-production.up.railway.app';
+
+        const uploadFile = (blob, fileName, displayName, originalName, onProgress) => {
+            return new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                const formData = new FormData();
+                formData.append('audioFile', blob);
+                formData.append('fileName', fileName);
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        onProgress(e.loaded, e.total);
+                    }
+                });
+
+                xhr.onreadystatechange = () => {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                resolve(JSON.parse(xhr.responseText));
+                            } catch (e) { reject(new Error("Error parsing server response")); }
+                        } else {
+                            reject(new Error(`Error ${xhr.status}: ${xhr.responseText || 'Fallo en subida'}`));
+                        }
+                    }
+                };
+
+                xhr.onerror = () => reject(new Error("Error de red o conexión perdida"));
+                xhr.open('POST', `${devProxy}/upload`, true);
+                xhr.send(formData);
+            });
+        };
+
         try {
+            const totalSize = fileList.reduce((acc, f) => acc + f.blob.size, 0);
+            let totalLoaded = 0;
+            const trackProgress = {};
+
+            const updateOverallProgress = () => {
+                const currentLoaded = Object.values(trackProgress).reduce((a, b) => a + b, 0);
+                const percent = Math.round((currentLoaded / totalSize) * 100);
+                setUploadProgress(Math.min(95, percent)); // 95% is max until everything finishes
+            };
+
+            // Subir secuencialmente para conexiones inestables (Ecuador)
             for (let i = 0; i < fileList.length; i++) {
                 const track = fileList[i];
-                const formData = new FormData();
-                formData.append('audioFile', track.blob);
+                setCurrentUploadTrack(track.displayName || 'Pista');
+
                 const safeName = songName.replace(/\s+/g, '_');
-                const safeTrackName = track.displayName.replace(/\s+/g, '_');
+                const safeTrackName = (track.displayName || 'track').replace(/\s+/g, '_');
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.mp3`;
-                formData.append('fileName', b2Filename);
-                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? 'http://localhost:3001'
-                    : 'https://mixernew-production.up.railway.app';
-                const uploadRes = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
-                if (!uploadRes.ok) {
-                    const errorText = await uploadRes.text();
-                    throw new Error(`Error en el servidor (${uploadRes.status}): ${errorText || 'Fallo al subir pista'}`);
-                }
-                const uploadData = await uploadRes.json();
+
+                const data = await uploadFile(
+                    track.blob,
+                    b2Filename,
+                    track.displayName,
+                    track.originalName,
+                    (loaded, total) => {
+                        trackProgress[i] = loaded;
+                        updateOverallProgress();
+                    }
+                );
+
                 uploadedTracksInfo.push({
                     name: track.displayName || 'Pista',
                     originalName: track.originalName || 'file',
-                    url: uploadData.url || '',
-                    b2FileId: uploadData.fileId || '',
+                    url: data.url || '',
+                    b2FileId: data.fileId || '',
                     sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
                 });
-                setUploadProgress(Math.round(((i + 1) / (fileList.length + 1)) * 100));
             }
+
+            // Generar preview Mix
+            setCurrentUploadTrack('Generando Mix de Previsualización...');
+            setUploadProgress(96);
             const mixBlob = await generateMixBlob(fileList);
             if (mixBlob) {
-                const formData = new FormData();
-                formData.append('audioFile', mixBlob);
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${songName.replace(/\s+/g, '_')}__PreviewMix.mp3`;
-                formData.append('fileName', b2Filename);
-                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? 'http://localhost:3001'
-                    : 'https://mixernew-production.up.railway.app';
-                const res = await fetch(`${devProxy}/upload`, { method: 'POST', body: formData });
-                if (res.ok) {
-                    const data = await res.json();
-                    uploadedTracksInfo.push({ name: '__PreviewMix', url: data.url, b2FileId: data.fileId, isWaveformSource: true, sizeMB: (mixBlob.size / 1024 / 1024).toFixed(2) });
-                }
+                const data = await uploadFile(mixBlob, b2Filename, '__PreviewMix', 'preview.mp3', () => { });
+                uploadedTracksInfo.push({
+                    name: '__PreviewMix',
+                    url: data.url,
+                    b2FileId: data.fileId,
+                    isWaveformSource: true,
+                    sizeMB: (mixBlob.size / 1024 / 1024).toFixed(2)
+                });
             }
+            setCurrentUploadTrack('Finalizando...');
+            setUploadProgress(98);
+
             const songDoc = await addDoc(collection(db, 'songs'), {
                 name: songName || 'Sin título',
                 artist: artist || 'Desconocido',
@@ -323,13 +380,15 @@ export default function Dashboard() {
                 createdAt: serverTimestamp(),
                 isGlobal: false
             });
+
             if (lyrics && lyrics.trim()) await addDoc(collection(db, 'lyrics'), { songId: songDoc.id, text: lyrics, updatedAt: serverTimestamp() });
             if (chords && chords.trim()) await addDoc(collection(db, 'chords'), { songId: songDoc.id, text: chords, updatedAt: serverTimestamp() });
+
             setStep('done');
             setTimeout(() => { resetWizard(); setActiveTab('home'); }, 2000);
         } catch (e) {
             console.error("Error completo de subida:", e);
-            alert("Ocurrió un error: " + (e.message || "Error desconocido"));
+            alert("Ocurrió un error en la subida: " + (e.message || "Revisa tu conexión"));
             setStep('details');
         } finally {
             setIsUploading(false);
@@ -657,8 +716,12 @@ export default function Dashboard() {
                             {step === 'uploading' && (
                                 <div style={{ textAlign: 'center', padding: '40px' }}>
                                     <Loader2 size={48} className="animate-spin" color="#00d2d3" style={{ margin: '0 auto 20px' }} />
-                                    <h2>Subiendo {uploadProgress}%</h2>
-                                    <p style={{ color: '#64748b' }}>Por favor, no cierres esta ventana.</p>
+                                    <h2 style={{ color: '#00d2d3', marginBottom: '10px' }}>Subiendo: {uploadProgress}%</h2>
+                                    <p style={{ fontWeight: '800', color: 'white', fontSize: '1.2rem', marginBottom: '20px' }}>
+                                        {currentUploadTrack}
+                                    </p>
+                                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>IMPORTANTE: Si tu conexión es lenta, esto puede tardar varios minutos.</p>
+                                    <p style={{ color: '#64748b', fontSize: '0.9rem' }}>El servidor está procesando cada pista individualmente para Zion Mixer.</p>
                                 </div>
                             )}
                             {step === 'done' && (
