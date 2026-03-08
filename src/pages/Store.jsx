@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { ShoppingCart, Search, Music2, Globe, ArrowLeft, Headphones } from 'lucide-react';
+import Footer from '../components/Footer';
 
 export default function Store() {
     const navigate = useNavigate();
@@ -91,6 +92,7 @@ export default function Store() {
                     ))}
                 </div>
             </div>
+            <Footer />
         </div>
     );
 }

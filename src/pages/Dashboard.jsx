@@ -104,6 +104,8 @@ export default function Dashboard() {
     const [isLyricsModalOpen, setIsLyricsModalOpen] = useState(false);
     const [isChordsModalOpen, setIsChordsModalOpen] = useState(false);
     const [editingSongId, setEditingSongId] = useState(null);
+    const [importUrl, setImportUrl] = useState('');
+    const [isScraping, setIsScraping] = useState(false);
 
     const [editingLyricsSong, setEditingLyricsSong] = useState(null);
     const [tempLyrics, setTempLyrics] = useState('');
@@ -405,6 +407,31 @@ export default function Dashboard() {
         } catch (e) { console.error(e); alert("Error saving chords"); }
     };
 
+    const handleSmartImport = async () => {
+        if (!importUrl) return;
+        console.log("🚀 Iniciando importación inteligente para:", importUrl);
+        setIsScraping(true);
+        setChords(''); // Limpiar contenido anterior para dar feedback visual
+        try {
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001'
+                : 'https://mixernew-production.up.railway.app';
+
+            const res = await fetch(`${devProxy}/scrape-chords?url=${encodeURIComponent(importUrl)}`);
+            if (!res.ok) throw new Error("Error al obtener el contenido");
+            const data = await res.json();
+            if (data.content) {
+                setChords(data.content);
+                setImportUrl('');
+            }
+        } catch (e) {
+            alert("No se pudo importar automáticamente. Prueba copiar y pegar manualmente.");
+            console.error(e);
+        } finally {
+            setIsScraping(false);
+        }
+    };
+
     const handleDeleteSetlist = async (id) => {
         if (!window.confirm("¿Eliminar este setlist?")) return;
         try {
@@ -599,6 +626,7 @@ export default function Dashboard() {
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>KEY</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={songKey} onChange={e => setSongKey(e.target.value)} /></div>
                                         <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>TEMPO (BPM)</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={tempo} onChange={e => setTempo(e.target.value)} /></div>
+                                        <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>COMPÁS</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box' }} value={timeSignature} onChange={e => setTimeSignature(e.target.value)} placeholder="Ej: 4/4" /></div>
                                     </div>
 
                                     <div style={{ display: 'flex', gap: '15px', marginBottom: '24px' }}>
@@ -868,6 +896,8 @@ export default function Dashboard() {
                                                         <div>{song.key && <span style={{ color: '#f1c40f', fontWeight: '700', background: 'rgba(241,196,15,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}</div>
                                                         <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
                                                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                                                            <button onClick={(e) => { e.stopPropagation(); openLyricsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }} title="Letras"><ScrollText size={18} /></button>
+                                                            <button onClick={(e) => { e.stopPropagation(); openChordsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }} title="Cifrados"><Music size={18} /></button>
                                                             <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
                                                         </div>
                                                     </div>
@@ -1147,12 +1177,29 @@ export default function Dashboard() {
                         <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '700px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
                             <button onClick={() => setIsChordsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={24} /></button>
                             <h2 style={{ marginBottom: '10px' }}>Agregar Cifrado</h2>
-                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega o escribe el cifrado/acordes aquí.</p>
+                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega el cifrado o usa la importación inteligente.</p>
+
+                            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                                <input
+                                    value={importUrl}
+                                    onChange={e => setImportUrl(e.target.value)}
+                                    placeholder="URL de LaCuerda.net u otros..."
+                                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'white', padding: '12px' }}
+                                />
+                                <button
+                                    onClick={handleSmartImport}
+                                    disabled={isScraping || !importUrl}
+                                    style={{ background: '#00d2d3', color: 'black', border: 'none', padding: '0 20px', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', opacity: (isScraping || !importUrl) ? 0.5 : 1 }}
+                                >
+                                    {isScraping ? 'Importando...' : 'Importar URL'}
+                                </button>
+                            </div>
+
                             <textarea
                                 value={chords}
                                 onChange={(e) => setChords(e.target.value)}
-                                placeholder="Escribe los acordes aquí..."
-                                style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
+                                placeholder="Escribe o pega los acordes aquí..."
+                                style={{ width: '100%', height: '300px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
                             />
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
                                 <button onClick={() => { setIsChordsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Mail, Send, CheckCircle2, MessageSquare, Phone, MapPin } from 'lucide-react';
+import Footer from '../components/Footer';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -142,6 +143,7 @@ export default function Contact() {
                     )}
                 </div>
             </div>
+            <Footer />
         </div>
     );
 }

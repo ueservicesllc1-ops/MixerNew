@@ -5,6 +5,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithP
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera } from 'lucide-react';
+import Footer from '../components/Footer';
 
 export default function Landing() {
     const navigate = useNavigate();
@@ -498,42 +499,55 @@ export default function Landing() {
                 </div>
             </section>
 
-            {/* FOOTER */}
-            <footer style={{ backgroundColor: '#020617', padding: '60px 60px 30px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '30px', marginBottom: '40px' }}>
-                        {/* Brand */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '32px' }} />
-                            <div>
-                                <div style={{ fontSize: '0.7rem', color: '#64748b', letterSpacing: '1px', textTransform: 'uppercase' }}>by Freedom Labs</div>
+            {/* PRE-FOOTER / PARTNERS FEATURE */}
+            <section style={{ padding: '100px 40px', backgroundColor: '#0f172a', borderTop: '1px solid rgba(255,255,255,0.02)' }}>
+                <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '60px', alignItems: 'center' }}>
+                        <div style={{ textAlign: 'left' }}>
+                            <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px', textTransform: 'uppercase' }}>EL ESTÁNDAR DE LA INDUSTRIA</div>
+                            <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>
+                                Un ecosistema diseñado para servir.
+                            </h2>
+                            <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.8', marginBottom: '32px' }}>
+                                Nuestra misión es simplificar tu domingo. Importa tus propios tracks, gestiona tus setlists en la nube y mezcla en vivo con la potencia del motor nativo más avanzado del mercado.
+                            </p>
+                            <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Cloud</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Sincronización Total</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Native</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Audio Engine v2.0</div>
+                                </div>
+                                <div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Multi</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>iOS, Android & Web</div>
+                                </div>
                             </div>
                         </div>
-                        {/* Links */}
-                        <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-                            {[
-                                { label: 'Políticas de Privacidad', path: '/privacy' },
-                                { label: 'Términos y Condiciones', path: '/terms' },
-                                { label: 'Contacto', path: '/contact' },
-                                { label: 'Nosotros', path: '/about' },
-                            ].map(link => (
-                                <span
-                                    key={link.label}
-                                    onClick={() => navigate(link.path)}
-                                    style={{ color: '#64748b', fontSize: '0.9rem', textDecoration: 'none', transition: 'color 0.2s', cursor: 'pointer' }}
-                                    onMouseEnter={e => e.target.style.color = '#e2e8f0'}
-                                    onMouseLeave={e => e.target.style.color = '#64748b'}
-                                >
-                                    {link.label}
-                                </span>
-                            ))}
+
+                        <div style={{ backgroundColor: '#1e293b', borderRadius: '32px', padding: '40px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' }}>
+                            <div style={{ position: 'relative', zIndex: 1 }}>
+                                <h3 style={{ color: 'white', fontSize: '1.4rem', fontWeight: '800', marginBottom: '20px' }}>Estandares Profesionales</h3>
+                                <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '30px' }}>Zion Stage está construido sobre las tecnologías que prefieren los profesionales.</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+                                    {['Multi-Track Ready', 'Cloud Sync', 'Low Latency', 'Auto Mixing'].map((p, i) => (
+                                        <div key={i} style={{ backgroundColor: 'rgba(0,210,211,0.03)', padding: '16px', borderRadius: '12px', color: '#00d2d3', fontSize: '0.9rem', fontWeight: '700', border: '1px solid rgba(0,210,211,0.1)' }}>
+                                            {p}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            {/* Decorative glow */}
+                            <div style={{ position: 'absolute', top: '-50px', right: '-50px', width: '200px', height: '200px', background: 'radial-gradient(circle, rgba(0,210,211,0.15), transparent)', borderRadius: '50%', filter: 'blur(40px)' }} />
                         </div>
                     </div>
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '24px', textAlign: 'center', color: '#334155', fontSize: '0.8rem' }}>
-                        © 2026 Freedom Labs LLC · Zion Stage. Todos los derechos reservados.
-                    </div>
                 </div>
-            </footer>
+            </section>
+
+            {/* FOOTER */}
+            <Footer />
 
             {/* FULLSCREEN AUTH OVERLAY (Improved Design) */}
             {showLoginPanel && (

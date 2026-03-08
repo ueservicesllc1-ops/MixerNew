@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Layers, Users, Heart, Globe, Music2, Zap } from 'lucide-react';
+import Footer from '../components/Footer';
 
 export default function About() {
     const navigate = useNavigate();
@@ -135,6 +136,7 @@ export default function About() {
                     </button>
                 </div>
             </div>
+            <Footer />
         </div>
     );
 }

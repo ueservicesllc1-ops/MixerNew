@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText } from 'lucide-react';
+import Footer from '../components/Footer';
 
 const Section = ({ title, children }) => (
     <div style={{ marginBottom: '32px' }}>
@@ -118,11 +119,8 @@ export default function Terms() {
                 <Section title="11. Cambios a los Términos">
                     <p>Nos reservamos el derecho de actualizar estos términos. Los cambios sustanciales serán comunicados con al menos 30 días de anticipación por correo electrónico. El uso continuado de la plataforma tras la entrada en vigor de los nuevos términos implica su aceptación.</p>
                 </Section>
-
-                <div style={{ marginTop: '60px', padding: '24px', background: 'rgba(155,89,182,0.05)', border: '1px solid rgba(155,89,182,0.15)', borderRadius: '12px', fontSize: '0.85rem', color: '#64748b', textAlign: 'center' }}>
-                    © 2026 Freedom Labs LLC. Todos los derechos reservados. Zion Stage es una marca registrada de Freedom Labs.
-                </div>
             </div>
+            <Footer />
         </div>
     );
 }

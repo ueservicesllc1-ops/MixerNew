@@ -1341,7 +1341,7 @@ export default function Multitrack() {
                                 lineHeight: 1,
                                 transition: 'color 0.4s'
                             }}>{countdown}</span>
-                            <span style={{ fontSize: '0.72rem', color: '#ffffff55', marginTop: '4px', letterSpacing: '1.5px', textTransform: 'uppercase' }}>seg</span>
+
                         </div>
                     </div>
 

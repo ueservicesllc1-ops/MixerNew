@@ -4,7 +4,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     function isAdmin() {
-      return request.auth != null && request.auth.token.email == 'ueservicesllc1@gmail.com';
+      return request.auth != null && 
+             request.auth.token.email != null && 
+             request.auth.token.email.lower() == 'ueservicesllc1@gmail.com';
     }
 
     // ── USERS: owner or admin
@@ -18,10 +20,16 @@ service cloud.firestore {
       allow create: if (request.auth != null && request.resource.data.userId == request.auth.uid) || isAdmin();
     }
 
-    // ── SONGS: any authenticated user can read; write own songs or admin
+    // ── SONGS: any authenticated user can read; write admin or owner
     match /songs/{songId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null;
+      allow write: if isAdmin() || (request.auth != null && (resource == null || resource.data.userEmail == request.auth.token.email));
+    }
+
+    // ── MASTER_ARTISTS: admin can manage, any authenticated can read
+    match /master_artists/{docId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
     }
 
     // ── LYRICS: authenticated users
@@ -34,8 +42,7 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
-    // ── CONTACTS: anyone can create (contact form, no login required);
-    //              only admin can read
+    // ── CONTACTS: anyone can create; only admin can read
     match /contacts/{doc} {
       allow create: if true;
       allow read, update, delete: if isAdmin();

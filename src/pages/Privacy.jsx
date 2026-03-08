@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Shield } from 'lucide-react';
+import Footer from '../components/Footer';
 
 const Section = ({ title, children }) => (
     <div style={{ marginBottom: '32px' }}>
@@ -110,11 +111,8 @@ export default function Privacy() {
                         <li>Formulario de contacto en nuestra plataforma: <span onClick={() => navigate('/contact')} style={{ color: '#00d2d3', cursor: 'pointer', textDecoration: 'underline' }}>zionstage.app/contacto</span></li>
                     </ul>
                 </Section>
-
-                <div style={{ marginTop: '60px', padding: '24px', background: 'rgba(0,210,211,0.05)', border: '1px solid rgba(0,210,211,0.15)', borderRadius: '12px', fontSize: '0.85rem', color: '#64748b', textAlign: 'center' }}>
-                    © 2026 Freedom Labs LLC. Todos los derechos reservados. Zion Stage es una marca registrada de Freedom Labs.
-                </div>
             </div>
+            <Footer />
         </div>
     );
 }
