@@ -438,7 +438,7 @@ export default function Vendedores() {
                                         style={{ layout: "vertical", shape: "pill" }}
                                         createSubscription={(data, actions) => {
                                             return actions.subscription.create({
-                                                plan_id: 'P-SELLER_PROMO_PLAN'
+                                                plan_id: 'P-0DC89752A0814361YNGW2OYQ'
                                             });
                                         }}
                                         onApprove={(data, actions) => handleCompleteRegistration(data)}
