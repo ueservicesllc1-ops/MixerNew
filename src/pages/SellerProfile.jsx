@@ -23,29 +23,30 @@ export default function SellerProfile() {
                     setSeller({ displayName: 'Vendedor Desconocido' });
                 }
 
-                // Fetch seller's songs
+                // Fetch seller's songs (todo lo que sea global o para venta)
                 const q = query(
                     collection(db, 'songs'),
-                    where('userId', '==', id),
-                    where('forSale', '==', true)
+                    where('userId', '==', id)
                 );
-
+                
                 const querySnapshot = await getDocs(q);
                 const songsData = [];
+                const loggedUser = auth.currentUser;
+
                 querySnapshot.forEach((docSnap) => {
                     const data = docSnap.data();
-                    const isOwner = auth.currentUser && auth.currentUser.uid === id;
-
-                    // Mostrar si es activa O si soy el dueño viendo mi propia tienda
-                    if (data.status === 'active' || isOwner) {
+                    const isOwner = loggedUser && loggedUser.uid === id;
+                    // Mostrar si es global, para venta, o soy el dueño
+                    if (data.isGlobal || data.forSale || isOwner) {
                         songsData.push({ id: docSnap.id, ...data });
                     }
                 });
-                setSongs(songsData);
+                
+                // Ordenar: nuevos primero
+                setSongs(songsData.sort((a,b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
             } catch (error) {
                 console.error("Error fetching seller profile:", error);
             } finally {
-                setLoading(true); // Always set to true? No, should be false. Fix:
                 setLoading(false);
             }
         };

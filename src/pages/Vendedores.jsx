@@ -403,7 +403,9 @@ function Vendedores() {
             await addDoc(collection(db, 'songs'), {
                 name: songName,
                 artist: artist || userData?.displayName || 'Vendedor',
-                sellerName: userData?.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : (userData?.displayName || currentUser?.displayName || 'Vendedor Zion'),
+                sellerName: (userData?.firstName || userData?.lastName) 
+                    ? `${userData.firstName || ''} ${userData.lastName || ''}`.trim() 
+                    : (userData?.displayName || artist || currentUser?.displayName || 'Vendedor Zion'),
                 key: songKey,
                 tempo,
                 timeSignature,

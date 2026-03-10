@@ -6,8 +6,34 @@ import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2 } from 'lucide
 import Footer from '../components/Footer';
 
 const SongCard = ({ song, onBuy, navigate }) => {
+    const [realSellerName, setRealSellerName] = useState(song.sellerName || 'Vendedor Zion');
+
+    useEffect(() => {
+        // Si el nombre es genérico o nulo, intentar buscar el nombre real del usuario en Firestore
+        if (!song.sellerName || song.sellerName === 'Vendedor Zion') {
+            const fetchName = async () => {
+                try {
+                    const userSnap = await getDoc(doc(db, 'users', song.userId));
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        const fullName = userData.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : userData.displayName;
+                        if (fullName) setRealSellerName(fullName);
+                    }
+                } catch (e) { console.error("Error fetching seller name:", e); }
+            };
+            fetchName();
+        } else {
+            setRealSellerName(song.sellerName);
+        }
+    }, [song.sellerName, song.userId]);
+
     return (
-        <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', transition: 'transform 0.2s', cursor: 'pointer', height: '100%' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+        <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', transition: 'transform 0.2s', cursor: 'pointer', height: '100%', position: 'relative' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
+            {song.isPending && (
+                <div style={{ position: 'absolute', top: '10px', right: '10px', background: '#f59e0b', color: '#000', padding: '4px 10px', borderRadius: '20px', fontSize: '0.65rem', fontWeight: '900', zIndex: 10 }}>
+                    EN REVISIÓN
+                </div>
+            )}
             <div style={{ height: '180px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
                 {song.coverUrl ? (
                     <img src={song.coverUrl} alt={song.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -25,7 +51,7 @@ const SongCard = ({ song, onBuy, navigate }) => {
                     onClick={(e) => { e.stopPropagation(); navigate(`/seller/${song.userId}`); }}
                     style={{ color: '#00d2d3', fontSize: '0.8rem', marginBottom: '12px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 'bold' }}
                 >
-                    Vendido por: {song.sellerName || 'Vendedor Zion'} • <span style={{ textDecoration: 'underline' }}>Ver tienda</span>
+                    Vendido por: {realSellerName} • <span style={{ textDecoration: 'underline' }}>Ver tienda</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div style={{ fontSize: '1.2rem', fontWeight: '900', color: '#fff' }}>${song.price || '9.99'}</div>
