@@ -25,14 +25,7 @@ export default function Landing() {
     const [isAnnual, setIsAnnual] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
-    const [songsForSale, setSongsForSale] = useState([
-        { id: 'track1', name: 'RADIANT LIGHT', artist: 'Zion Stage Music', badge: 'MASTER', coverUrl: '/worship_album_cover_1_1772899057302.png', price: 9.99, demoUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3', tracks: [{ id: 't1', name: 'DRUMS', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' }, { id: 't2', name: 'GUITAR', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3' }] },
-        { id: 'track2', name: 'Firm Foundation', artist: 'Cody Carnes', badge: 'PREMIUM', coverUrl: 'https://picsum.photos/400/400?random=11', price: 12.99 },
-        { id: 'track3', name: 'House Of The Lord', artist: 'Phil Wickham', badge: 'MASTER', coverUrl: 'https://picsum.photos/400/400?random=12', price: 14.99 },
-        { id: 'track4', name: 'Gratitude', artist: 'Brandon Lake', badge: 'COMMUNITY', coverUrl: 'https://picsum.photos/400/400?random=13', price: 8.99 },
-        { id: 'track5', name: 'I Believe', artist: 'Phil Wickham', badge: 'MASTER', coverUrl: 'https://picsum.photos/400/400?random=14', price: 11.99 },
-        { id: 'track6', name: 'Washed', artist: 'Elevation Rhythm', badge: 'PREMIUM', coverUrl: 'https://picsum.photos/400/400?random=15', price: 10.99 }
-    ]);
+    const [songsForSale, setSongsForSale] = useState([]);
     const [previewSong, setPreviewSong] = useState(null);
     const [previewTracks, setPreviewTracks] = useState([]);
     const [previewLoading, setPreviewLoading] = useState(false);
@@ -98,23 +91,21 @@ export default function Landing() {
 
         const fetchSongs = async () => {
             try {
-                const q = query(collection(db, 'songs'), where('forSale', '==', true), limit(12));
+                const q = query(collection(db, 'songs'), where('forSale', '==', true), limit(20));
                 const snap = await getDocs(q);
                 if (!snap.empty) {
-                    setSongsForSale(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    // Ordenar por fecha: nuevos arriba para que el Top 10 sea "lo más reciente"
+                    const sorted = fetched.sort((a, b) => {
+                        const timeA = a.createdAt?.toMillis() || 0;
+                        const timeB = b.createdAt?.toMillis() || 0;
+                        return timeB - timeA;
+                    });
+                    setSongsForSale(sorted);
                 } else {
-                    // Fallback placeholders if DB is empty
-                    setSongsForSale([
-                        { name: 'RADIANT LIGHT', artist: 'Zion Stage Music', badge: 'MASTER', coverUrl: '/worship_album_cover_1_1772899057302.png', price: 9.99 },
-                        { name: 'Firm Foundation', artist: 'Cody Carnes', badge: 'PREMIUM', coverUrl: 'https://picsum.photos/300/300?random=11', price: 12.99 },
-                        { name: 'House Of The Lord', artist: 'Phil Wickham', badge: 'MASTER', coverUrl: 'https://picsum.photos/300/300?random=12', price: 14.99 },
-                        { name: 'Gratitude', artist: 'Brandon Lake', badge: 'COMMUNITY', coverUrl: 'https://picsum.photos/300/300?random=13', price: 8.99 },
-                        { name: 'I Believe', artist: 'Phil Wickham', badge: 'MASTER', coverUrl: 'https://picsum.photos/300/300?random=14', price: 11.99 },
-                        { name: 'Washed', artist: 'Elevation Rhythm', badge: 'PREMIUM', coverUrl: 'https://picsum.photos/300/300?random=15', price: 10.99 }
-                    ]);
+                    setSongsForSale([]);
                 }
             } catch (err) {
-                console.error("Error fetching songs:", err);
                 // Maintain placeholders if there's an error
             }
         };
@@ -148,12 +139,16 @@ export default function Landing() {
             await audioEngine.clear();
             previewEngineRef.current = audioEngine;
 
-            const useClips = song.tracks && song.tracks.some(t => t.previewUrl && t.previewUrl !== t.url);
+            // Logic similar to Store.jsx for consistent behavior
+            const validTracks = song.tracks?.filter(t => t.name !== '__PreviewMix') || [];
+            const isUsingPreviewMixOnly = validTracks.length === 0;
+            const useClips = isUsingPreviewMixOnly || validTracks.some(t => t.previewUrl && t.previewUrl !== t.url);
+            
             console.log(useClips ? "🚀 Usando clips recortados (Carga rápida)" : "🐌 Usando tracks completos (Carga lenta)");
 
-            const rawTracks = (song.tracks && song.tracks.length > 0)
-                ? song.tracks.map(t => ({ id: t.id || Math.random().toString(), name: t.name || 'UNNAMED', url: (useClips ? t.previewUrl : t.url) || t.url }))
-                : [
+            const rawTracks = (!isUsingPreviewMixOnly)
+                ? validTracks.map(t => ({ id: t.id || Math.random().toString(), name: t.name || 'UNNAMED', url: (useClips ? t.previewUrl : t.url) || t.url }))
+                : song.tracks?.filter(t => t.name === '__PreviewMix').map(t => ({ id: 'preview', name: 'DEMO CLIP', url: t.url || t.previewUrl })) || [
                     { id: 'full_demo', name: 'FULL MIX DEMO', url: song.demoUrl || '/pads/E.mp3' }
                 ];
 
@@ -619,7 +614,22 @@ export default function Landing() {
                         <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>Pistas en Venta</h2>
                         <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Lleva tu servicio al siguiente nivel con nuestras multipistas.</p>
                     </div>
-                    <div style={{ display: 'flex', gap: '15px' }}>
+                    <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                        <button 
+                            onClick={() => navigate('/store')} 
+                            className="btn-ghost" 
+                            style={{ 
+                                padding: '10px 20px', 
+                                border: '1px solid #00d2d3', 
+                                color: '#00d2d3', 
+                                fontSize: '0.9rem', 
+                                fontWeight: '700',
+                                borderRadius: '12px'
+                            }}
+                        >
+                            ENTRAR A LA TIENDA
+                        </button>
+                        <div style={{ width: '1px', height: '30px', background: 'rgba(255,255,255,0.1)', margin: '0 10px' }}></div>
                         <button onClick={() => scrollCarousel('left')} style={{ width: '45px', height: '45px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={24} /></button>
                         <button onClick={() => scrollCarousel('right')} style={{ width: '45px', height: '45px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={24} /></button>
                     </div>
@@ -644,8 +654,8 @@ export default function Landing() {
                             className="card-compact"
                             onClick={() => navigate('/store')}
                             style={{
-                                minWidth: '140px',
-                                flexShrink: 0,
+                                width: '160px',
+                                flex: '0 0 160px',
                                 transform: 'translateY(0)',
                                 transition: 'all 0.3s ease',
                                 cursor: 'pointer',
@@ -656,7 +666,7 @@ export default function Landing() {
                             }}
                         >
                             <div style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', marginBottom: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-                                <img src={track.coverUrl || 'https://picsum.photos/300/300?random=' + i} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={track.name} />
+                                <img src={track.coverUrl || '/generic_cover.png'} style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: track.coverUrl ? 1 : 0.8 }} alt={track.name} />
                                 <div style={{ position: 'absolute', top: '5px', right: '5px', background: track.badge === 'MASTER' ? '#00d2d3' : (track.badge === 'PREMIUM' ? '#f59e0b' : '#1e293b'), color: 'white', fontSize: '0.45rem', fontWeight: '900', padding: '2px 5px', borderRadius: '3px', letterSpacing: '0.3px' }}>
                                     {track.badge || 'MASTER'}
                                 </div>
@@ -677,7 +687,7 @@ export default function Landing() {
                         </div>
                     ))}
                 </div>
-            </section >
+            </section>
 
             {/* INFO SECTION: BEYOND THE TRACKS */}
             < section style={{ backgroundColor: '#020617', padding: '100px 60px' }}>
@@ -717,40 +727,42 @@ export default function Landing() {
                     <h2 style={{ textAlign: 'center', fontSize: '2.5rem', fontWeight: '800', marginBottom: '60px' }}>Top 10 de este Mes</h2>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
                         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
-                            {[
-                                { rank: 1, song: 'Washed', artist: 'Elevation Rhythm' },
-                                { rank: 2, song: 'Gratitude', artist: 'Brandon Lake' },
-                                { rank: 3, song: 'Joy Out Of Nowhere', artist: 'Seu Worship' },
-                                { rank: 4, song: 'Hold On To Me', artist: 'Lauren Daigle' },
-                                { rank: 5, song: 'Firm Foundation', artist: 'Cody Carnes' }
-                            ].map((s, i) => (
+                            {songsForSale.slice(0, 5).map((s, i) => (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '16px 0', borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: i === 0 ? '#00d2d3' : '#334155', width: '40px' }}>{s.rank}</span>
-                                    <div style={{ marginLeft: '12px' }}>
-                                        <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{s.song}</div>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: i === 0 ? '#00d2d3' : '#334155', width: '40px' }}>{i + 1}</span>
+                                    <div style={{ marginLeft: '12px', flex: 1, overflow: 'hidden' }}>
+                                        <div style={{ fontWeight: '700', fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                                         <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{s.artist}</div>
                                     </div>
-                                    <button className="btn-ghost" style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem' }}>Ver Pistas</button>
+                                    <button 
+                                        onClick={() => openPreview(s)}
+                                        className="btn-ghost" 
+                                        style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem', border: '1px solid rgba(0,210,211,0.3)', color: '#00d2d3' }}
+                                    >
+                                        Ver Pistas
+                                    </button>
                                 </div>
                             ))}
+                            {songsForSale.length === 0 && <p style={{ color: '#64748b', textAlign: 'center' }}>Cargando canciones...</p>}
                         </div>
                         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
-                            {[
-                                { rank: 6, song: 'I Believe', artist: 'Phil Wickham' },
-                                { rank: 7, song: 'Holy Forever', artist: 'Chris Tomlin' },
-                                { rank: 8, song: 'Trust In God', artist: 'Elevation Worship' },
-                                { rank: 9, song: 'Always', artist: 'Kristian Stanfill' },
-                                { rank: 10, song: 'Praise', artist: 'Elevation Worship' }
-                            ].map((s, i) => (
+                            {songsForSale.slice(5, 10).map((s, i) => (
                                 <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '16px 0', borderBottom: i < 4 ? '1px solid rgba(255,255,255,0.05)' : 'none' }}>
-                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#334155', width: '40px' }}>{s.rank}</span>
-                                    <div style={{ marginLeft: '12px' }}>
-                                        <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{s.song}</div>
+                                    <span style={{ fontSize: '1.5rem', fontWeight: '900', color: '#334155', width: '40px' }}>{i + 6}</span>
+                                    <div style={{ marginLeft: '12px', flex: 1, overflow: 'hidden' }}>
+                                        <div style={{ fontWeight: '700', fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
                                         <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{s.artist}</div>
                                     </div>
-                                    <button className="btn-ghost" style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem' }}>Ver Pistas</button>
+                                    <button 
+                                        onClick={() => openPreview(s)}
+                                        className="btn-ghost" 
+                                        style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem', border: '1px solid rgba(0,210,211,0.3)', color: '#00d2d3' }}
+                                    >
+                                        Ver Pistas
+                                    </button>
                                 </div>
                             ))}
+                            {songsForSale.length <= 5 && songsForSale.length > 0 && <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>Más pistas próximamente...</p>}
                         </div>
                     </div>
                 </div>
@@ -914,8 +926,12 @@ export default function Landing() {
 
                             <div style={{ padding: '14px 25px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(0,210,211,0.3)' }}>
-                                        <img src={previewSong.coverUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(0,210,211,0.3)', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        {previewSong.coverUrl ? (
+                                            <img src={previewSong.coverUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                        ) : (
+                                            <Music2 size={20} color="#00d2d3" />
+                                        )}
                                     </div>
                                     <div>
                                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: '#00d2d3' }}>{previewSong.name}</h3>

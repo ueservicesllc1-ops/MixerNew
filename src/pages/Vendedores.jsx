@@ -349,7 +349,9 @@ function Vendedores() {
 
     const uploadToB2 = async () => {
         if (!songName.trim()) return alert('Nombre requerido');
+        if (!coverUrl) return alert('La portada es obligatoria para publicar una canción.');
         if (!currentUser) return;
+        
         setIsUploading(true);
         setStep('uploading');
         const uploadedTracksInfo = [];
