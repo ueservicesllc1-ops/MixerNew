@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2 } from 'lucide-react';
+import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2, Play, Pause, Loader2 } from 'lucide-react';
 import Footer from '../components/Footer';
 
-const SongCard = ({ song, onBuy, navigate }) => {
+const SongCard = ({ song, onBuy, navigate, playingSongId, setPlayingSongId }) => {
     const [realSellerName, setRealSellerName] = useState(song.sellerName || 'Vendedor Zion');
+    const isPlaying = playingSongId === song.id;
 
     useEffect(() => {
-        // Si el nombre es genérico o nulo, intentar buscar el nombre real del usuario en Firestore
         if (!song.sellerName || song.sellerName === 'Vendedor Zion') {
             const fetchName = async () => {
                 try {
@@ -27,6 +27,19 @@ const SongCard = ({ song, onBuy, navigate }) => {
         }
     }, [song.sellerName, song.userId]);
 
+    const handlePlayPreview = (e) => {
+        e.stopPropagation();
+        if (isPlaying) {
+            setPlayingSongId(null);
+        } else {
+            setPlayingSongId(song.id);
+        }
+    };
+
+    const previewUrl = song.tracks?.find(t => t.name === '__PreviewMix')?.previewUrl || 
+                      song.tracks?.find(t => t.name === '__PreviewMix')?.url ||
+                      song.tracks?.[0]?.previewUrl;
+
     return (
         <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', transition: 'transform 0.2s', cursor: 'pointer', height: '100%', position: 'relative' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
             {song.isPending && (
@@ -34,16 +47,55 @@ const SongCard = ({ song, onBuy, navigate }) => {
                     EN REVISIÓN
                 </div>
             )}
-            <div style={{ height: '180px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+            <div style={{ height: '180px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }} className="group">
                 {song.coverUrl ? (
-                    <img src={song.coverUrl} alt={song.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={song.coverUrl} alt={song.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'filter 0.3s' }} className="song-cover" />
                 ) : (
                     <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #13b5b6, #9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <Music2 size={48} color="rgba(255,255,255,0.3)" />
                     </div>
                 )}
-                <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '800', backdropFilter: 'blur(4px)' }}>{song.tempo ? `${song.tempo} BPM` : 'BPM variable'}</div>
+                
+                {/* Play Button Overlay */}
+                {previewUrl && (
+                    <div 
+                        onClick={handlePlayPreview}
+                        style={{ 
+                            position: 'absolute', 
+                            inset: 0, 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            background: isPlaying ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0)',
+                            transition: 'all 0.3s',
+                            opacity: isPlaying ? 1 : 0
+                        }} 
+                        className="play-overlay"
+                    >
+                        <div style={{ 
+                            width: '50px', 
+                            height: '50px', 
+                            borderRadius: '50%', 
+                            background: '#00d2d3', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center',
+                            color: '#000',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+                        }}>
+                            {isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" style={{ marginLeft: '4px' }} />}
+                        </div>
+                    </div>
+                )}
+
+                <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.7)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: '800', backdropFilter: 'blur(4px)', zIndex: 5 }}>{song.tempo ? `${song.tempo} BPM` : 'BPM variable'}</div>
             </div>
+            
+            <style>{`
+                .group:hover .song-cover { filter: brightness(0.5); }
+                .group:hover .play-overlay { opacity: 1 !important; background: rgba(0,0,0,0.3) !important; }
+            `}</style>
+
             <div style={{ padding: '15px' }}>
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '1rem', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.name}</h3>
                 <div style={{ color: '#94a3b8', fontSize: '0.8rem', marginBottom: '4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Artista: {song.artist}</div>
@@ -78,6 +130,34 @@ export default function Store() {
     const [cart, setCart] = useState([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [toast, setToast] = useState(null); // { message, type }
+    const [playingSongId, setPlayingSongId] = useState(null);
+    const [audio] = useState(new Audio());
+
+    useEffect(() => {
+        if (playingSongId) {
+            const song = storeSongs.find(s => s.id === playingSongId);
+            const previewUrl = song?.tracks?.find(t => t.name === '__PreviewMix')?.previewUrl || 
+                              song?.tracks?.find(t => t.name === '__PreviewMix')?.url ||
+                              song?.tracks?.[0]?.previewUrl;
+            
+            if (previewUrl) {
+                audio.src = previewUrl;
+                audio.play().catch(e => console.error("Error playing audio:", e));
+                
+                audio.onended = () => setPlayingSongId(null);
+            } else {
+                setPlayingSongId(null);
+            }
+        } else {
+            audio.pause();
+            audio.src = '';
+        }
+
+        return () => {
+            audio.pause();
+            audio.src = '';
+        };
+    }, [playingSongId, storeSongs, audio]);
 
     useEffect(() => {
         const savedCart = localStorage.getItem('zion_cart');
@@ -301,7 +381,14 @@ export default function Store() {
                         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '30px' }}>Resultados de búsqueda</h2>
                         <div className="store-grid" style={{ padding: '0' }}>
                             {filteredStore.map(song => (
-                                <SongCard key={song.id} song={song} onBuy={() => addToCart(song)} navigate={navigate} />
+                                <SongCard 
+                                    key={song.id} 
+                                    song={song} 
+                                    onBuy={() => addToCart(song)} 
+                                    navigate={navigate} 
+                                    playingSongId={playingSongId}
+                                    setPlayingSongId={setPlayingSongId}
+                                />
                             ))}
                         </div>
                     </div>
@@ -319,7 +406,13 @@ export default function Store() {
                                 {storeSongs.length > 0 ? (
                                     storeSongs.map(song => (
                                         <div key={song.id}>
-                                            <SongCard song={song} onBuy={() => addToCart(song)} navigate={navigate} />
+                                            <SongCard 
+                                                song={song} 
+                                                onBuy={() => addToCart(song)} 
+                                                navigate={navigate} 
+                                                playingSongId={playingSongId}
+                                                setPlayingSongId={setPlayingSongId}
+                                            />
                                         </div>
                                     ))
                                 ) : (
