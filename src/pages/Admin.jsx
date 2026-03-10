@@ -19,6 +19,9 @@ export default function Admin() {
     const [filterLetter, setFilterLetter] = useState('ALL'); // Nuevo: Filtro por letra
     const [editingSong, setEditingSong] = useState(null);
     const [editForm, setEditForm] = useState({ name: '', artist: '' });
+    const [coupons, setCoupons] = useState([]); // Nuevo: Gestión de cupones
+    const [newCouponCode, setNewCouponCode] = useState('');
+    const [newCouponDiscount, setNewCouponDiscount] = useState('');
 
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [artistSongs, setArtistSongs] = useState([]);
@@ -26,6 +29,7 @@ export default function Admin() {
     const [viewingChord, setViewingChord] = useState(null); // Nuevo: previsualizar cifrado
 
     const [isSyncing, setIsSyncing] = useState(false);
+    const [editingTracks, setEditingTracks] = useState(null); // Canción que estamos editando sus tracks
 
     useEffect(() => {
         const checkAdmin = auth.onAuthStateChanged((user) => {
@@ -78,6 +82,12 @@ export default function Admin() {
             snap.forEach(doc => sa.push({ id: doc.id, ...doc.data() }));
             setSellerApps(sa.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
         });
+
+        onSnapshot(collection(db, 'coupons'), (snap) => {
+            const cp = [];
+            snap.forEach(doc => cp.push({ id: doc.id, ...doc.data() }));
+            setCoupons(cp.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+        });
     };
 
     const approveSeller = async (userId) => {
@@ -104,6 +114,25 @@ export default function Admin() {
             await deleteDoc(doc(db, 'seller_applications', userId));
             alert("Vendedor eliminado.");
         } catch (e) { console.error(e); }
+    };
+
+    const toggleManualSeller = async (user) => {
+        const newState = !user.isSeller;
+        const msg = newState ? `¿Convertir a ${user.email} en VENDEDOR manualmente (sin pago)?` : `¿Quitar privilegios de vendedor a ${user.email}?`;
+        if (!window.confirm(msg)) return;
+
+        try {
+            await updateDoc(doc(db, 'users', user.id), {
+                isSeller: newState,
+                sellerStatus: newState ? 'active' : null,
+                isVipSeller: newState ? true : false,
+                updatedAt: serverTimestamp()
+            });
+            alert(newState ? "Privilegios otorgados." : "Privilegios removidos.");
+        } catch (e) {
+            console.error(e);
+            alert("Error al actualizar privilegios.");
+        }
     };
 
     const syncWithLaCuerda = async () => {
@@ -153,6 +182,32 @@ export default function Admin() {
         }
     };
 
+    const fixSellerNames = async () => {
+        if (!window.confirm("¿Actualizar nombres de vendedores en todas las pistas? Esto buscará el nombre real en el perfil de cada usuario.")) return;
+        setIsSyncing(true);
+        try {
+            let updatedCount = 0;
+            for (const s of songs) {
+                if (s.userId) {
+                    const u = users.find(user => user.id === s.userId);
+                    if (u) {
+                        const realName = u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : (u.displayName || u.email?.split('@')[0] || 'Vendedor Zion');
+                        if (s.sellerName !== realName) {
+                            await updateDoc(doc(db, 'songs', s.id), { sellerName: realName });
+                            updatedCount++;
+                        }
+                    }
+                }
+            }
+            alert(`✅ ¡Éxito! Se actualizaron ${updatedCount} canciones con nombres reales.`);
+        } catch (e) {
+            console.error(e);
+            alert("Error: " + e.message);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     const addMasterArtist = async () => {
         if (!newArtistName.trim()) return;
         try {
@@ -164,6 +219,28 @@ export default function Admin() {
         } catch (e) { alert("Error al agregar artista"); }
     };
 
+    const addCoupon = async () => {
+        if (!newCouponCode.trim() || !newCouponDiscount) return;
+        try {
+            await addDoc(collection(db, 'coupons'), {
+                code: newCouponCode.trim().toUpperCase(),
+                discount: parseInt(newCouponDiscount),
+                active: true,
+                createdAt: serverTimestamp()
+            });
+            setNewCouponCode('');
+            setNewCouponDiscount('');
+            alert("Cupón creado correctamente");
+        } catch (e) { alert("Error al crear cupón"); }
+    };
+
+    const deleteCoupon = async (id) => {
+        if (!window.confirm("¿Eliminar este cupón definitivamente?")) return;
+        try {
+            await deleteDoc(doc(db, 'coupons', id));
+        } catch (e) { console.error(e); }
+    };
+
     const deleteMasterArtist = async (id) => {
         if (!window.confirm("¿Eliminar este artista de la lista maestra?")) return;
         await deleteDoc(doc(db, 'master_artists', id));
@@ -173,6 +250,20 @@ export default function Admin() {
         try {
             await updateDoc(doc(db, 'songs', songId), { artist: artistName });
         } catch (e) { alert("Error al asignar artista"); }
+    };
+
+    const saveTrackNames = async () => {
+        if (!editingTracks) return;
+        try {
+            await updateDoc(doc(db, 'songs', editingTracks.id), {
+                tracks: editingTracks.tracks
+            });
+            alert("Nombres de tracks actualizados correctamente");
+            setEditingTracks(null);
+        } catch (e) {
+            console.error(e);
+            alert("Error al guardar cambios");
+        }
     };
 
     const fetchArtistSongs = async (artist) => {
@@ -261,15 +352,12 @@ export default function Admin() {
         }
     };
 
-    const approveSong = async (id) => {
-        if (!window.confirm("¿Aprobar esta canción para la venta en Zion Stage?")) return;
+    const toggleSongVisibility = async (id, currentStatus) => {
+        const newStatus = currentStatus === 'hidden' ? 'active' : 'hidden';
         try {
             await updateDoc(doc(db, 'songs', id), {
-                status: 'active',
-                isGlobal: true,
-                price: 9.99
+                status: newStatus
             });
-            alert('Canción aprobada y publicada.');
         } catch (error) { console.error(error); }
     };
 
@@ -288,7 +376,7 @@ export default function Admin() {
     if (loading) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}>Cargando Admin...</div>;
     if (!isAdmin) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}><ShieldAlert size={48} color="red" /><h2>Acceso Denegado</h2></div>;
 
-    const pendingSongs = songs.filter(s => s.status === 'pending' && s.useType === 'sell');
+    const forSaleSongs = songs.filter(s => s.forSale === true);
     const filteredSongs = songs.filter(s =>
         s.userEmail?.toLowerCase().includes(searchUser.toLowerCase()) ||
         s.name?.toLowerCase().includes(searchUser.toLowerCase()) ||
@@ -303,9 +391,10 @@ export default function Admin() {
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>
-                <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Ventas ({pendingSongs.length})</button>
+                <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Marketplace ({forSaleSongs.length})</button>
                 <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({users.filter(u => u.isSeller).length})</button>
                 <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({users.length})</button>
+                <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({coupons.length})</button>
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
                 <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({songs.length})</button>
@@ -326,7 +415,7 @@ export default function Admin() {
                             </button>
                         </div>
                         <div style={{ display: 'flex', gap: '10px' }}>
-                            <input value={newArtistName} onChange={e => setNewArtistName(e.target.value)} placeholder="Nombre del Artista Oficial..." style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                            <input value={newArtistName} onChange={e => setNewArtistName(e.target.value)} placeholder="Nombre del Artista Oficial..." style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: 'white', border: '1px solid #cbd5e1', color: 'black' }} />
                             <button onClick={addMasterArtist} className="btn-teal" style={{ padding: '0 30px' }}>Agregar Artista</button>
                         </div>
                     </div>
@@ -337,7 +426,7 @@ export default function Admin() {
                             placeholder="🔍 Buscar por nombre entre tus 1,300+ artistas..."
                             value={searchArtist}
                             onChange={e => { setSearchArtist(e.target.value); if (e.target.value) setFilterLetter('ALL'); }}
-                            style={{ width: '100%', padding: '15px 25px', borderRadius: '15px', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', fontSize: '1.1rem', marginBottom: '15px' }}
+                            style={{ width: '100%', padding: '15px 25px', borderRadius: '15px', background: 'white', border: '1px solid #cbd5e1', color: 'black', fontSize: '1.1rem', marginBottom: '15px' }}
                         />
 
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', justifyContent: 'center', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '10px' }}>
@@ -489,16 +578,59 @@ export default function Admin() {
                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Original: {s.artist || '—'}</div>
                                 </div>
                                 <div style={{ paddingRight: '20px' }}>
-                                    <select value={s.artist || ''} onChange={(e) => assignArtistToSong(s.id, e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: '#0f172a', color: 'white', border: '1px solid #334155' }}>
+                                    <select value={s.artist || ''} onChange={(e) => assignArtistToSong(s.id, e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'white', color: 'black', border: '1px solid #cbd5e1' }}>
                                         <option value="">-- Seleccionar --</option>
                                         {masterArtists.map(ma => <option key={ma.id} value={ma.name}>{ma.name}</option>)}
                                     </select>
                                 </div>
                                 <div style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.userEmail}</div>
-                                <button onClick={() => deleteSong(s.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', textAlign: 'right' }}><Trash2 size={20} /></button>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                    <button
+                                        onClick={() => setEditingTracks({
+                                            ...s,
+                                            tracks: s.tracks ? s.tracks.map(t => ({
+                                                ...t,
+                                                displayName: t.displayName || t.name || t.originalName || ''
+                                            })) : []
+                                        })}
+                                        style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                                    >
+                                        EDITAR TRACKS
+                                    </button>
+                                    <button onClick={() => deleteSong(s.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>
+                                </div>
                             </div>
                         ))}
                     </div>
+
+                    {editingTracks && (
+                        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+                            <div style={{ background: '#1e293b', width: '100%', maxWidth: '600px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                <h3 style={{ margin: '0 0 20px', color: '#00d2d3' }}>Editar nombres de tracks: {editingTracks.name}</h3>
+                                <div style={{ maxHeight: '60vh', overflowY: 'auto', marginBottom: '25px', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '10px' }}>
+                                    {editingTracks.tracks?.map((track, idx) => (
+                                        <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                            <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: 'rgba(0,210,211,0.1)', color: '#00d2d3', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', fontWeight: 'bold' }}>{idx + 1}</div>
+                                            <input
+                                                type="text"
+                                                value={track.displayName}
+                                                onChange={(e) => {
+                                                    const newTracks = [...editingTracks.tracks];
+                                                    newTracks[idx].displayName = e.target.value;
+                                                    setEditingTracks({ ...editingTracks, tracks: newTracks });
+                                                }}
+                                                style={{ flex: 1, padding: '10px', borderRadius: '8px', background: 'white', border: '1px solid #cbd5e1', color: 'black' }}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button onClick={() => setEditingTracks(null)} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>CANCELAR</button>
+                                    <button onClick={saveTrackNames} style={{ flex: 1, padding: '12px', borderRadius: '12px', background: '#10b981', color: 'black', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>GUARDAR CAMBIOS</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -539,6 +671,12 @@ export default function Admin() {
                                     {app.status !== 'approved' && (
                                         <button onClick={() => approveSeller(app.userId)} style={{ background: '#10b981', color: 'black', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}>APROBAR</button>
                                     )}
+                                    <button
+                                        onClick={() => { setActiveTab('pending'); setSearchUser(app.email); }}
+                                        style={{ background: '#00d2d3', color: 'black', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}
+                                    >
+                                        VER CANCIONES
+                                    </button>
                                     <button onClick={() => deleteSeller(app.userId)} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', padding: '8px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}>BORRAR VENDEDOR</button>
                                 </div>
                             </div>
@@ -556,26 +694,93 @@ export default function Admin() {
                                     <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{u.email}</div>
                                     <div style={{ fontSize: '0.7rem', color: '#f1c40f', marginTop: '5px' }}>ACTIVO SIN FORMULARIO</div>
                                 </div>
-                                <button onClick={() => deleteSeller(u.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <button
+                                        onClick={() => { setActiveTab('pending'); setSearchUser(u.email); }}
+                                        style={{ background: '#00d2d3', color: 'black', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                                    >
+                                        VER CANCIONES
+                                    </button>
+                                    <button onClick={() => deleteSeller(u.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
 
+            {activeTab === 'coupons' && (
+                <div className="fade-in">
+                    <div style={{ background: '#1e293b', padding: '30px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '40px' }}>
+                        <h2 style={{ marginBottom: '20px' }}>Gestión de Cupones</h2>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <input value={newCouponCode} onChange={e => setNewCouponCode(e.target.value)} placeholder="Código (ej: MARZO20)..." style={{ flex: 2, padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                            <input type="number" value={newCouponDiscount} onChange={e => setNewCouponDiscount(e.target.value)} placeholder="% Descuento..." style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                            <button onClick={addCoupon} className="btn-teal" style={{ padding: '0 30px' }}>Crear Cupón</button>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+                        {coupons.map(cp => (
+                            <div key={cp.id} style={{ background: '#1e293b', padding: '20px', borderRadius: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div>
+                                    <div style={{ fontWeight: '900', fontSize: '1.2rem', color: '#f59e0b' }}>{cp.code}</div>
+                                    <div style={{ color: '#10b981', fontWeight: '800' }}>{cp.discount}% Descuento</div>
+                                </div>
+                                <button onClick={() => deleteCoupon(cp.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={24} /></button>
+                            </div>
+                        ))}
+                        {coupons.length === 0 && <p style={{ color: '#64748b' }}>No hay cupones activos.</p>}
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'users' && (
                 <div className="fade-in">
-                    <h2>Gestión de Usuarios</h2>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        <h2>Gestión de Usuarios</h2>
+                        <input
+                            type="text"
+                            placeholder="Buscar por email o nombre..."
+                            value={searchUser}
+                            onChange={e => setSearchUser(e.target.value)}
+                            style={{ padding: '10px 15px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black', width: '300px' }}
+                        />
+                    </div>
                     <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px' }}>
-                        {users.map(u => (
+                        {users.filter(u =>
+                            u.email?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                            u.displayName?.toLowerCase().includes(searchUser.toLowerCase())
+                        ).map(u => (
                             <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
+                                <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: '800' }}>{u.displayName || u.email}</div>
-                                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>Plan: {u.planId || 'free'}</div>
+                                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                                        Plan: <span style={{ color: '#00d2d3' }}>{u.planId || 'free'}</span> | 
+                                        Vendedor: <span style={{ color: u.isSeller ? '#10b981' : '#ef4444' }}>{u.isSeller ? 'SÍ' : 'NO'}</span>
+                                    </div>
+                                    <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email}</div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Espacio GB:</span>
-                                    <input type="number" value={u.customStorageGB || ''} onChange={(e) => updateCustomStorage(u.id, e.target.value)} style={{ width: '80px', padding: '6px', borderRadius: '6px', border: '1px solid #334155', background: '#0f172a', color: 'white', textAlign: 'center' }} />
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>ESPACIO GB:</span>
+                                        <input type="number" value={u.customStorageGB || ''} onChange={(e) => updateCustomStorage(u.id, e.target.value)} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', textAlign: 'center', fontSize: '0.8rem' }} />
+                                    </div>
+                                    <button 
+                                        onClick={() => toggleManualSeller(u)} 
+                                        style={{ 
+                                            background: u.isSeller ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', 
+                                            color: u.isSeller ? '#ef4444' : '#10b981', 
+                                            border: `1px solid ${u.isSeller ? '#ef4444' : '#10b981'}`,
+                                            padding: '8px 12px', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '800', 
+                                            cursor: 'pointer' 
+                                        }}
+                                    >
+                                        {u.isSeller ? 'QUITAR VENDEDOR' : 'HACER VENDEDOR'}
+                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -585,20 +790,59 @@ export default function Admin() {
 
             {activeTab === 'pending' && (
                 <div className="fade-in">
-                    <h2>Solicitudes de Venta</h2>
-                    {pendingSongs.map(song => (
-                        <div key={song.id} style={{ background: 'rgba(241,196,15,0.05)', border: '1px solid rgba(241,196,15,0.2)', padding: '20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                            <div>
-                                <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>{song.name}</div>
-                                <div style={{ fontSize: '0.9rem' }}>De: {song.userEmail}</div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                                <button onClick={() => deleteSong(song.id)} style={{ background: 'transparent', border: '1px solid #ef4444', color: '#ef4444', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer' }}>Rechazar</button>
-                                <button onClick={() => approveSong(song.id)} style={{ background: '#f1c40f', border: 'none', color: '#000', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>Aprobar</button>
-                            </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                        <div>
+                            <h2 style={{ margin: 0 }}>Gestión del Marketplace</h2>
+                            <p style={{ color: '#94a3b8', margin: '5px 0 0 0' }}>Controla qué canciones son visibles para el público.</p>
                         </div>
-                    ))}
-                    {pendingSongs.length === 0 && <p style={{ color: '#64748b' }}>No hay pendientes.</p>}
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button
+                                onClick={fixSellerNames}
+                                disabled={isSyncing}
+                                style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '8px 15px', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}
+                            >
+                                {isSyncing ? "PROCESANDO..." : "🔧 REPARAR NOMBRES DE VENDEDOR"}
+                            </button>
+                            <input type="text" placeholder="Buscar canción o vendedor..." value={searchUser} onChange={e => setSearchUser(e.target.value)} style={{ padding: '12px 20px', width: '300px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white' }} />
+                        </div>
+                    </div>
+
+                    <div style={{ background: '#1e293b', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', overflow: 'hidden' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '80px 2fr 1.5fr 1.5fr 150px', gap: '15px', padding: '15px 25px', background: 'rgba(255,255,255,0.03)', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+                            <span>Portada</span>
+                            <span>Canción / Artista</span>
+                            <span>Vendedor</span>
+                            <span>Email</span>
+                            <span style={{ textAlign: 'right' }}>Acciones</span>
+                        </div>
+                        {forSaleSongs.filter(s =>
+                            s.name?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                            s.sellerName?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                            s.userEmail?.toLowerCase().includes(searchUser.toLowerCase())
+                        ).map(song => (
+                            <div key={song.id} style={{ display: 'grid', gridTemplateColumns: '80px 2fr 1.5fr 1.5fr 150px', gap: '15px', padding: '12px 25px', borderBottom: '1px solid rgba(255,255,255,0.05)', alignItems: 'center', opacity: song.status === 'hidden' ? 0.6 : 1, background: song.status === 'hidden' ? 'rgba(239, 68, 68, 0.02)' : 'transparent' }}>
+                                <div style={{ width: '50px', height: '50px', borderRadius: '8px', overflow: 'hidden', background: '#0f172a' }}>
+                                    {song.coverUrl ? <img src={song.coverUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Music2 size={20} style={{ margin: '15px', opacity: 0.2 }} />}
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: '800', color: song.status === 'hidden' ? '#94a3b8' : 'white' }}>{song.name}</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{song.artist}</div>
+                                </div>
+                                <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#00d2d3' }}>{song.sellerName || '—'}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{song.userEmail}</div>
+                                <div style={{ textAlign: 'right' }}>
+                                    <button
+                                        onClick={() => toggleSongVisibility(song.id, song.status)}
+                                        style={{ background: song.status === 'hidden' ? '#10b981' : '#f1c40f', color: '#000', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontWeight: '800', fontSize: '0.7rem' }}
+                                    >
+                                        {song.status === 'hidden' ? 'MOSTRAR' : 'OCULTAR'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {forSaleSongs.length === 0 && <p style={{ color: '#64748b' }}>No hay canciones a la venta todavía.</p>}
                 </div>
             )}
 

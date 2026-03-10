@@ -86,7 +86,26 @@ export default function Library() {
                     <div style={{ width: '100%', maxWidth: '900px', position: 'relative' }}>
                         <button
                             onClick={() => setViewingChords(null)}
-                            style={{ position: 'absolute', top: '-60px', right: 0, background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                            style={{ 
+                                position: 'absolute', 
+                                top: '-20px', 
+                                right: '-20px', 
+                                background: '#ef4444', 
+                                border: '3px solid #0f172a', 
+                                color: 'white', 
+                                width: '40px', 
+                                height: '40px', 
+                                borderRadius: '50%', 
+                                cursor: 'pointer', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                zIndex: 100,
+                                boxShadow: '0 10px 20px rgba(0,0,0,0.5)',
+                                transition: 'transform 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.1)'}
+                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                         >
                             <X size={24} />
                         </button>

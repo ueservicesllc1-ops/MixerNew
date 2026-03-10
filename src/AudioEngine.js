@@ -187,6 +187,17 @@ class AudioEngine {
         }
     }
 
+    setTrackPan(id, pan) {
+        if (IS_NATIVE) {
+            getNative().then(n => n.setTrackPan && n.setTrackPan(id, pan));
+        } else {
+            const t = this.tracks.get(id);
+            if (t && t.panner) {
+                t.panner.pan.setTargetAtTime(pan, this.ctx.currentTime, 0.05);
+            }
+        }
+    }
+
     setTrackSolo(id, val) {
         if (IS_NATIVE) {
             const m = this._trackMeta.get(id);

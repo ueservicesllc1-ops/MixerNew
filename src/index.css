@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-lyrics: 'Montserrat', sans-serif;
   font-family: var(--font-main);
@@ -133,6 +133,15 @@ div:has(> .avatar-overlay):hover {
   .hide-mobile {
     display: flex !important;
   }
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .multitrack-layout {
@@ -1621,10 +1630,28 @@ body.dark-mode .setlist-item-card:hover {
   background: #3a4a5a !important;
 }
 
-body.dark-mode input[type="text"] {
-  background: #2d3748;
-  border-color: #4a5568;
-  color: white;
+/* Global rules for form readability */
+input[type="text"], 
+input[type="number"], 
+input[type="email"], 
+input[type="tel"], 
+input[type="password"],
+textarea, 
+select {
+  color: #000000 !important;
+  background-color: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+body.dark-mode input[type="text"],
+body.dark-mode input[type="number"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="tel"],
+body.dark-mode textarea,
+body.dark-mode select {
+  background: #ffffff !important;
+  border-color: #94a3b8 !important;
+  color: #000000 !important;
 }
 
 body.dark-mode .drawer-overlay {

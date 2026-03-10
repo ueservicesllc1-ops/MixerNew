@@ -9,11 +9,29 @@ import fs from 'fs';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import os from 'os';
+import Stripe from 'stripe';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
+// Usando la clave secreta LIVE de Stripe (se debe configurar en variables de entorno):
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2023-10-16',
+});
+
+// Configuración de productos/precios para sincronizar con Stripe
+const STRIPE_PLANS_CONFIG = {
+    'seller': { name: 'Suscripción Vendedor MixCommunity', monthly: 199, annual: 1990 }, // Vendedor anual opcional
+    'std1': { name: 'Plan Básico MixCommunity', monthly: 499, annual: 4192 },
+    'std2': { name: 'Plan Estándar MixCommunity', monthly: 699, annual: 5872 },
+    'std3': { name: 'Plan Plus MixCommunity', monthly: 999, annual: 8392 },
+    'vip1': { name: 'Plan Básico VIP MixCommunity', monthly: 799, annual: 6712 },
+    'vip2': { name: 'Plan Estándar VIP MixCommunity', monthly: 999, annual: 8392 },
+    'vip3': { name: 'Plan Plus VIP MixCommunity', monthly: 1299, annual: 10912 },
+};
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const distPath = path.join(__dirname, 'dist');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -23,18 +41,11 @@ app.use(cors());
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
-// Diagnóstico de Frontend
-const distPath = path.join(__dirname, 'dist');
-if (fs.existsSync(distPath)) {
-    console.log("📂 Carpeta 'dist' detectada. Sirviendo aplicación...");
-    app.use(express.static(distPath));
-} else {
-    console.warn("⚠️ Carpeta 'dist' NO encontrada. El frontend no se cargará correctamente.");
-}
+// La configuración de static y SPA se movió al final del archivo para evitar conflictos con las rutas de API.
 
-const B2_KEY_ID = process.env.B2_KEY_ID || '005c2b526be0baa000000000f';
-const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || 'K0051CrlFQOcyjlNZyFVI3spGLFhxk4';
-const B2_BUCKET_ID = process.env.B2_BUCKET_ID || 'cc12bbd592366bde909b0a1a';
+const B2_KEY_ID = process.env.B2_KEY_ID;
+const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY;
+const B2_BUCKET_ID = process.env.B2_BUCKET_ID;
 const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'mixercur';
 
 // Vars en caché
@@ -68,14 +79,14 @@ async function getUploadNode() {
     return res.json();
 }
 
-app.get('/health', (req, res) => res.json({
+app.get('/api/health', (req, res) => res.json({
     status: 'ok',
     service: 'B2 Proxy + Frontend',
     distExists: fs.existsSync(distPath),
     port: PORT
 }));
 
-app.get('/download', async (req, res) => {
+app.get('/api/download', async (req, res) => {
     try {
         let { url } = req.query;
         if (!url || url === 'undefined' || url === 'null') {
@@ -95,27 +106,91 @@ app.get('/download', async (req, res) => {
     }
 });
 
-app.post('/upload', upload.single('audioFile'), async (req, res) => {
+app.post('/api/stripe/create-single-payment', async (req, res) => {
+    console.log("💳 Recibida solicitud de pago único:", req.body);
+    try {
+        const { songId, songName, price, email, userId } = req.body;
+
+        if (!songId || !price || !email) {
+            console.warn("⚠️ Datos de compra incompletos:", req.body);
+            return res.status(400).json({ error: 'Faltan datos de la compra (ID, precio o email)' });
+        }
+
+        const cleanEmail = email.trim().toLowerCase();
+        const amount = Math.round(parseFloat(price) * 100);
+
+        if (isNaN(amount) || amount < 50) {
+            console.warn("⚠️ Monto de pago inválido o muy bajo:", price);
+            return res.status(400).json({ error: 'El monto de pago no es válido (mínimo $0.50 USD)' });
+        }
+
+        console.log(`💰 Procesando pago de $${price} (${amount} cents) para: ${songName} - User: ${userId}`);
+
+        // 1. Obtener o crear Customer
+        let customer;
+        try {
+            const customers = await stripe.customers.list({ email: cleanEmail, limit: 1 });
+            customer = customers.data[0];
+            if (!customer) {
+                console.log("👤 Creando nuevo cliente Stripe para:", cleanEmail);
+                customer = await stripe.customers.create({
+                    email: cleanEmail,
+                    metadata: { userId: userId || 'anonymous' }
+                });
+            }
+        } catch (custErr) {
+            console.error("🚨 Error con el cliente de Stripe:", custErr.message);
+            throw new Error(`Error de cliente Stripe: ${custErr.message}`);
+        }
+
+        // 2. Crear Payment Intent
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount,
+            currency: 'usd',
+            customer: customer.id,
+            description: `Zion Stage - Pistas: ${songName}`,
+            metadata: {
+                songId,
+                userId: userId || 'anonymous',
+                type: 'song_purchase',
+                cartItems: songName
+            },
+            payment_method_types: ['card'],
+        });
+
+        console.log("✅ PaymentIntent creado con éxito:", paymentIntent.id);
+        res.json({
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
+        });
+
+    } catch (error) {
+        console.error("🚨 Stripe Single Payment Error DETALLADO:", error);
+        res.status(500).json({
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
+app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     let tempInputPath = '';
     let tempOutputPath = '';
+    let tempPreviewPath = '';
     try {
         const file = req.file;
         const b2Filename = req.body.fileName;
+        const generatePreview = req.body.generatePreview === 'true'; // Bandera para generar preview
+
         if (!file || !b2Filename) return res.status(400).json({ error: 'Falta archivo' });
 
         const uploadNode = await getUploadNode();
-
-        // Temp paths for ffmpeg conversion
         const tempId = crypto.randomBytes(8).toString('hex');
         const tmpDir = os.tmpdir();
         tempInputPath = path.join(tmpDir, `in_${tempId}`);
-        tempOutputPath = path.join(tmpDir, `out_${tempId}.mp3`); // Use .mp3 to match the codec
+        tempOutputPath = path.join(tmpDir, `out_${tempId}.mp3`);
+        tempPreviewPath = path.join(tmpDir, `prev_${tempId}.mp3`);
 
-        // 1. Write original buffer to disk
-        fs.writeFileSync(tempInputPath, file.buffer);
-
-        let mp3Buffer;
-        // 2. Transcode ONLY if not already MP3 (to save CPU/Time)
         const isMp3 = file.mimetype === 'audio/mpeg' ||
             file.mimetype === 'audio/mp3' ||
             file.originalname.toLowerCase().endsWith('.mp3');
@@ -123,11 +198,13 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
         const isImage = file.mimetype?.startsWith('image/') ||
             /\.(png|jpe?g|gif|webp)$/i.test(file.originalname);
 
+        let mp3Buffer;
+
         if (isMp3 || isImage) {
-            console.log(`⏩ Saltando transcodificación (es ${isImage ? 'Imagen' : 'MP3'})`);
             mp3Buffer = file.buffer;
         } else {
             console.log("🔄 Transcodificando a MP3...");
+            fs.writeFileSync(tempInputPath, file.buffer);
             await new Promise((resolve, reject) => {
                 ffmpeg()
                     .input(tempInputPath)
@@ -141,13 +218,9 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
             mp3Buffer = fs.readFileSync(tempOutputPath);
         }
 
-        // 4. Calculate required B2 metadata (SHA1 and Length)
+        // --- SUBIDA DEL ARCHIVO ORIGINAL ---
         const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
-
-        let contentType = 'audio/mpeg';
-        if (typeof isImage !== 'undefined' && isImage) {
-            contentType = file.mimetype || 'image/jpeg';
-        }
+        let contentType = isImage ? (file.mimetype || 'image/jpeg') : 'audio/mpeg';
 
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',
@@ -162,18 +235,63 @@ app.post('/upload', upload.single('audioFile'), async (req, res) => {
         });
         const b2Data = await b2Response.json();
         const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
-        res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
+
+        // --- GENERACIÓN Y SUBIDA DE PREVIEW (OPCIONAL) ---
+        let previewUrl = null;
+        if (generatePreview && !isImage) {
+            console.log(`🎬 Generando clip de prueba (20s-40s) para ${b2Filename}...`);
+            try {
+                // Si no escribimos a disco arriba, lo hacemos ahora para el clip
+                if (!fs.existsSync(tempInputPath)) fs.writeFileSync(tempInputPath, file.buffer);
+
+                await new Promise((resolve, reject) => {
+                    ffmpeg()
+                        .input(tempInputPath)
+                        .setStartTime(20)
+                        .setDuration(20)
+                        .audioCodec('libmp3lame')
+                        .audioBitrate('64k') // Calidad menor para preview = más rápido
+                        .output(tempPreviewPath)
+                        .on('end', () => resolve())
+                        .on('error', (err) => reject(err))
+                        .run();
+                });
+
+                const previewBuffer = fs.readFileSync(tempPreviewPath);
+                const previewSha1 = crypto.createHash('sha1').update(previewBuffer).digest('hex');
+                const previewFilename = b2Filename.replace('.mp3', '_preview.mp3');
+
+                const pB2Resp = await fetch(uploadNode.uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': uploadNode.authorizationToken,
+                        'X-Bz-File-Name': encodeURI(previewFilename),
+                        'Content-Type': 'audio/mpeg',
+                        'X-Bz-Content-Sha1': previewSha1,
+                        'Content-Length': previewBuffer.length
+                    },
+                    body: previewBuffer
+                });
+                const pData = await pB2Resp.json();
+                previewUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(previewFilename)}`;
+                console.log(`✅ Clip generado: ${previewUrl}`);
+            } catch (prevErr) {
+                console.warn("⚠️ Falló creación de preview, se usará el original:", prevErr.message);
+            }
+        }
+
+        res.json({ success: true, url: finalUrl, previewUrl: previewUrl, fileId: b2Data.fileId });
     } catch (error) {
         console.error("Upload error:", error);
         res.status(500).json({ error: error.message });
     } finally {
-        // 5. Clean up temp files
         if (tempInputPath && fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
         if (tempOutputPath && fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
+        if (tempPreviewPath && fs.existsSync(tempPreviewPath)) fs.unlinkSync(tempPreviewPath);
     }
 });
 
-app.post('/delete-file', async (req, res) => {
+app.post('/api/delete-file', async (req, res) => {
     try {
         const { fileId, fileName } = req.body;
         if (!fileId || !fileName) return res.status(400).json({ error: 'Falta fileId o fileName' });
@@ -197,7 +315,7 @@ app.post('/delete-file', async (req, res) => {
     }
 });
 
-app.get('/list-files', async (req, res) => {
+app.get('/api/list-files', async (req, res) => {
     try {
         const { apiUrl, token } = await getB2Auth();
         const b2Response = await fetch(`${apiUrl}/b2api/v2/b2_list_file_names`, {
@@ -219,7 +337,77 @@ app.get('/list-files', async (req, res) => {
     }
 });
 
-app.get('/import-lacuerda-artists', async (req, res) => {
+app.post('/api/stripe/create-subscription', async (req, res) => {
+    try {
+        const { email, name, userId, planId = 'seller', isAnnual = false } = req.body;
+        if (!email || !userId) return res.status(400).json({ error: 'Faltan datos de usuario' });
+
+        const planConfig = STRIPE_PLANS_CONFIG[planId];
+        if (!planConfig) return res.status(400).json({ error: 'Plan no válido' });
+
+        const amount = isAnnual ? planConfig.annual : planConfig.monthly;
+        const interval = isAnnual ? 'year' : 'month';
+        const productName = isAnnual ? `${planConfig.name} (Anual)` : planConfig.name;
+
+        // 1. Obtener o crear Customer en Stripe
+        const customers = await stripe.customers.list({ email: email, limit: 1 });
+        let customer = customers.data[0];
+        if (!customer) {
+            customer = await stripe.customers.create({ email, name, metadata: { userId } });
+        }
+
+        // 2. Obtener o crear el Producto y Precio de Suscripción
+        const products = await stripe.products.search({ query: `name:"${productName}"` });
+        let product = products.data[0];
+        let priceId;
+
+        if (!product) {
+            product = await stripe.products.create({ name: productName, description: `Acceso al plan ${planId} (${interval})` });
+            const price = await stripe.prices.create({
+                product: product.id,
+                unit_amount: amount,
+                currency: 'usd',
+                recurring: { interval: interval }
+            });
+            priceId = price.id;
+        } else {
+            const prices = await stripe.prices.list({ product: product.id, active: true });
+            const targetPrice = prices.data.find(p => p.unit_amount === amount && p.recurring.interval === interval);
+            if (targetPrice) {
+                priceId = targetPrice.id;
+            } else {
+                const price = await stripe.prices.create({
+                    product: product.id,
+                    unit_amount: amount,
+                    currency: 'usd',
+                    recurring: { interval: interval }
+                });
+                priceId = price.id;
+            }
+        }
+
+        // 3. Crear Suscripción
+        const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            items: [{ price: priceId }],
+            payment_behavior: 'default_incomplete',
+            payment_settings: { save_default_payment_method: 'on_subscription' },
+            expand: ['latest_invoice.payment_intent'],
+        });
+
+        res.json({
+            subscriptionId: subscription.id,
+            clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+        });
+    } catch (error) {
+        console.error("Stripe Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+
+app.get('/api/import-artists', async (req, res) => {
     try {
         console.log("🌎 Iniciando importación masiva de artistas (Religioso)...");
         const allArtists = [];
@@ -276,7 +464,7 @@ app.get('/import-lacuerda-artists', async (req, res) => {
     }
 });
 
-app.get('/scrape-chords', async (req, res) => {
+app.get('/api/scrape-chords', async (req, res) => {
     try {
         const { url } = req.query;
         if (!url) return res.status(400).json({ error: 'Falta URL' });
@@ -346,7 +534,7 @@ app.get('/scrape-chords', async (req, res) => {
     }
 });
 
-app.get('/list-artist-songs', async (req, res) => {
+app.get('/api/list-artist-songs', async (req, res) => {
     try {
         const { slug } = req.query;
         if (!slug) return res.status(400).json({ error: 'Falta slug de artista' });
@@ -388,7 +576,7 @@ app.get('/list-artist-songs', async (req, res) => {
     }
 });
 
-app.get('/scrape-full-song', async (req, res) => {
+app.get('/api/scrape-full-song', async (req, res) => {
     try {
         const { artistSlug, songSlug } = req.query;
         if (!artistSlug || !songSlug) return res.status(400).json({ error: 'Faltan parámetros' });
@@ -495,16 +683,29 @@ app.get('/scrape-full-song', async (req, res) => {
     }
 });
 
-// Solución definitiva para SPA en Express 5: Middleware al final de la cadena
-app.use((req, res) => {
+// CONFIGURACIÓN DE FRONTEND Y SPA (DEBE IR AL FINAL)
+if (fs.existsSync(distPath)) {
+    console.log("📂 Carpeta 'dist' detectada. Sirviendo aplicación...");
+    app.use(express.static(distPath));
+} else {
+    console.warn("⚠️ Carpeta 'dist' NO encontrada.");
+}
+
+// Solución definitiva para SPA: Middleware al final de la cadena
+app.use((req, res, next) => {
+    // Si la ruta empieza con /api/ y llegó hasta aquí, es que no existe. 404.
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: `Ruta de API no encontrada: ${req.path}` });
+    }
+
+    // Para el resto (rutas de React), servimos index.html
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
     } else {
-        res.status(404).send("Error: La aplicación no ha sido compilada o el archivo dist/index.html no existe.");
+        res.status(404).send("Error: Frontend no compilado.");
     }
 });
-
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor listo escuchando en puerto ${PORT}`);

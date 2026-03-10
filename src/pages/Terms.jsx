@@ -90,6 +90,7 @@ export default function Terms() {
                         <li>Freedom Labs se reserva el derecho de rechazar cualquier contenido sin necesidad de explicación.</li>
                         <li>Los precios de venta serán definidos inicialmente por Freedom Labs y podrán ser acordados con el creador en la etapa de aprobación.</li>
                         <li>La distribución de ingresos por ventas será comunicada al creador al momento de la aprobación de su contenido.</li>
+                        <li><strong style={{ color: '#00bcd4' }}>6.5 Contribución a la Comunidad:</strong> Por cada 10 canciones publicadas para la venta, el vendedor debe publicar 1 canción de forma gratuita para la comunidad. La primera canción subida por cualquier vendedor debe ser obligatoriamente gratuita. El sistema aplicará esta regla automáticamente durante el proceso de subida.</li>
                     </ul>
                 </Section>
 

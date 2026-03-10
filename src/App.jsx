@@ -12,6 +12,8 @@ import Software from './pages/Software'
 import Recursos from './pages/Recursos'
 import Library from './pages/Library'
 import Vendedores from './pages/Vendedores'
+import SellerProfile from './pages/SellerProfile'
+import Checkout from './pages/Checkout'
 import './index.css'
 
 // Detecta si corre dentro de Capacitor (Android/iOS) o en el navegador web
@@ -26,10 +28,6 @@ function App() {
   return (
     <Router>
       <Routes>
-        {/* 
-          En Android/iOS (APK): la raíz va directo al Multitrack.
-          En web (browser): muestra la Landing page normal.
-        */}
         <Route
           path="/"
           element={native ? <Navigate to="/multitrack" replace /> : <Landing />}
@@ -46,6 +44,8 @@ function App() {
         <Route path="/recursos" element={<Recursos />} />
         <Route path="/library" element={<Library />} />
         <Route path="/vendedores" element={<Vendedores />} />
+        <Route path="/seller/:id" element={<SellerProfile />} />
+        <Route path="/checkout" element={<Checkout />} />
       </Routes>
     </Router>
   )
