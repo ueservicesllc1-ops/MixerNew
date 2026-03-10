@@ -108,7 +108,7 @@ const HorizontalTrack = ({ track, onVolumeChange, onMuteToggle, onSoloToggle, on
                 <button
                     onClick={() => onMuteToggle(track.id)}
                     style={{
-                        width: '30px', height: '30px', borderRadius: '6px', border: 'none',
+                        width: '30px', height: '30px', borderRadius: '6px',
                         background: isMuted ? '#ef4444' : 'rgba(255,255,255,0.03)',
                         color: isMuted ? 'white' : '#64748b',
                         cursor: 'pointer', fontSize: '11px', fontWeight: '900',
@@ -118,7 +118,7 @@ const HorizontalTrack = ({ track, onVolumeChange, onMuteToggle, onSoloToggle, on
                 <button
                     onClick={() => onSoloToggle(track.id)}
                     style={{
-                        width: '30px', height: '30px', borderRadius: '6px', border: 'none',
+                        width: '30px', height: '30px', borderRadius: '6px',
                         background: track.solo ? '#f59e0b' : 'rgba(255,255,255,0.03)',
                         color: track.solo ? 'white' : '#64748b',
                         cursor: 'pointer', fontSize: '11px', fontWeight: '900',

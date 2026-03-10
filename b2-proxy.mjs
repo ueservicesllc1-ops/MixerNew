@@ -14,9 +14,14 @@ import Stripe from 'stripe';
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
 // Usando la clave secreta LIVE de Stripe (se debe configurar en variables de entorno):
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: '2023-10-16',
-});
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+        apiVersion: '2023-10-16',
+    });
+} else {
+    console.warn("⚠️ STRIPE_SECRET_KEY no configurada. Las funciones de pago no estarán disponibles.");
+}
 
 // Configuración de productos/precios para sincronizar con Stripe
 const STRIPE_PLANS_CONFIG = {

@@ -89,21 +89,31 @@ export default function Store() {
             setCurrentUser(user);
         });
 
-        const q = query(
-            collection(db, 'songs'),
-            where('status', '==', 'active')
-        );
-
+        const q = collection(db, 'songs');
         const unsubSongs = onSnapshot(q, (snap) => {
             const songs = [];
             snap.forEach(doc => {
                 const data = doc.data();
-                // Mostrar si es activa O si el usuario actual es el dueño (para que pueda ver sus propias subidas en revisión)
-                if (data.status === 'active' || (auth.currentUser && data.userId === auth.currentUser.uid)) {
-                    songs.push({ id: doc.id, ...data });
+                const loggedUser = auth.currentUser;
+                const isOwner = loggedUser && data.userId === loggedUser.uid;
+                const isAdmin = loggedUser?.email === 'ueservicesllc1@gmail.com';
+                
+                // REGLA: Mostrar en Store si es Global, si es para Venta, o si soy el dueño/admin
+                if (data.isGlobal || data.forSale || isOwner || isAdmin) {
+                    songs.push({ 
+                        id: doc.id, 
+                        ...data, 
+                        isPending: data.status === 'pending_review' || data.status === 'pending'
+                    });
                 }
             });
-            setStoreSongs(songs);
+            // Ordenar por fecha: nuevos arriba
+            const sorted = songs.sort((a, b) => {
+                const timeA = a.createdAt?.toMillis() || 0;
+                const timeB = b.createdAt?.toMillis() || 0;
+                return timeB - timeA;
+            });
+            setStoreSongs(sorted);
         });
 
         return () => { unsubAuth(); unsubSongs(); };
@@ -239,21 +249,23 @@ export default function Store() {
             </header>
 
             <style>{`
-                .carousel-container {
-                    display: flex;
-                    overflow-x: auto;
-                    gap: 20px;
+                .store-grid {
+                    display: grid;
+                    grid-template-columns: repeat(5, 1fr);
+                    gap: 25px;
                     padding: 20px 40px;
-                    scroll-behavior: smooth;
-                    scrollbar-width: none; /* Firefox */
-                    -ms-overflow-style: none;  /* IE and Edge */
                 }
-                .carousel-container::-webkit-scrollbar {
-                    display: none; /* Chrome, Safari and Opera */
+                @media (max-width: 1400px) {
+                    .store-grid { grid-template-columns: repeat(4, 1fr); }
                 }
-                .carousel-item {
-                    flex: 0 0 240px;
-                    scroll-snap-align: start;
+                @media (max-width: 1100px) {
+                    .store-grid { grid-template-columns: repeat(3, 1fr); }
+                }
+                @media (max-width: 800px) {
+                    .store-grid { grid-template-columns: repeat(2, 1fr); }
+                }
+                @media (max-width: 500px) {
+                    .store-grid { grid-template-columns: repeat(1, 1fr); }
                 }
             `}</style>
 
@@ -261,46 +273,38 @@ export default function Store() {
                 {searchQuery ? (
                     <div style={{ padding: '40px' }}>
                         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '30px' }}>Resultados de búsqueda</h2>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '20px' }}>
+                        <div className="store-grid" style={{ padding: '0' }}>
                             {filteredStore.map(song => (
                                 <SongCard key={song.id} song={song} onBuy={() => addToCart(song)} navigate={navigate} />
                             ))}
                         </div>
                     </div>
                 ) : (
-                    <>
-                        {/* SECCIÓN CARRUSEL: NUEVOS LANZAMIENTOS */}
+                    <div style={{ paddingBottom: '80px' }}>
                         <div style={{ marginTop: '40px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 40px' }}>
-                                <h2 style={{ fontSize: '1.8rem', fontWeight: '900' }}>Nuevos Lanzamientos</h2>
-                                <button className="btn-ghost" style={{ fontSize: '0.9rem' }}>Ver todo</button>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 40px', marginBottom: '10px' }}>
+                                <h2 style={{ fontSize: '1.8rem', fontWeight: '900' }}>Catálogo de Canciones</h2>
+                                {storeSongs.length > 0 && (
+                                    <span style={{ color: '#94a3b8', fontSize: '0.9rem' }}>{storeSongs.length} temas disponibles</span>
+                                )}
                             </div>
-                            <div className="carousel-container">
-                                {storeSongs.slice(0, 10).map(song => (
-                                    <div key={song.id} className="carousel-item">
-                                        <SongCard song={song} onBuy={() => addToCart(song)} navigate={navigate} />
+                            
+                            <div className="store-grid">
+                                {storeSongs.length > 0 ? (
+                                    storeSongs.map(song => (
+                                        <div key={song.id}>
+                                            <SongCard song={song} onBuy={() => addToCart(song)} navigate={navigate} />
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div style={{ gridColumn: '1/-1', padding: '100px 0', textAlign: 'center', color: '#64748b' }}>
+                                        <Music2 size={48} style={{ margin: '0 auto 15px', opacity: 0.2 }} />
+                                        <p>No hay canciones disponibles en este momento.</p>
                                     </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* SECCIÓN CARRUSEL: RECOMENDADOS */}
-                        <div style={{ marginTop: '60px', marginBottom: '80px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 40px' }}>
-                                <h2 style={{ fontSize: '1.8rem', fontWeight: '900' }}>Pistas Destacadas</h2>
-                                <button className="btn-ghost" style={{ fontSize: '0.9rem' }}>Ver todo</button>
-                            </div>
-                            <div className="carousel-container">
-                                {storeSongs.length > 5 ? storeSongs.slice().reverse().slice(0, 10).map(song => (
-                                    <div key={song.id} className="carousel-item">
-                                        <SongCard song={song} onBuy={() => addToCart(song)} navigate={navigate} />
-                                    </div>
-                                )) : (
-                                    <div style={{ padding: '40px', color: '#64748b' }}>Más pistas próximamente...</div>
                                 )}
                             </div>
                         </div>
-                    </>
+                    </div>
                 )}
             </div>
 

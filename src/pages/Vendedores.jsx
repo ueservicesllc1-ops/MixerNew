@@ -655,6 +655,18 @@ function Vendedores() {
                             <div>
                                 <h2 style={{ fontSize: '2rem', fontWeight: '900', color: '#1e293b' }}>Bienvenido, {userData?.displayName}</h2>
                                 <p style={{ color: '#64748b' }}>Aquí tienes el reporte de tus pistas para la venta.</p>
+                                <div style={{ 
+                                    background: 'rgba(0,188,212,0.05)', 
+                                    borderLeft: '4px solid #00bcd4', 
+                                    padding: '12px 20px', 
+                                    borderRadius: '12px', 
+                                    marginTop: '15px',
+                                    fontSize: '0.85rem'
+                                }}>
+                                    <span style={{ fontWeight: '800', color: '#00bcd4', display: 'block', marginBottom: '4px' }}>IMPORTANTE: FORMATO DEL ARCHIVO ZIP</span>
+                                    <div style={{ color: '#334155' }}>Los archivos deben seguir este formato: <strong>NOMBRE - ARTISTA - NOTA - TEMPO</strong></div>
+                                    <div style={{ fontSize: '0.75rem', color: '#64748b', fontStyle: 'italic', marginTop: '4px' }}>Ej: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM</div>
+                                </div>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                                 <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ padding: '14px 28px', display: 'flex', alignItems: 'center', gap: '10px' }}>

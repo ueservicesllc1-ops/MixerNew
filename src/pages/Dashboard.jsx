@@ -973,7 +973,15 @@ function Dashboard() {
                                             {isProcessingZip ? `Procesando archivos ZIP (${zipProgress}%)` : 'Sube tu nueva canción'}
                                         </h2>
                                         <p style={{ color: '#64748b', fontSize: '1.1rem' }}>
-                                            {isProcessingZip ? 'Por favor espera mientras extraemos tus pistas...' : 'Arrastra tu archivo .ZIP aquí o haz clic para buscar'}
+                                            {isProcessingZip ? 'Por favor espera mientras extraemos tus pistas...' : (
+                                                <>
+                                                    Arrastra tu archivo .ZIP aquí o haz clic para buscar.<br/>
+                                                    <span style={{ fontSize: '0.85rem', color: '#00d2d3', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
+                                                        Formato requerido: NOMBRE - ARTISTA - NOTA - TEMPO<br/>
+                                                        Ej: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM
+                                                    </span>
+                                                </>
+                                            )}
                                         </p>
                                         {!isProcessingZip && <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ marginTop: '20px' }}>Seleccionar Archivo</button>}
                                     </div>
