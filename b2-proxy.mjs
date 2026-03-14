@@ -262,7 +262,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
             method: 'POST',
             headers: {
                 'Authorization': uploadNode.authorizationToken,
-                'X-Bz-File-Name': encodeURI(b2Filename),
+                'X-Bz-File-Name': encodeURIComponent(b2Filename),
                 'Content-Type': contentType,
                 'X-Bz-Content-Sha1': sha1,
                 'Content-Length': mp3Buffer.length
@@ -304,7 +304,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
                     method: 'POST',
                     headers: {
                         'Authorization': uploadNode.authorizationToken,
-                        'X-Bz-File-Name': encodeURI(previewFilename),
+                        'X-Bz-File-Name': encodeURIComponent(previewFilename),
                         'Content-Type': 'audio/mpeg',
                         'X-Bz-Content-Sha1': previewSha1,
                         'Content-Length': previewBuffer.length

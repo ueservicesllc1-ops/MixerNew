@@ -396,8 +396,8 @@ function Dashboard() {
                 const track = fileList[i];
                 setCurrentUploadTrack(track.displayName || 'Pista');
 
-                const safeName = songName.replace(/\s+/g, '_');
-                const safeTrackName = (track.displayName || 'track').replace(/\s+/g, '_');
+                const safeName = songName.trim().replace(/,/g, '').replace(/\s+/g, '_');
+                const safeTrackName = (track.displayName || 'track').trim().replace(/,/g, '').replace(/\s+/g, '_');
                 const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeName}_${safeTrackName}.mp3`;
 
                 const data = await uploadFile(
@@ -427,7 +427,8 @@ function Dashboard() {
             setUploadProgress(96);
             const mixBlob = await generateMixBlob(fileList);
             if (mixBlob) {
-                const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${songName.replace(/\s+/g, '_')}__PreviewMix.mp3`;
+                const safeSongName = songName.trim().replace(/,/g, '').replace(/\s+/g, '_');
+                const b2Filename = `audio_${currentUser.uid}_${Date.now()}_${safeSongName}__PreviewMix.mp3`;
                 const data = await uploadFile(mixBlob, b2Filename, '__PreviewMix', 'preview.mp3', () => { }, true);
                 uploadedTracksInfo.push({
                     name: '__PreviewMix',
