@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
@@ -36,7 +36,12 @@ export default function Multitrack() {
     const [progress, setProgress] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
-    const [proxyUrl, setProxyUrl] = useState(() => localStorage.getItem('mixer_proxyUrl') || 'https://mixernew-production.up.railway.app');
+    const [proxyUrl, setProxyUrl] = useState(() => {
+        const saved = localStorage.getItem('mixer_proxyUrl');
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal) return 'http://localhost:3001';
+        return saved || 'https://mixernew-production.up.railway.app';
+    });
 
     // Setlist States
     const [isSetlistMenuOpen, setIsSetlistMenuOpen] = useState(false);
@@ -811,7 +816,7 @@ export default function Multitrack() {
                                 blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
                             }
                         } else {
-                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                            const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                             if (res.ok) {
                                 blob = await res.blob();
                                 finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
@@ -833,7 +838,7 @@ export default function Multitrack() {
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                     if (!rawBuf) {
                         try {
-                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
+                            const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                             if (res.ok) {
                                 rawBuf = await res.blob();
                                 await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);

@@ -91,7 +91,7 @@ app.get('/api/health', (req, res) => res.json({
     port: PORT
 }));
 
-app.get('/api/download', async (req, res) => {
+const handleDownload = async (req, res) => {
     try {
         let { url } = req.query;
         if (!url || url === 'undefined' || url === 'null') {
@@ -102,14 +102,18 @@ app.get('/api/download', async (req, res) => {
         if (!response.ok) throw new Error(`B2 Error ${response.status}`);
 
         res.set({
-            'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
+            'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
             'Access-Control-Allow-Origin': '*'
         });
         response.body.pipe(res);
     } catch (error) {
+        console.error("🚨 Error en download:", error.message);
         res.status(500).json({ error: error.message });
     }
-});
+};
+
+app.get('/api/download', handleDownload);
+app.get('/download', handleDownload);
 
 app.post('/api/stripe/create-single-payment', async (req, res) => {
     console.log("💳 Recibida solicitud de pago único:", req.body);
