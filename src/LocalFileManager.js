@@ -79,6 +79,18 @@ export const LocalFileManager = {
         }
     },
 
+    removeTrackLocal: async (songId, trackId) => {
+        try {
+            const key = `${songId}_${trackId}`;
+            await localAudioStore.removeItem(key);
+            console.log(`[STORAGE] Pista local eliminada: ${key}`);
+            return true;
+        } catch (error) {
+            console.error('[STORAGE] Error eliminando pista local:', error);
+            return false;
+        }
+    },
+
     /**
      * Guarda datos de texto como Letras o Acordes offline
      * @param {string} songId El ID de la canción

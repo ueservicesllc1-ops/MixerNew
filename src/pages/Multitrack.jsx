@@ -559,11 +559,20 @@ export default function Multitrack() {
                         // DECODIFICAR EN SEGUNDO PLANO (WEB)
                         try {
                             const arrayBuf = await rawBuf.arrayBuffer();
+                            
+                            // Validación básica: si es muy pequeño probablemente no es audio
+                            if (arrayBuf.byteLength < 500) {
+                                throw new Error("Contenido no válido (demasiado pequeño)");
+                            }
+
                             const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
                             trackBuffers.set(tr.name, { audioBuf }); // Guardamos el buffer decodificado!
                         } catch (e) {
-                            console.error("Error decodificando en pre-carga:", tr.name, e);
-                            trackBuffers.set(tr.name, { rawBuf }); // Fallback a blob
+                            console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
+                            // Si falla la decodificación, el archivo en LocalStorage está corrupto
+                            // Lo borramos para que se vuelva a descargar la próxima vez
+                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                            trackBuffers.set(tr.name, { error: true });
                         }
                     }
                 }));
@@ -830,8 +839,12 @@ export default function Multitrack() {
                     if (tr.name === '__PreviewMix' && blob) {
                         try {
                             const ab = await blob.arrayBuffer();
+                            if (ab.byteLength < 500) throw new Error("Blob corrupto o muy pequeño");
                             audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                        } catch (e) { console.error("Error decodificando visual:", e); }
+                        } catch (e) {
+                            console.error(`Error decodificando visual para ${tr.name}:`, e.message);
+                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                        }
                     }
                     trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
                 } else {
@@ -850,8 +863,12 @@ export default function Multitrack() {
                     if (rawBuf) {
                         try {
                             const ab = await rawBuf.arrayBuffer();
+                            if (ab.byteLength < 500) throw new Error("Contenido no válido");
                             audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                        } catch (e) { }
+                        } catch (e) {
+                            console.error(`[WEB] Corrupción en ${tr.name}:`, e.message);
+                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                        }
                     }
                     trackBuffers.set(tr.name, { rawBuf, audioBuf });
                 }

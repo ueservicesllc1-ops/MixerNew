@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
+import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import path, { dirname } from 'path';
 import multer from 'multer';
@@ -98,17 +99,35 @@ const handleDownload = async (req, res) => {
             return res.status(400).json({ error: 'URL inválida' });
         }
         url = url.trim();
+        console.log(`[PROXY] Descargando audio desde: ${url}`);
+        
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`B2 Error ${response.status}`);
+        if (!response.ok) {
+            console.error(`[PROXY] B2 devolvió error ${response.status} para: ${url}`);
+            throw new Error(`B2 Error ${response.status}`);
+        }
 
         res.set({
             'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
             'Access-Control-Allow-Origin': '*'
         });
-        response.body.pipe(res);
+
+        // node-fetch v3 usa web streams, necesitamos transformarlos para Express (Node streams)
+        if (response.body && response.body.pipe) {
+            // Si por alguna razón es un stream de Node (v2 behavior)
+            response.body.pipe(res);
+        } else if (response.body) {
+            // Comportamiento estándar de node-fetch v3 (web streams)
+            Readable.fromWeb(response.body).pipe(res);
+        } else {
+            throw new Error("Cuerpo de respuesta vacío");
+        }
     } catch (error) {
         console.error("🚨 Error en download:", error.message);
-        res.status(500).json({ error: error.message });
+        // Si el error es por pipe, puede que ya se hayan enviado encabezados
+        if (!res.headersSent) {
+            res.status(500).json({ error: error.message });
+        }
     }
 };
 
