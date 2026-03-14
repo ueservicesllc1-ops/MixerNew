@@ -139,7 +139,7 @@ export default function Checkout() {
             const total = (subtotal * (1 - discount / 100)).toFixed(2);
 
             const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : '';
+                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
 
             const res = await fetch(`${devProxy}/api/stripe/create-single-payment`, {
                 method: 'POST',

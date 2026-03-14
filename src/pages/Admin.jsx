@@ -141,7 +141,7 @@ export default function Admin() {
         try {
             const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                 ? 'http://localhost:3001'
-                : 'https://b2-proxy-mixer.vercel.app';
+                : 'https://mixernew-production.up.railway.app';
 
             const resp = await fetch(`${devProxy}/import-lacuerda-artists`);
             const data = await resp.json();
@@ -278,7 +278,7 @@ export default function Admin() {
         try {
             const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                 ? 'http://localhost:3001'
-                : 'https://b2-proxy-mixer.vercel.app';
+                : 'https://mixernew-production.up.railway.app';
 
             const resp = await fetch(`${devProxy}/list-artist-songs?slug=${artist.slug}`);
             const data = await resp.json();
@@ -311,7 +311,7 @@ export default function Admin() {
         try {
             const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
                 ? 'http://localhost:3001'
-                : 'https://b2-proxy-mixer.vercel.app';
+                : 'https://mixernew-production.up.railway.app';
 
             const resp = await fetch(`${devProxy}/scrape-full-song?artistSlug=${selectedArtist.slug}&songSlug=${song.slug}`);
             if (!resp.ok) throw new Error(`Error en el servidor: ${resp.status}`);
