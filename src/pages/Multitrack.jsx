@@ -301,15 +301,15 @@ export default function Multitrack() {
         return deviceRAM; // fallback to navigator.deviceMemory
     })();
 
-    // Song limits per estimated RAM:
-    //   Γëñ4 GB  ΓåÆ 2 songs  (phones)
-    //   Γëñ8 GB  ΓåÆ 4 songs  (tablets / old laptops)
-    //   Γëñ16 GB ΓåÆ 8 songs  (laptop / iPad Pro)
-    //   > 16 GBΓåÆ 14 songs (desktop / workstation)
-    const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 2
-        : estimatedRAM <= 8 ? 4
-            : estimatedRAM <= 16 ? 8
-                : 14;
+    // Song limits per estimated RAM (Safe levels for Web Browser process):
+    //   <= 4 GB  -> 1 song
+    //   <= 8 GB  -> 2 songs
+    //   <= 16 GB -> 4 songs
+    //   > 16 GB  -> 6 songs
+    const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 1
+        : estimatedRAM <= 8 ? 2
+            : estimatedRAM <= 16 ? 4
+                : 6;
 
 
     // preloadCache: Map<songId, Map<trackName, {audioBuf, rawBuf}>>
@@ -348,8 +348,9 @@ export default function Multitrack() {
                 if (found) {
                     console.log("Auto-loading last setlist:", found.name);
                     setActiveSetlist(found);
-                    // eslint-disable-next-line react-hooks/exhaustive-deps
-                    preloadSetlistSongs(found.songs || []);
+                    // Preload only the start of the setlist
+                    const subset = (found.songs || []).slice(0, 4);
+                    preloadSetlistSongs(subset);
                 }
             }
             hasAutoLoaded.current = true;
@@ -471,14 +472,19 @@ export default function Multitrack() {
         setActiveSetlist(list);
         setIsSetlistMenuOpen(false);
         localStorage.setItem('mixer_lastSetlistId', list.id);
-        // Start preloading all songs in background (Prime-style)
-        preloadSetlistSongs(list.songs || []);
+        // Preload only the start of the setlist
+        const subset = (list.songs || []).slice(0, 4);
+        preloadSetlistSongs(subset);
     };
 
     // Auto-preload songs when active setlist changes or gets new songs
     useEffect(() => {
         if (activeSetlist && activeSetlist.songs) {
-            preloadSetlistSongs(activeSetlist.songs);
+            // Only preload the "nearby" songs (current + next 3) to avoid RAM saturation
+            const currentIndex = activeSetlist.songs.findIndex(s => s.id === activeSongId);
+            const startIdx = Math.max(0, currentIndex === -1 ? 0 : currentIndex);
+            const subset = activeSetlist.songs.slice(startIdx, startIdx + 4);
+            preloadSetlistSongs(subset);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSetlist?.songs]);
@@ -502,80 +508,76 @@ export default function Multitrack() {
                 const trackBuffers = new Map();
                 const tracksData = song.tracks || [];
 
-                // Carga en paralelo dentro de la pre-carga
-                await Promise.all(tracksData.map(async (tr) => {
-                    if (!tr.url || tr.url === 'undefined') return;
+                // Carga secuencial o en batches pequeños para evitar picos de RAM
+                // En lugar de Promise.all, usamos un loop simple o batches
+                for (let i = 0; i < tracksData.length; i += 3) {
+                    const batch = tracksData.slice(i, i + 3);
+                    await Promise.all(batch.map(async (tr) => {
+                        if (!tr.url || tr.url === 'undefined') return;
 
-                    if (isAppNative) {
-                        let finalPath = '';
-                        let blob = null;
-                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                        if (isAppNative) {
+                            let finalPath = '';
+                            let blob = null;
+                            const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
 
-                        if (alreadyHasFile) {
-                            finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
-                            // Para visuales en Nativo necesitamos el buffer
-                            if (tr.name === '__PreviewMix') {
-                                blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                                if (!blob) {
-                                    // Si no esta en IndexedDB, intentamos bajarlo solo para el visual (una vez)
-                                    const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                                    if (res.ok) blob = await res.blob();
+                            if (alreadyHasFile) {
+                                finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                if (tr.name === '__PreviewMix') {
+                                    blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                                    if (!blob) {
+                                        const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                        if (res.ok) blob = await res.blob();
+                                    }
+                                }
+                            } else {
+                                let legacyRawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                                if (legacyRawBuf) {
+                                    finalPath = await NativeEngine.saveTrackBlob(legacyRawBuf, `${song.id}_${tr.name}.mp3`);
+                                    blob = legacyRawBuf;
+                                } else {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (!res.ok) return;
+                                    blob = await res.blob();
+                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
                                 }
                             }
-                        } else {
-                            let legacyRawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                            if (legacyRawBuf) {
-                                finalPath = await NativeEngine.saveTrackBlob(legacyRawBuf, `${song.id}_${tr.name}.mp3`);
-                                blob = legacyRawBuf;
-                            } else {
-                                const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                                if (!res.ok) return;
-                                blob = await res.blob();
-                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
-                            }
-                        }
 
-                        if (tr.name === '__PreviewMix' && blob) {
-                            try {
-                                const ab = await blob.arrayBuffer();
-                                const audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                                trackBuffers.set(tr.name, { path: finalPath, audioBuf });
-                            } catch (e) {
-                                console.error("Error decodificando visual native:", e);
+                            if (tr.name === '__PreviewMix' && blob) {
+                                try {
+                                    const ab = await blob.arrayBuffer();
+                                    const audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                                    trackBuffers.set(tr.name, { path: finalPath, audioBuf });
+                                } catch (e) {
+                                    console.error("Error decodificando visual native:", e);
+                                    trackBuffers.set(tr.name, { path: finalPath });
+                                }
+                            } else {
                                 trackBuffers.set(tr.name, { path: finalPath });
                             }
                         } else {
-                            trackBuffers.set(tr.name, { path: finalPath });
-                        }
-                    } else {
-                        let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                        if (!rawBuf) {
-                            const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                            if (!res.ok) return;
-                            rawBuf = await res.blob();
-                            await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
-                        }
-
-                        // DECODIFICAR EN SEGUNDO PLANO (WEB)
-                        try {
-                            const arrayBuf = await rawBuf.arrayBuffer();
-                            
-                            // Validación básica: si es muy pequeño probablemente no es audio
-                            if (arrayBuf.byteLength < 500) {
-                                throw new Error("Contenido no válido (demasiado pequeño)");
+                            let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                            if (!rawBuf) {
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (!res.ok) return;
+                                rawBuf = await res.blob();
+                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                             }
 
-                            const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
-                            trackBuffers.set(tr.name, { audioBuf }); // Guardamos el buffer decodificado!
-                        } catch (e) {
-                            console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
-                            // Si falla la decodificación, el archivo en LocalStorage está corrupto
-                            // Lo borramos para que se vuelva a descargar la próxima vez
-                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                            trackBuffers.set(tr.name, { error: true });
+                            try {
+                                const arrayBuf = await rawBuf.arrayBuffer();
+                                if (arrayBuf.byteLength < 500) {
+                                    throw new Error("Contenido no válido (demasiado pequeño)");
+                                }
+                                const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
+                                trackBuffers.set(tr.name, { audioBuf }); 
+                            } catch (e) {
+                                console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
+                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                trackBuffers.set(tr.name, { error: true });
+                            }
                         }
-                    }
-                }));
+                    }));
+                }
                 preloadCache.current.set(song.id, trackBuffers);
                 touchLRU(song.id);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
@@ -787,16 +789,13 @@ export default function Multitrack() {
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
             setAudioReady(prev => prev + 1);
 
-            // Pre-cargar siguientes...
+            // Pre-cargar siguientes secuencialmente
             if (activeSetlist?.songs) {
                 const allSongs = activeSetlist.songs;
                 const currentIdx = allSongs.findIndex(s => s.id === song.id);
                 if (currentIdx !== -1) {
-                    const lookahead = [];
-                    for (let i = currentIdx + 1; i < allSongs.length && lookahead.length < MAX_DECODED_SONGS - 1; i++) {
-                        if (!preloadCache.current.has(allSongs[i].id)) lookahead.push(allSongs[i]);
-                    }
-                    if (lookahead.length > 0) preloadSetlistSongs(lookahead);
+                    const subset = allSongs.slice(currentIdx + 1, currentIdx + 4).filter(s => !preloadCache.current.has(s.id));
+                    if (subset.length > 0) preloadSetlistSongs(subset);
                 }
             }
             return;
@@ -810,91 +809,89 @@ export default function Multitrack() {
             const trackBuffers = new Map();
             const tracksData = song.tracks || [];
 
-            // Descarga/Lectura en paralelo
-            await Promise.all(tracksData.map(async (tr) => {
-                if (!tr.url || tr.url === 'undefined') return;
+            // Descarga/Lectura en batches para evitar picos de RAM
+            for (let i = 0; i < tracksData.length; i += 3) {
+                const batchChunk = tracksData.slice(i, i + 3);
+                await Promise.all(batchChunk.map(async (tr) => {
+                    if (!tr.url || tr.url === 'undefined') return;
 
-                if (isAppNative) {
-                    let finalPath = '';
-                    let blob = null;
-                    try {
-                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
-                        if (alreadyHasFile) {
-                            finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
-                            if (tr.name === '__PreviewMix') {
-                                blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                    if (isAppNative) {
+                        let finalPath = '';
+                        let blob = null;
+                        try {
+                            const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                            if (alreadyHasFile) {
+                                finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                if (tr.name === '__PreviewMix') {
+                                    blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                                }
+                            } else {
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (res.ok) {
+                                    blob = await res.blob();
+                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
+                                }
                             }
-                        } else {
-                            const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                            if (res.ok) {
-                                blob = await res.blob();
-                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
-                                await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
+                        } catch (e) { console.error("Error loading track file native:", tr.name, e); }
+
+                        let audioBuf = null;
+                        if (tr.name === '__PreviewMix' && blob) {
+                            try {
+                                const ab = await blob.arrayBuffer();
+                                audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                            } catch (e) {
+                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
                             }
                         }
-                    } catch (e) { console.error("Error loading track file native:", tr.name, e); }
-
-                    // Decodificar visual solo para la mezcla si es posible
-                    let audioBuf = null;
-                    if (tr.name === '__PreviewMix' && blob) {
-                        try {
-                            const ab = await blob.arrayBuffer();
-                            if (ab.byteLength < 500) throw new Error("Blob corrupto o muy pequeño");
-                            audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                        } catch (e) {
-                            console.error(`Error decodificando visual para ${tr.name}:`, e.message);
-                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                        trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
+                    } else {
+                        let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                        if (!rawBuf) {
+                            try {
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (res.ok) {
+                                    rawBuf = await res.blob();
+                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                                }
+                            } catch (e) { }
                         }
-                    }
-                    trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
-                } else {
-                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                    if (!rawBuf) {
-                        try {
-                            const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                            if (res.ok) {
-                                rawBuf = await res.blob();
-                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+
+                        let audioBuf = null;
+                        if (rawBuf) {
+                            try {
+                                const arrayBuf = await rawBuf.arrayBuffer();
+                                audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
+                            } catch (e) {
+                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
                             }
-                        } catch (e) { }
-                    }
-
-                    let audioBuf = null;
-                    if (rawBuf) {
-                        try {
-                            const ab = await rawBuf.arrayBuffer();
-                            if (ab.byteLength < 500) throw new Error("Contenido no válido");
-                            audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                        } catch (e) {
-                            console.error(`[WEB] Corrupción en ${tr.name}:`, e.message);
-                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
                         }
+                        trackBuffers.set(tr.name, { rawBuf, audioBuf });
                     }
-                    trackBuffers.set(tr.name, { rawBuf, audioBuf });
-                }
-            }));
+                }));
+            }
 
             preloadCache.current.set(song.id, trackBuffers);
             touchLRU(song.id);
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
 
-            const batch = [];
-            const newTracks = [];
+            const batchMove = [];
+            const newTracksList = [];
             for (const [trackName, cached] of trackBuffers.entries()) {
                 const trackId = `${song.id}_${trackName}`;
                 const isVisual = trackName === '__PreviewMix';
-                batch.push({
+                batchMove.push({
                     id: trackId,
                     path: cached.path,
                     audioBuffer: cached.audioBuf,
                     sourceData: cached.rawBuf,
                     isVisualOnly: isVisual
                 });
-                if (!isVisual) newTracks.push({ id: trackId, name: trackName });
+                if (!isVisual) newTracksList.push({ id: trackId, name: trackName });
             }
 
-            await audioEngine.addTracksBatch(batch);
-            setTracks(newTracks);
+            await audioEngine.addTracksBatch(batchMove);
+            setTracks(newTracksList);
             setAudioReady(prev => prev + 1);
 
         } catch (err) {
