@@ -277,7 +277,7 @@ export default function Checkout() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
                     <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                        <img src="/zion-logo-blue.png" alt="Zion Stage" style={{ height: '36px' }} />
+                        <img src="/logo2.png" alt="Zion Stage" style={{ height: '36px' }} />
                     </div>
 
                     <div onClick={() => navigate('/store')} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '700', color: '#64748b', fontSize: '0.9rem', background: '#f1f5f9', padding: '8px 16px', borderRadius: '30px' }}>

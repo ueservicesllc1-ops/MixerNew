@@ -13,7 +13,7 @@ export default function Footer() {
                     {/* Brand Column */}
                     <div style={{ gridColumn: 'span 2' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                            <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
+                            <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
                         </div>
                         <p style={{ fontSize: '0.9rem', lineHeight: '1.6', maxWidth: '300px', marginBottom: '24px' }}>
                             La plataforma definitiva para líderes de alabanza. Gestión de tracks, letras y cifrados en un solo ecosistema.

@@ -371,7 +371,7 @@ export default function Store() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
                     <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
+                        <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
                     </div>
 
                     <button

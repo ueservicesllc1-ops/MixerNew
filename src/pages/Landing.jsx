@@ -369,7 +369,7 @@ export default function Landing() {
             }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '35px' }}>
                     <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
+                        <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
                     </div>
 
                     <div className="hide-mobile" style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.95rem', fontWeight: '600', color: '#94a3b8' }}>
@@ -1021,7 +1021,7 @@ export default function Landing() {
                             <div style={{ flex: '1 1 420px', backgroundColor: 'white', borderRadius: '16px', padding: '48px', boxShadow: '0 20px 50px rgba(0,0,0,0.08)', border: '1px solid #f3f4f6' }}>
                                 <div style={{ textAlign: 'center', marginBottom: '32px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-                                        <img src="/zion-logo-blue.png" alt="Zion Stage" style={{ height: '40px' }} />
+                                        <img src="/logo2.png" alt="Zion Stage" style={{ height: '40px' }} />
                                     </div>
                                     <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>{isLogin ? '¡Bienvenido de nuevo!' : 'Crea tu cuenta gratis'}</h1>
                                     <p style={{ color: '#6b7280' }}>Únete a la comunidad de líderes de alabanza.</p>

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import fetch from 'node-fetch';
@@ -53,6 +54,13 @@ const B2_KEY_ID = process.env.B2_KEY_ID;
 const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY;
 const B2_BUCKET_ID = process.env.B2_BUCKET_ID;
 const B2_BUCKET_NAME = process.env.B2_BUCKET_NAME || 'mixercur';
+
+console.log("🔧 B2 Config:", { 
+    hasKeyId: !!B2_KEY_ID, 
+    hasAppKey: !!B2_APPLICATION_KEY, 
+    bucketId: B2_BUCKET_ID,
+    bucketName: B2_BUCKET_NAME 
+});
 
 // Vars en caché
 let b2AuthToken = null;

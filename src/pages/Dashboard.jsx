@@ -675,7 +675,7 @@ function Dashboard() {
             {/* SIDEBAR */}
             <aside style={{ width: '280px', backgroundColor: '#020617', borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', padding: '30px 20px', position: 'fixed', bottom: 0, top: 0 }}>
                 <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', marginBottom: '40px', cursor: 'pointer', paddingLeft: '10px' }}>
-                    <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '32px' }} />
+                    <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '32px' }} />
                 </div>
 
                 <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>

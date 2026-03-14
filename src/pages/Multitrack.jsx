@@ -1299,7 +1299,7 @@ export default function Multitrack() {
                             <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
                         )}
                         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-                            <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '36px' }} />
+                            <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
                         </div>
                         <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
                         <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -1331,7 +1331,7 @@ export default function Multitrack() {
                 }}>
                     {/* Logo */}
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '52px' }}>
-                        <img src="/zion-logo-white.png" alt="Zion Stage" style={{ height: '45px', animation: 'pulse 2s infinite' }} className="preloader-text" />
+                        <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '45px', animation: 'pulse 2s infinite' }} className="preloader-text" />
                     </div>
 
                     {/* Spinner + Countdown stacked */}
