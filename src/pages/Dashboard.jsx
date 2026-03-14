@@ -186,6 +186,8 @@ function Dashboard() {
     const [isProcessingStripe, setIsProcessingStripe] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [successPlanName, setSuccessPlanName] = useState('');
+    const [uploadError, setUploadError] = useState(null);
+    const [showErrorModal, setShowErrorModal] = useState(false);
 
     const [customStorageGB, setCustomStorageGB] = useState(0);
 
@@ -369,7 +371,12 @@ function Dashboard() {
                                 resolve(JSON.parse(xhr.responseText));
                             } catch (e) { reject(new Error("Error parsing server response")); }
                         } else {
-                            reject(new Error(`Error ${xhr.status}: ${xhr.responseText || 'Fallo en subida'}`));
+                            let errorText = xhr.responseText || 'Fallo en subida';
+                            try {
+                                const parsed = JSON.parse(errorText);
+                                if (parsed.error) errorText = parsed.error;
+                            } catch (e) { }
+                            reject(new Error(`Error ${xhr.status}: ${errorText}`));
                         }
                     }
                 };
@@ -468,7 +475,18 @@ function Dashboard() {
             setTimeout(() => { resetWizard(); setActiveTab('home'); }, 2000);
         } catch (e) {
             console.error("Error completo de subida:", e);
-            alert("Ocurrió un error en la subida: " + (e.message || "Revisa tu conexión"));
+            
+            let userMsg = e.message || "Revisa tu conexión";
+            if (userMsg.includes("0x2C") || userMsg.includes("Bad character")) {
+                userMsg = "El nombre de la canción o de una pista tiene un carácter no permitido (como una coma). Por favor, intenta subirla de nuevo asegurándote de no usar comas ni símbolos especiales en los nombres.";
+            } else if (userMsg.includes("500")) {
+                userMsg = "Error en el servidor. Puede ser que el archivo de audio esté dañado o no sea compatible. Asegúrate de subir archivos .mp3 o .wav válidos.";
+            } else if (userMsg.includes("404")) {
+                userMsg = "No se encontró el servidor. Por favor, verifica que el proxy esté corriendo correctamente.";
+            }
+
+            setUploadError(userMsg);
+            setShowErrorModal(true);
             setStep('details');
         } finally {
             setIsUploading(false);
@@ -1486,6 +1504,43 @@ function Dashboard() {
                                     style={{ width: '100%', padding: '18px', fontSize: '1.1rem', fontWeight: '800', boxShadow: '0 10px 20px rgba(0,210,211,0.2)' }}
                                 >
                                     ¡Vamos a Empezar!
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* ERROR MODAL PREMIUM (FOR UPLOADS) */}
+            {
+                showErrorModal && (
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,6,23,0.95)', backdropFilter: 'blur(15px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '450px', backgroundColor: '#1e293b', border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center', padding: '40px', position: 'relative', overflow: 'hidden' }}>
+                            <div style={{ position: 'absolute', top: '-10px', right: '-10px', color: 'rgba(239, 68, 68, 0.05)' }}><X size={180} /></div>
+
+                            <div style={{ position: 'relative', zIndex: 1 }}>
+                                <div style={{ width: '80px', height: '80px', background: 'linear-gradient(135deg, #ef4444, #b91c1c)', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 25px', boxShadow: '0 15px 30px rgba(239, 68, 68, 0.3)' }}>
+                                    <HelpCircle size={40} color="white" />
+                                </div>
+
+                                <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '15px', color: 'white' }}>¡Ups! Algo falló</h2>
+                                <p style={{ fontSize: '1rem', color: '#94a3b8', lineHeight: '1.6', marginBottom: '30px', padding: '0 10px' }}>
+                                    {uploadError}
+                                </p>
+
+                                <div style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.1)', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
+                                    <div style={{ color: '#ef4444' }}><Settings2 size={20} /></div>
+                                    <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>Sugerencia: Revisa los nombres de tus archivos y que no excedan el límite de tu plan.</div>
+                                </div>
+
+                                <button
+                                    onClick={() => setShowErrorModal(false)}
+                                    className="btn-teal"
+                                    style={{ width: '100%', padding: '15px', fontSize: '1.1rem', fontWeight: '800', background: '#ef4444', boxShadow: '0 8px 16px rgba(239, 68, 68, 0.2)' }}
+                                    onMouseEnter={e => e.currentTarget.style.background = '#dc2626'}
+                                    onMouseLeave={e => e.currentTarget.style.background = '#ef4444'}
+                                >
+                                    Entendido, voy a corregirlo
                                 </button>
                             </div>
                         </div>
