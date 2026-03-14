@@ -270,6 +270,9 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
             body: mp3Buffer
         });
         const b2Data = await b2Response.json();
+        if (!b2Response.ok) {
+            throw new Error(`B2 Upload Error: ${b2Data.message || b2Data.code || 'Unknown error'}`);
+        }
         const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
 
         // --- GENERACIÓN Y SUBIDA DE PREVIEW (OPCIONAL) ---
@@ -309,8 +312,12 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
                     body: previewBuffer
                 });
                 const pData = await pB2Resp.json();
-                previewUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(previewFilename)}`;
-                console.log(`✅ Clip generado: ${previewUrl}`);
+                if (!pB2Resp.ok) {
+                    console.warn("⚠️ B2 Preview Upload Error:", pData.message);
+                } else {
+                    previewUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(previewFilename)}`;
+                    console.log(`✅ Clip generado: ${previewUrl}`);
+                }
             } catch (prevErr) {
                 console.warn("⚠️ Falló creación de preview, se usará el original:", prevErr.message);
             }

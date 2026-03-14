@@ -431,9 +431,9 @@ function Dashboard() {
                 const data = await uploadFile(mixBlob, b2Filename, '__PreviewMix', 'preview.mp3', () => { }, true);
                 uploadedTracksInfo.push({
                     name: '__PreviewMix',
-                    url: data.url,
-                    previewUrl: data.previewUrl || data.url,
-                    b2FileId: data.fileId,
+                    url: data?.url || '',
+                    previewUrl: data?.previewUrl || data?.url || '',
+                    b2FileId: data?.fileId || '',
                     isWaveformSource: true,
                     sizeMB: (mixBlob.size / 1024 / 1024).toFixed(2)
                 });
@@ -442,16 +442,20 @@ function Dashboard() {
             setUploadProgress(98);
 
             const songDoc = await addDoc(collection(db, 'songs'), {
-                name: songName || 'Sin título',
-                artist: artist || 'Desconocido',
-                key: songKey || '',
-                tempo: tempo || '',
-                timeSignature: timeSignature || '',
+                name: (songName || 'Sin título').trim(),
+                artist: (artist || 'Desconocido').trim(),
+                key: (songKey || '').trim(),
+                tempo: (tempo || '').trim(),
+                timeSignature: (timeSignature || '4/4').trim(),
                 useType: useType || 'personal',
                 status: useType === 'sell' ? 'pending' : 'active',
-                userId: currentUser.uid,
-                userEmail: currentUser.email || '',
-                tracks: uploadedTracksInfo,
+                userId: currentUser?.uid || 'unknown',
+                userEmail: currentUser?.email || '',
+                tracks: uploadedTracksInfo.map(t => ({
+                    ...t,
+                    url: t.url || '',
+                    b2FileId: t.b2FileId || ''
+                })),
                 createdAt: serverTimestamp(),
                 isGlobal: false
             });
