@@ -38,6 +38,10 @@ export default function Multitrack() {
     const [currentUser, setCurrentUser] = useState(null);
     const [proxyUrl, setProxyUrl] = useState(() => {
         const saved = localStorage.getItem('mixer_proxyUrl');
+        // En nativo (Capacitor), window.location.hostname también es 'localhost'
+        // por eso hay que detectar nativo PRIMERO antes de revisar hostname
+        const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        if (isNative) return saved || 'https://mixernew-production.up.railway.app';
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         if (isLocal) return 'http://localhost:3001';
         return saved || 'https://mixernew-production.up.railway.app';
