@@ -45,13 +45,12 @@ const upload = multer({ storage: multer.memoryStorage() });
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
-    origin: true, // Allow all origins including capacitor://localhost
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Range'],
     exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
     credentials: true
 }));
-app.options('*', cors()); // Handle preflight
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
