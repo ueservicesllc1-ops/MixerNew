@@ -1075,7 +1075,7 @@ export default function Admin() {
                 <div className="fade-in">
                     <div style={{ background: '#1e293b', padding: '30px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '40px' }}>
                         <h2 style={{ marginBottom: '20px' }}>Subir Nueva Versión (APK)</h2>
-                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '20px' }}>
                             <div style={{ flex: 1 }}>
                                 <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Nombre de Versión (ej: 1.0.5)</label>
                                 <input value={apkVersionName} onChange={e => setApkVersionName(e.target.value)} placeholder="v1.0.1..." style={{ width: '100%', padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
@@ -1087,6 +1087,36 @@ export default function Admin() {
                             <button onClick={uploadApk} disabled={isUploadingApk} className="btn-teal" style={{ padding: '14px 40px', opacity: isUploadingApk ? 0.5 : 1 }}>
                                 {isUploadingApk ? "SUBIENDO..." : "SUBIR A B2"}
                             </button>
+                        </div>
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px' }}>
+                            <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>— O pega directamente el enlace del APK —</label>
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <input
+                                    id="apk-url-input"
+                                    placeholder="https://f005.backblazeb2.com/file/mixercur/apps/..."
+                                    style={{ flex: 1, padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }}
+                                />
+                                <button
+                                    onClick={async () => {
+                                        const url = document.getElementById('apk-url-input').value.trim();
+                                        const ver = apkVersionName.trim() || '1.0';
+                                        if (!url) return alert('Pega el enlace primero');
+                                        try {
+                                            await addDoc(collection(db, 'app_versions'), {
+                                                versionName: ver,
+                                                downloadUrl: url,
+                                                createdAt: serverTimestamp()
+                                            });
+                                            alert('Versión registrada correctamente.');
+                                            document.getElementById('apk-url-input').value = '';
+                                            setApkVersionName('');
+                                        } catch (e) { alert('Error: ' + e.message); }
+                                    }}
+                                    style={{ background: '#6366f1', color: 'white', border: 'none', padding: '14px 30px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                                >
+                                    GUARDAR ENLACE
+                                </button>
+                            </div>
                         </div>
                     </div>
 
