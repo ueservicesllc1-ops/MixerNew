@@ -1014,12 +1014,8 @@ export default function Multitrack() {
     const handleMasterVolume = (e) => {
         const val = parseFloat(e.target.value);
         setMasterVolume(val);
-        if (audioEngine.masterGain && audioEngine.ctx) {
-            audioEngine.masterGain.gain.setTargetAtTime(val, audioEngine.ctx.currentTime, 0.015);
-        } else {
-            // Native: delegate to audioEngine which internally uses NativeEngine
-            audioEngine.setMasterVolume && audioEngine.setMasterVolume(val);
-        }
+        // audioEngine.setMasterVolume maneja nativo y web internamente
+        audioEngine.setMasterVolume(val);
     };
 
     // Tempo control (┬▒15 BPM from original, pitch preserved via SoundTouch)
@@ -1439,6 +1435,7 @@ export default function Multitrack() {
                         min="0" max="1" step="0.01"
                         value={masterVolume}
                         onChange={handleMasterVolume}
+                        onInput={handleMasterVolume}
                         style={{ flex: 1, accentColor: 'white', cursor: 'pointer', height: '4px' }}
                     />
                     <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: '900', paddingLeft: '4px' }}>{Math.round(masterVolume * 100)}%</span>
