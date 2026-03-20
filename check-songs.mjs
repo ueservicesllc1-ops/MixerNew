@@ -1,36 +1,42 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs } from 'firebase/firestore';
-import fs from 'fs';
 
-// Cargar config de App.jsx o similar
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, query, limit } from 'firebase/firestore';
+import dotenv from 'dotenv';
+dotenv.config();
+
 const firebaseConfig = {
-  apiKey: "AIzaSyB...", // Needs to be real
-  authDomain: "mixercur.firebaseapp.com",
-  projectId: "mixercur",
-  storageBucket: "mixercur.firebasestorage.app",
-  messagingSenderId: "542757279323",
-  appId: "1:542757279323:web:9f8e438c6428d086a987d3"
+    apiKey: process.env.VITE_FIREBASE_API_KEY,
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 async function checkSongs() {
-    const snap = await getDocs(collection(db, 'songs'));
-    const results = [];
-    snap.forEach(doc => {
-        const d = doc.data();
-        results.push({
-            id: doc.id,
-            name: d.name,
-            artist: d.artist,
-            status: d.status,
-            isGlobal: d.isGlobal,
-            userId: d.userId,
-            forSale: d.forSale
+    try {
+        const { where } = await import('firebase/firestore');
+        const q = query(collection(db, 'songs'), where('forSale', '==', true), limit(50));
+        const snap = await getDocs(q);
+        console.log(`Found ${snap.size} songs with forSale: true.`);
+        snap.forEach(doc => {
+            const data = doc.data();
+            console.log(`- ID: ${doc.id}, Name: ${data.name}, User: ${data.userEmail}, forSale: ${data.forSale}, status: ${data.status}`);
         });
-    });
-    console.log(JSON.stringify(results, null, 2));
+    } catch (e) {
+        console.error("Query for forSale == true failed:", e);
+    }
+
+    try {
+        const qAll = query(collection(db, 'songs'), limit(10));
+        await getDocs(qAll);
+        console.log("Query ALL correctly allowed (unlikely).");
+    } catch (e) {
+        console.log("Query ALL failed as expected (Rules working).");
+    }
 }
 
-checkSongs();
+checkSongs().catch(console.error);

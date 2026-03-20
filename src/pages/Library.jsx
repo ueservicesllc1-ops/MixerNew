@@ -10,14 +10,14 @@ import {
     X
 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
 import Footer from '../components/Footer';
 import ChordViewer from '../components/ChordViewer';
 
 export default function Library() {
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
-    const [songs, setSongs] = useState([]);
+
     const [artists, setArtists] = useState([]);
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [viewingChords, setViewingChords] = useState(null); // stores { text, title, artist }
@@ -45,7 +45,6 @@ export default function Library() {
                 artistMap[artistName].songs.push(s);
             });
 
-            setSongs(arr);
             setArtists(Object.values(artistMap).sort((a, b) => a.name.localeCompare(b.name)));
         });
 

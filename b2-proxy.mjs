@@ -234,9 +234,12 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         const isImage = file.mimetype?.startsWith('image/') ||
             /\.(png|jpe?g|gif|webp)$/i.test(file.originalname);
 
+        const isApk = file.mimetype === 'application/vnd.android.package-archive' ||
+            file.originalname.toLowerCase().endsWith('.apk');
+
         let mp3Buffer;
 
-        if (isMp3 || isImage) {
+        if (isMp3 || isImage || isApk) {
             mp3Buffer = file.buffer;
         } else {
             console.log("🔄 Transcodificando a MP3...");
@@ -256,7 +259,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         // --- SUBIDA DEL ARCHIVO ORIGINAL ---
         const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
-        let contentType = isImage ? (file.mimetype || 'image/jpeg') : 'audio/mpeg';
+        let contentType = isImage ? (file.mimetype || 'image/jpeg') : (isApk ? 'application/vnd.android.package-archive' : 'audio/mpeg');
 
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',

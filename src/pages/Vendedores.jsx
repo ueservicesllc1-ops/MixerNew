@@ -6,7 +6,7 @@ import JSZip from 'jszip';
 import { db, auth } from '../firebase';
 import {
     collection, query, where, onSnapshot, doc, updateDoc,
-    addDoc, getDocs, serverTimestamp, setDoc
+    addDoc, serverTimestamp, setDoc
 } from 'firebase/firestore';
 import {
     LayoutDashboard, Package, TrendingUp,
@@ -17,7 +17,7 @@ import {
 // Usando clave LIVE de Stripe 
 const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
 
-const StripeCheckoutForm = ({ clientSecret, onPaymentSuccess }) => {
+const StripeCheckoutForm = ({ onPaymentSuccess }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -51,11 +51,6 @@ const StripeCheckoutForm = ({ clientSecret, onPaymentSuccess }) => {
     );
 };
 
-// Common utility to detect native app
-const isNativeApp = () => {
-    return typeof window !== 'undefined' &&
-        window.Capacitor?.isNativePlatform?.() === true
-}
 
 // ── Audio Multi-Track Mixing System for Waveforms ───────────────
 async function generateMixBlob(tracks) {
@@ -145,8 +140,7 @@ function Vendedores() {
         idPhotoFileId: ''
     });
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-    const [isProcessingZip, setIsProcessingZip] = useState(false);
-    const [zipProgress, setZipProgress] = useState(0);
+
 
     // Stripe States
     const [stripeClientSecret, setStripeClientSecret] = useState('');
@@ -156,7 +150,7 @@ function Vendedores() {
     // Upload Wizard States
     const [step, setStep] = useState('idle'); // idle, details, uploading, done
     const [fileList, setFileList] = useState([]);
-    const [isUploading, setIsUploading] = useState(false);
+    const [, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [songName, setSongName] = useState('');
     const [artist, setArtist] = useState('');
@@ -167,15 +161,15 @@ function Vendedores() {
     const [coverUrl, setCoverUrl] = useState('');
     const [coverFileId, setCoverFileId] = useState('');
     const [isUploadingCover, setIsUploadingCover] = useState(false);
-
-    // Stats & Products
-    const [stats, setStats] = useState({
+    const [stats] = useState({
         totalSales: 0,
         revenue: 0,
         pendingBalance: 0,
         availableBalance: 0,
         salesCount: 0
     });
+
+    // Stats & Products
     const [myProducts, setMyProducts] = useState([]);
 
     useEffect(() => {
@@ -187,9 +181,7 @@ function Vendedores() {
                         const data = snap.data();
                         setUserData(data);
                         setIsSeller(data.isSeller || false);
-                        if (data.email && !regForm.email) {
-                            setRegForm(prev => ({ ...prev, email: data.email }));
-                        }
+                        setRegForm(prev => prev.email ? prev : { ...prev, email: data.email || '' });
                     }
                     setLoading(false);
                 });
@@ -309,8 +301,7 @@ function Vendedores() {
     const handleZipUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        setIsProcessingZip(true);
-        setZipProgress(0);
+
         const zip = new JSZip();
         try {
             const cleanName = file.name.replace(/\.zip$/i, '');
@@ -338,13 +329,12 @@ function Vendedores() {
                     blob: fileData,
                     extension: filename.split('.').pop()
                 });
-                setZipProgress(Math.round(((i + 1) / filesToExtract.length) * 100));
+
             }
             if (extractedFiles.length === 0) throw new Error("No se encontraron archivos de audio en el ZIP.");
             setFileList(extractedFiles);
             setStep('review-tracks'); // Nuevo paso intermedio
         } catch (err) { alert('Error: ' + err.message); }
-        finally { setIsProcessingZip(false); }
     };
 
     const uploadToB2 = async () => {
@@ -430,8 +420,6 @@ function Vendedores() {
             console.error("Upload Error:", e);
             alert("Error: " + e.message);
             setStep('details');
-        } finally {
-            setIsUploading(false);
         }
     };
 
@@ -468,10 +456,6 @@ function Vendedores() {
         setCoverUrl(''); setCoverFileId('');
     };
 
-    const initialOptions = {
-        "client-id": "AbXQ6fanTIWx-dAoMagwbOTZ_M51YI4A-Dwzf2AY2CyIG7qNhV8QIiXuyBX-fina0FUxgTs8euJuAGc3",
-        "currency": "USD"
-    };
 
     if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}><div className="loader"></div></div>;
 

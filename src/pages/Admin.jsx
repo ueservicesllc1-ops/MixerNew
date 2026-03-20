@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic } from 'lucide-react';
 
 export default function Admin() {
@@ -17,11 +17,15 @@ export default function Admin() {
     const [searchUser, setSearchUser] = useState('');
     const [searchArtist, setSearchArtist] = useState('');
     const [filterLetter, setFilterLetter] = useState('ALL'); // Nuevo: Filtro por letra
-    const [editingSong, setEditingSong] = useState(null);
-    const [editForm, setEditForm] = useState({ name: '', artist: '' });
+
     const [coupons, setCoupons] = useState([]); // Nuevo: Gestión de cupones
     const [newCouponCode, setNewCouponCode] = useState('');
     const [newCouponDiscount, setNewCouponDiscount] = useState('');
+
+    const [appHistory, setAppHistory] = useState([]); // Nuevo: Historial de APKs
+    const [isUploadingApk, setIsUploadingApk] = useState(false);
+    const [apkFile, setApkFile] = useState(null);
+    const [apkVersionName, setApkVersionName] = useState('');
 
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [artistSongs, setArtistSongs] = useState([]);
@@ -30,6 +34,12 @@ export default function Admin() {
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [editingTracks, setEditingTracks] = useState(null); // Canción que estamos editando sus tracks
+
+    const [banners, setBanners] = useState([]); // Nuevo: Banners del index
+    const [isUploadingBanner, setIsUploadingBanner] = useState(false);
+    const [bannerFile, setBannerFile] = useState(null);
+    const [bannerTitle, setBannerTitle] = useState('');
+    const [bannerSubtitle, setBannerSubtitle] = useState('');
 
     useEffect(() => {
         const checkAdmin = auth.onAuthStateChanged((user) => {
@@ -88,6 +98,18 @@ export default function Admin() {
             snap.forEach(doc => cp.push({ id: doc.id, ...doc.data() }));
             setCoupons(cp.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
         });
+
+        onSnapshot(collection(db, 'app_versions'), (snap) => {
+            const av = [];
+            snap.forEach(doc => av.push({ id: doc.id, ...doc.data() }));
+            setAppHistory(av.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+        });
+
+        onSnapshot(collection(db, 'banners'), (snap) => {
+            const b = [];
+            snap.forEach(doc => b.push({ id: doc.id, ...doc.data() }));
+            setBanners(b.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+        });
     };
 
     const approveSeller = async (userId) => {
@@ -143,7 +165,7 @@ export default function Admin() {
                 ? 'http://localhost:3001'
                 : 'https://mixernew-production.up.railway.app';
 
-            const resp = await fetch(`${devProxy}/import-lacuerda-artists`);
+            const resp = await fetch(`${devProxy}/api/import-artists`);
             const data = await resp.json();
 
             if (data.artists) {
@@ -216,7 +238,7 @@ export default function Admin() {
                 createdAt: serverTimestamp()
             });
             setNewArtistName('');
-        } catch (e) { alert("Error al agregar artista"); }
+        } catch { alert("Error al agregar artista"); }
     };
 
     const addCoupon = async () => {
@@ -231,7 +253,7 @@ export default function Admin() {
             setNewCouponCode('');
             setNewCouponDiscount('');
             alert("Cupón creado correctamente");
-        } catch (e) { alert("Error al crear cupón"); }
+        } catch { alert("Error al crear cupón"); }
     };
 
     const deleteCoupon = async (id) => {
@@ -249,7 +271,7 @@ export default function Admin() {
     const assignArtistToSong = async (songId, artistName) => {
         try {
             await updateDoc(doc(db, 'songs', songId), { artist: artistName });
-        } catch (e) { alert("Error al asignar artista"); }
+        } catch { alert("Error al asignar artista"); }
     };
 
     const saveTrackNames = async () => {
@@ -280,7 +302,7 @@ export default function Admin() {
                 ? 'http://localhost:3001'
                 : 'https://mixernew-production.up.railway.app';
 
-            const resp = await fetch(`${devProxy}/list-artist-songs?slug=${artist.slug}`);
+            const resp = await fetch(`${devProxy}/api/list-artist-songs?slug=${artist.slug}`);
             const data = await resp.json();
             if (data.songs) {
                 setArtistSongs(data.songs);
@@ -302,7 +324,6 @@ export default function Admin() {
         if (!window.confirm(`¿Importar cifrado y letra de "${song.name}" de ${selectedArtist.name}?`)) return;
 
         const btn = document.getElementById(btnId);
-        const originalText = btn ? btn.innerText : 'IMPORTAR';
         if (btn) {
             btn.innerText = 'IMPORTANDO...';
             btn.disabled = true;
@@ -313,7 +334,7 @@ export default function Admin() {
                 ? 'http://localhost:3001'
                 : 'https://mixernew-production.up.railway.app';
 
-            const resp = await fetch(`${devProxy}/scrape-full-song?artistSlug=${selectedArtist.slug}&songSlug=${song.slug}`);
+            const resp = await fetch(`${devProxy}/api/scrape-full-song?artistSlug=${selectedArtist.slug}&songSlug=${song.slug}`);
             if (!resp.ok) throw new Error(`Error en el servidor: ${resp.status}`);
 
             const data = await resp.json();
@@ -368,9 +389,174 @@ export default function Admin() {
         } catch (error) { console.error(error); }
     };
 
+    const uploadApk = async () => {
+        if (!apkFile || !apkVersionName.trim()) {
+            alert("Por favor selecciona un archivo APK y ponle un nombre de versión.");
+            return;
+        }
+
+        setIsUploadingApk(true);
+        try {
+            const formData = new FormData();
+            formData.append('audioFile', apkFile); // Using 'audioFile' because the proxy expects it
+            formData.append('fileName', `apps/zion-stage-${Date.now()}.apk`);
+            formData.append('generatePreview', 'false');
+
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001'
+                : 'https://mixernew-production.up.railway.app';
+
+            const resp = await fetch(`${devProxy}/api/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await resp.json();
+            if (data.success) {
+                await addDoc(collection(db, 'app_versions'), {
+                    versionName: apkVersionName.trim(),
+                    downloadUrl: data.url,
+                    fileId: data.fileId,
+                    createdAt: serverTimestamp()
+                });
+                alert("APK subida con éxito.");
+                setApkFile(null);
+                setApkVersionName('');
+            } else {
+                throw new Error(data.error || 'Error al subir');
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error: " + e.message);
+        } finally {
+            setIsUploadingApk(false);
+        }
+    };
+
+    const deleteApkVersion = async (v) => {
+        if (!window.confirm("¿Eliminar esta versión de la app permanentemente?")) return;
+        try {
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001'
+                : 'https://mixernew-production.up.railway.app';
+
+            await fetch(`${devProxy}/api/delete-file`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId: v.fileId, fileName: v.downloadUrl.split('/').slice(-2).join('/') })
+            });
+
+            await deleteDoc(doc(db, 'app_versions', v.id));
+            alert("Versión eliminada.");
+        } catch (e) { console.error(e); }
+    };
+
+    const toggleManualForSale = async (song) => {
+        const newState = !song.forSale;
+        const msg = newState ? `¿Publicar "${song.name}" en el Marketplace?` : `¿Quitar "${song.name}" del Marketplace?`;
+        if (!window.confirm(msg)) return;
+        try {
+            await updateDoc(doc(db, 'songs', song.id), {
+                forSale: newState,
+                status: newState ? 'active' : (song.status || 'active')
+            });
+            alert(newState ? "Publicado." : "Retirado.");
+        } catch (e) { console.error(e); }
+    };
+
     const deleteSong = async (id) => {
-        if (!window.confirm("¿Eliminar drásticamente esta canción?")) return;
-        try { await deleteDoc(doc(db, 'songs', id)); } catch (error) { console.error(error); }
+        if (!window.confirm("¿ELIMINAR esta canción permanentemente de la base de datos y de B2?")) return;
+        try {
+            // Find song to get track info for B2 cleanup
+            const song = songs.find(s => s.id === id);
+            if (song && song.tracks) {
+                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+
+                for (const track of song.tracks) {
+                    if (track.b2FileId) {
+                        await fetch(`${devProxy}/api/delete-file`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ fileId: track.b2FileId, fileName: track.url.split('/').slice(-2).join('/') })
+                        }).catch(e => console.error("Error deleting track from B2:", e));
+                    }
+                }
+                if (song.coverFileId) {
+                    await fetch(`${devProxy}/api/delete-file`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fileId: song.coverFileId, fileName: song.coverUrl.split('/').slice(-2).join('/') })
+                    }).catch(e => console.error("Error deleting cover from B2:", e));
+                }
+            }
+            await deleteDoc(doc(db, 'songs', id));
+            alert("Canción eliminada.");
+        } catch (e) { console.error(e); }
+    };
+
+    const uploadBanner = async () => {
+        if (!bannerFile) {
+            alert("Por favor selecciona una imagen para el banner.");
+            return;
+        }
+
+        setIsUploadingBanner(true);
+        try {
+            const formData = new FormData();
+            formData.append('audioFile', bannerFile);
+            formData.append('fileName', `banners/banner-${Date.now()}.png`);
+            formData.append('generatePreview', 'false');
+
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001'
+                : 'https://mixernew-production.up.railway.app';
+
+            const resp = await fetch(`${devProxy}/api/upload`, {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await resp.json();
+            if (data.success) {
+                await addDoc(collection(db, 'banners'), {
+                    title: bannerTitle.trim() || 'Nuevo Banner',
+                    subtitle: bannerSubtitle.trim() || '',
+                    image: data.url,
+                    fileId: data.fileId,
+                    createdAt: serverTimestamp()
+                });
+                alert("Banner subido con éxito.");
+                setBannerFile(null);
+                setBannerTitle('');
+                setBannerSubtitle('');
+            } else {
+                throw new Error(data.error || 'Error al subir');
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error: " + e.message);
+        } finally {
+            setIsUploadingBanner(false);
+        }
+    };
+
+    const deleteBanner = async (v) => {
+        if (!window.confirm("¿Eliminar este banner permanentemente?")) return;
+        try {
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001'
+                : 'https://mixernew-production.up.railway.app';
+
+            await fetch(`${devProxy}/api/delete-file`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fileId: v.fileId, fileName: v.image.split('/').slice(-2).join('/') })
+            });
+
+            await deleteDoc(doc(db, 'banners', v.id));
+            alert("Banner eliminado.");
+        } catch (e) { console.error(e); }
     };
 
     if (loading) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}>Cargando Admin...</div>;
@@ -398,6 +584,8 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
                 <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({songs.length})</button>
+                <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({appHistory.length})</button>
+                <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({banners.length})</button>
                 <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length})</button>
             </div>
 
@@ -584,7 +772,33 @@ export default function Admin() {
                                     </select>
                                 </div>
                                 <div style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.userEmail}</div>
-                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                    <div style={{
+                                        fontSize: '0.65rem',
+                                        padding: '4px 8px',
+                                        borderRadius: '10px',
+                                        background: s.forSale ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                                        color: s.forSale ? '#10b981' : '#ef4444',
+                                        fontWeight: '800',
+                                        marginRight: '10px'
+                                    }}>
+                                        {s.forSale ? 'ON MARKET' : 'PRIVATE'}
+                                    </div>
+                                    <button
+                                        onClick={() => toggleManualForSale(s)}
+                                        style={{ 
+                                            background: s.forSale ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', 
+                                            color: s.forSale ? '#ef4444' : '#10b981', 
+                                            border: `1px solid ${s.forSale ? '#ef4444' : '#10b981'}`,
+                                            padding: '8px 12px', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '800', 
+                                            cursor: 'pointer' 
+                                        }}
+                                    >
+                                        {s.forSale ? 'OCULTAR' : 'PUBLICAR'}
+                                    </button>
                                     <button
                                         onClick={() => setEditingTracks({
                                             ...s,
@@ -593,11 +807,11 @@ export default function Admin() {
                                                 displayName: t.displayName || t.name || t.originalName || ''
                                             })) : []
                                         })}
-                                        style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}
+                                        style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer' }}
                                     >
                                         EDITAR TRACKS
                                     </button>
-                                    <button onClick={() => deleteSong(s.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={20} /></button>
+                                    <button onClick={() => deleteSong(s.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={20} /></button>
                                 </div>
                             </div>
                         ))}
@@ -631,6 +845,75 @@ export default function Admin() {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {activeTab === 'banners' && (
+                <div className="fade-in">
+                    <div style={{ background: '#1e293b', padding: '30px', borderRadius: '24px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '40px' }}>
+                        <h2 style={{ margin: '0 0 20px 0' }}>Gestionar Banners del Index</h2>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Título del Banner</label>
+                                <input 
+                                    type="text" 
+                                    value={bannerTitle} 
+                                    onChange={e => setBannerTitle(e.target.value)} 
+                                    placeholder="Ej: Multitracks con Excelencia" 
+                                    style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'white', color: 'black', border: 'none' }} 
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Subtítulo / Descripción</label>
+                                <input 
+                                    type="text" 
+                                    value={bannerSubtitle} 
+                                    onChange={e => setBannerSubtitle(e.target.value)} 
+                                    placeholder="Ej: La herramienta definitiva para músicos..." 
+                                    style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'white', color: 'black', border: 'none' }} 
+                                />
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Imagen del Banner (Recomendado 21:9)</label>
+                                <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    onChange={e => setBannerFile(e.target.files[0])} 
+                                    style={{ width: '100%', color: '#94a3b8' }} 
+                                />
+                            </div>
+                            <button 
+                                onClick={uploadBanner} 
+                                disabled={isUploadingBanner}
+                                style={{ background: '#6366f1', color: 'white', border: 'none', padding: '15px 40px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', marginTop: '20px' }}
+                            >
+                                {isUploadingBanner ? "Subiendo..." : "SUBIR BANNER"}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
+                        {banners.map(b => (
+                            <div key={b.id} style={{ background: '#1e293b', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ height: '180px', position: 'relative' }}>
+                                    <img src={b.image} alt={b.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                    <button 
+                                        onClick={() => deleteBanner(b)} 
+                                        style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(239, 68, 68, 0.9)', color: 'white', border: 'none', width: '36px', height: '36px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
+                                </div>
+                                <div style={{ padding: '20px' }}>
+                                    <h3 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#00d2d3' }}>{b.title}</h3>
+                                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>{b.subtitle}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    {banners.length === 0 && <p style={{ textAlign: 'center', color: '#64748b', padding: '40px' }}>No hay banners configurados.</p>}
                 </div>
             )}
 
@@ -784,6 +1067,46 @@ export default function Admin() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'apps' && (
+                <div className="fade-in">
+                    <div style={{ background: '#1e293b', padding: '30px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '40px' }}>
+                        <h2 style={{ marginBottom: '20px' }}>Subir Nueva Versión (APK)</h2>
+                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Nombre de Versión (ej: 1.0.5)</label>
+                                <input value={apkVersionName} onChange={e => setApkVersionName(e.target.value)} placeholder="v1.0.1..." style={{ width: '100%', padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Seleccionar Archivo .apk</label>
+                                <input type="file" accept=".apk" onChange={e => setApkFile(e.target.files[0])} style={{ width: '100%', padding: '9px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'white' }} />
+                            </div>
+                            <button onClick={uploadApk} disabled={isUploadingApk} className="btn-teal" style={{ padding: '14px 40px', opacity: isUploadingApk ? 0.5 : 1 }}>
+                                {isUploadingApk ? "SUBIENDO..." : "SUBIR A B2"}
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ background: '#1e293b', borderRadius: '24px', padding: '32px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <h2 style={{ marginBottom: '24px' }}>Historial de Versiones</h2>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {appHistory.map((v, i) => (
+                                <div key={v.id} style={{ background: i === 0 ? 'rgba(0,210,211,0.05)' : 'rgba(255,255,255,0.02)', padding: '20px', borderRadius: '16px', border: i === 0 ? '1px solid #00d2d3' : '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontWeight: '900', fontSize: '1.25rem', color: i === 0 ? '#00d2d3' : 'white' }}>
+                                            Versión {v.versionName} {i === 0 && <span style={{ fontSize: '0.6rem', padding: '2px 8px', borderRadius: '10px', background: '#00d2d3', color: 'black', marginLeft: '10px', verticalAlign: 'middle' }}>ACTUAL</span>}
+                                        </div>
+                                        <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Subido el {v.createdAt?.toDate().toLocaleString()}</div>
+                                        <a href={v.downloadUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: '#00d2d3', textDecoration: 'none', display: 'block', marginTop: '8px' }}>{v.downloadUrl}</a>
+                                    </div>
+                                    <button onClick={() => deleteApkVersion(v)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={24} /></button>
+                                </div>
+                            ))}
+                            {appHistory.length === 0 && <p style={{ color: '#64748b' }}>No hay versiones subidas aún.</p>}
+                        </div>
                     </div>
                 </div>
             )}

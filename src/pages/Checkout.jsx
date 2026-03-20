@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion, getDocs } from 'firebase/firestore';
+import { collection, doc, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
 import { ShoppingCart, ArrowLeft, X, Loader2, CheckCircle2, ChevronRight, Music2, ShieldCheck, Mail, CreditCard, LogOut, Globe } from 'lucide-react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
@@ -9,7 +9,7 @@ import Footer from '../components/Footer';
 
 const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
 
-const StripeCheckoutForm = ({ clientSecret, itemsCount, total, subtotal, discount, onPaymentSuccess }) => {
+const StripeCheckoutForm = ({ total, subtotal, discount, onPaymentSuccess }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -82,7 +82,7 @@ export default function Checkout() {
     useEffect(() => {
         const savedCart = localStorage.getItem('zion_cart');
         if (savedCart) {
-            try { setCart(JSON.parse(savedCart)); } catch (e) { setCart([]); }
+            try { setCart(JSON.parse(savedCart)); } catch { setCart([]); }
         }
 
         const unsub = auth.onAuthStateChanged(user => {

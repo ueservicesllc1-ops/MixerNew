@@ -15,7 +15,7 @@ import {
 
 const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
 
-const StripeCheckoutForm = ({ clientSecret, planName, onPaymentSuccess }) => {
+const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
     const stripe = useStripe();
     const elements = useElements();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -132,11 +132,11 @@ function Dashboard() {
 
     const [activeTab, setActiveTab] = useState('home');
     const [step, setStep] = useState('idle');
-    const [userProfile, setUserProfile] = useState(null);
+    const [, setUserProfile] = useState(null);
     const [useType, setUseType] = useState(null);
     const [hasRights, setHasRights] = useState(false);
     const [fileList, setFileList] = useState([]);
-    const [isUploading, setIsUploading] = useState(false);
+    const [, setIsUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [currentUploadTrack, setCurrentUploadTrack] = useState(''); // Nuevo: Tracking de pista actual
 
@@ -155,16 +155,10 @@ function Dashboard() {
     const [isProcessingZip, setIsProcessingZip] = useState(false);
     const [zipProgress, setZipProgress] = useState(0);
 
-    const [editingLyricsSong, setEditingLyricsSong] = useState(null);
-    const [tempLyrics, setTempLyrics] = useState('');
-    const [editingSongInfo, setEditingSongInfo] = useState(null);
-    const [editingSetlist, setEditingSetlist] = useState(null);
-
+    const [currentUser, setCurrentUser] = useState(null);
     const [userSongs, setUserSongs] = useState([]);
     const [userSetlists, setUserSetlists] = useState([]);
-    const [currentUser, setCurrentUser] = useState(null);
-    const [globalSongs, setGlobalSongs] = useState([]);
-    const [isGlobalModalOpen, setIsGlobalModalOpen] = useState(false);
+
 
     // New User Plan state
     const [userPlan, setUserPlan] = useState(STORAGE_PLANS[0]);
@@ -183,7 +177,7 @@ function Dashboard() {
     // Stripe States for Upgrades
     const [stripeClientSecret, setStripeClientSecret] = useState('');
     const [stripeSubscriptionId, setStripeSubscriptionId] = useState('');
-    const [isProcessingStripe, setIsProcessingStripe] = useState(false);
+    const [, setIsProcessingStripe] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [successPlanName, setSuccessPlanName] = useState('');
     const [uploadError, setUploadError] = useState(null);
@@ -259,7 +253,7 @@ function Dashboard() {
                     });
                     songs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
                     setUserSongs(songs);
-                    setGlobalSongs(songs);
+                    setUserSongs(songs);
                 }, (error) => {
                     console.error("Error fetching songs:", error);
                 });
@@ -369,13 +363,13 @@ function Dashboard() {
                         if (xhr.status === 200) {
                             try {
                                 resolve(JSON.parse(xhr.responseText));
-                            } catch (e) { reject(new Error("Error parsing server response")); }
+                            } catch { reject(new Error("Error parsing server response")); }
                         } else {
                             let errorText = xhr.responseText || 'Fallo en subida';
                             try {
                                 const parsed = JSON.parse(errorText);
                                 if (parsed.error) errorText = parsed.error;
-                            } catch (e) { }
+                            } catch { /* ignore */ }
                             reject(new Error(`Error ${xhr.status}: ${errorText}`));
                         }
                     }
@@ -389,7 +383,7 @@ function Dashboard() {
 
         try {
             const totalSize = fileList.reduce((acc, f) => acc + f.blob.size, 0);
-            let totalLoaded = 0;
+
             const trackProgress = {};
 
             const updateOverallProgress = () => {
@@ -412,7 +406,7 @@ function Dashboard() {
                     b2Filename,
                     track.displayName,
                     track.originalName,
-                    (loaded, total) => {
+                    (loaded) => {
                         trackProgress[i] = loaded;
                         updateOverallProgress();
                     },
@@ -686,12 +680,6 @@ function Dashboard() {
 
     const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
 
-    const initialOptions = {
-        "client-id": "AbXQ6fanTIWx-dAoMagwbOTZ_M51YI4A-Dwzf2AY2CyIG7qNhV8QIiXuyBX-fina0FUxgTs8euJuAGc3",
-        currency: "USD",
-        intent: "subscription",
-        vault: true,
-    };
 
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: 'white', display: 'flex', fontFamily: '"Inter", sans-serif' }}>
@@ -1158,7 +1146,7 @@ function Dashboard() {
                                             {userSongs.filter(s =>
                                                 s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                                 (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
-                                            ).map((song, idx) => (
+                                            ).map((song) => (
                                                 <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
                                                     <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(241,196,15,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f' }}><Music2 size={20} /></div>
                                                     <div><div style={{ fontWeight: '700' }}>{song.name}</div><div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subido por {song.userId === currentUser?.uid ? 'TI' : 'Comunidad'}</div></div>

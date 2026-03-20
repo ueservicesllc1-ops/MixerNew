@@ -113,8 +113,7 @@ class AcademyAudio {
             await this._start();
             const noteNames = ['C','D','E','F','G','A','B','C'];
             const octave = parseInt(root.slice(-1));
-            const noteLetter = root.slice(0, -1);
-            const startIdx = ['C','D','E','F','G','A','B'].indexOf(noteLetter);
+
             const scale = noteNames.map((n, i) => {
                 const oct = n === 'C' && i === 7 ? octave + 1 : octave;
                 return `${n}${oct}`;
@@ -162,7 +161,7 @@ class AcademyAudio {
                 this.synth.triggerAttackRelease('G5', '16n', now + 0.1);
                 this.synth.triggerAttackRelease('C6', '8n', now + 0.2);
             }
-        } catch (e) {}
+        } catch { /* ignore */ }
     }
 
     /**
@@ -177,7 +176,7 @@ class AcademyAudio {
             }).toDestination();
             synth.triggerAttackRelease('C2', '8n');
             setTimeout(() => synth.dispose(), 1000);
-        } catch (e) {}
+        } catch { /* ignore */ }
     }
 
     /**
@@ -193,7 +192,7 @@ class AcademyAudio {
                 });
                 this.synth.triggerAttackRelease(['C4','E4','G4','C5'], '2n', now + 0.7);
             }
-        } catch (e) {}
+        } catch { /* ignore */ }
     }
 }
 

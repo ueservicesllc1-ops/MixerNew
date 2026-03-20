@@ -78,7 +78,7 @@ export default function Multitrack() {
     const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
-    const [showDebug, setShowDebug] = useState(false);
+
 
     // Intercept console.log/error to show on-screen (for debugging without USB)
     useEffect(() => {
@@ -99,7 +99,7 @@ export default function Multitrack() {
     const [padActive, setPadActive] = useState(false);
     const [padKey, setPadKey] = useState('C');
     const [padPitch, setPadPitch] = useState(0);
-    const [padVolume, setPadVolume] = useState(0.8);
+    const [padVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
     const [padSolo, setPadSolo] = useState(false); // (El modo Solo ser├¡a m├ís complejo de integrar contra el otro motor, por ahora sirve visual)
 
@@ -355,6 +355,7 @@ export default function Multitrack() {
             }
             hasAutoLoaded.current = true;
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setlists, activeSetlist]);
 
     // Auto-load a pending song from the Dashboard if present
@@ -371,6 +372,7 @@ export default function Multitrack() {
                 handleLoadSong(songToLoad);
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [librarySongs, globalSongs, activeSetlist]);
 
     useEffect(() => {
@@ -840,7 +842,7 @@ export default function Multitrack() {
                             try {
                                 const ab = await blob.arrayBuffer();
                                 audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                            } catch (e) {
+                            } catch {
                                 await LocalFileManager.removeTrackLocal(song.id, tr.name);
                             }
                         }
@@ -854,7 +856,7 @@ export default function Multitrack() {
                                     rawBuf = await res.blob();
                                     await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                                 }
-                            } catch (e) { }
+                            } catch { /* ignore */ }
                         }
 
                         let audioBuf = null;
@@ -862,7 +864,7 @@ export default function Multitrack() {
                             try {
                                 const arrayBuf = await rawBuf.arrayBuffer();
                                 audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
-                            } catch (e) {
+                            } catch {
                                 await LocalFileManager.removeTrackLocal(song.id, tr.name);
                             }
                         }
@@ -907,19 +909,10 @@ export default function Multitrack() {
             if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
                 await ScreenOrientation.lock({ orientation: 'portrait' });
             }
-        } catch (e) { }
+        } catch { /* ignore */ }
     };
 
-    const handleGoogleLogin = async () => {
-        try {
-            const provider = new GoogleAuthProvider();
-            await signInWithPopup(auth, provider);
-            setShowLoginModal(false);
-        } catch (error) {
-            console.error("Login con Google fall├│:", error);
-            setLoginError("Error con Google: " + error.message);
-        }
-    };
+
 
     const handleEmailAuthSubmit = async (e) => {
         e.preventDefault();
@@ -1074,6 +1067,7 @@ export default function Multitrack() {
             if (track.buffer) return track.buffer.duration;
         }
         return activeSong?.duration || 180;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tracks, activeSong, audioReady]); // Recalculate when tracks or audioReady change
 
     // AUTO-STOP when song finishes
@@ -1268,6 +1262,7 @@ export default function Multitrack() {
             }, 1000);
         }
         return () => clearInterval(countdownRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSetlist?.id]); // only fire when a new setlist is activated
 
     // Also dismiss early if all songs are ready before countdown ends
@@ -1282,6 +1277,7 @@ export default function Multitrack() {
             // Short delay so user sees the complete state before dismissing
             setTimeout(() => setShowPreloader(false), 600);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [preloadStatus]);
 
     return (

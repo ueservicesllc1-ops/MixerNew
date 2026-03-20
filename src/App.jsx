@@ -14,6 +14,7 @@ import Library from './pages/Library'
 import Vendedores from './pages/Vendedores'
 import SellerProfile from './pages/SellerProfile'
 import Checkout from './pages/Checkout'
+import Academy from './pages/Academy'
 import './index.css'
 
 // Detecta si corre dentro de Capacitor (Android/iOS) o en el navegador web
@@ -46,6 +47,7 @@ function App() {
         <Route path="/vendedores" element={<Vendedores />} />
         <Route path="/seller/:id" element={<SellerProfile />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/academy" element={<Academy />} />
       </Routes>
     </Router>
   )

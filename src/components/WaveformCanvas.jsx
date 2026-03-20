@@ -5,7 +5,7 @@ import { audioEngine } from '../AudioEngine';
  * Waveform Scrubber.
  * Displays the best possible waveform, prioritizing "__PreviewMix".
  */
-export default function WaveformCanvas({ songId, tracks, progress, isPlaying, duration, hasPreview }) {
+export default function WaveformCanvas({ songId, tracks, progress, duration, hasPreview }) {
     const canvasRef = useRef(null);
     const [peaks, setPeaks] = useState(null);
     const [statusInfo, setStatusInfo] = useState({ isReal: false, source: 'Analizando...', color: '#64748b' });

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2, Play, Pause, Loader2, LogOut } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
@@ -23,7 +23,7 @@ const SongCard = ({ song, onPreview, onBuy, navigate }) => {
             };
             fetchName();
         } else {
-            setRealSellerName(song.sellerName);
+            Promise.resolve().then(() => setRealSellerName(song.sellerName));
         }
     }, [song.sellerName, song.userId]);
 
@@ -116,7 +116,7 @@ export default function Store() {
 
     // Nueva lógica de carrito
     const [cart, setCart] = useState([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
+
     const [toast, setToast] = useState(null); // { message, type }
     
     // Preview Engine States (Like Landing)
@@ -253,7 +253,7 @@ export default function Store() {
     useEffect(() => {
         const savedCart = localStorage.getItem('zion_cart');
         if (savedCart) {
-            try { setCart(JSON.parse(savedCart)); } catch (e) { setCart([]); }
+            try { setCart(JSON.parse(savedCart)); } catch { setCart([]); }
         }
     }, []);
 
@@ -270,15 +270,6 @@ export default function Store() {
         setTimeout(() => setToast(null), 3000);
     };
 
-    const removeFromCart = (id) => {
-        setCart(prev => {
-            const newCart = prev.filter(item => item.id !== id);
-            localStorage.setItem('zion_cart', JSON.stringify(newCart));
-            return newCart;
-        });
-    };
-
-    const cartTotal = cart.reduce((acc, item) => acc + (parseFloat(item.price) || 9.99), 0).toFixed(2);
 
 
     useEffect(() => {
@@ -315,16 +306,6 @@ export default function Store() {
         return () => { unsubAuth(); unsubSongs(); };
     }, []);
 
-    const handleCheckoutCart = () => {
-        if (!currentUser) {
-            setToast({ message: "Debes iniciar sesión para comprar", type: 'error' });
-            setTimeout(() => setToast(null), 3000);
-            navigate('/dashboard');
-            return;
-        }
-        if (cart.length === 0) return;
-        navigate('/checkout');
-    };
 
     const filteredStore = storeSongs.filter(s =>
         (s.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||

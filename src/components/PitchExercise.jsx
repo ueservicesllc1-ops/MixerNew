@@ -4,7 +4,6 @@ import AcademyGuide from '../components/AcademyGuide';
 
 const PitchExercise = ({ targetNote = "A", onComplete }) => {
     const [currentNote, setCurrentNote] = useState("-");
-    const [isMatching, setIsMatching] = useState(false);
     const [matchProgress, setMatchProgress] = useState(0);
     const [error, setError] = useState(null);
     
@@ -20,7 +19,7 @@ const PitchExercise = ({ targetNote = "A", onComplete }) => {
                 detectorRef.current = new PitchDetector(audioCtxRef.current);
                 await detectorRef.current.start(stream);
                 update();
-            } catch (err) {
+            } catch (_err) {
                 setError("No se pudo acceder al micrófono. Por favor permite el acceso.");
             }
         };
@@ -31,15 +30,12 @@ const PitchExercise = ({ targetNote = "A", onComplete }) => {
                 if (result) {
                     setCurrentNote(result.note);
                     if (result.note === targetNote) {
-                        setIsMatching(true);
                         setMatchProgress(prev => Math.min(prev + 2, 100));
                     } else {
-                        setIsMatching(false);
                         setMatchProgress(prev => Math.max(prev - 1, 0));
                     }
                 } else {
                     setCurrentNote("-");
-                    setIsMatching(false);
                 }
             }
             requestRef.current = requestAnimationFrame(update);

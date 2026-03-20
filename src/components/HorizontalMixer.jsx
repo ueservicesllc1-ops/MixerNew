@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { Volume2, VolumeX, Headphones, Music, Mic2, Disc, Layers } from 'lucide-react';
 
 export const HorizontalMixer = ({ tracks, onVolumeChange, onMuteToggle, onSoloToggle, onPanChange }) => {
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-            {tracks.map((track, idx) => (
+            {tracks.map((track) => (
                 <HorizontalTrack
                     key={track.id}
                     track={track}

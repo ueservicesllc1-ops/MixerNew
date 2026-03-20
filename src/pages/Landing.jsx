@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
 import Footer from '../components/Footer';
@@ -36,8 +36,9 @@ export default function Landing() {
     const [cart, setCart] = useState([]);
     const [toast, setToast] = useState(null);
     const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
+    const [latestApp, setLatestApp] = useState(null);
 
-    const heroSlides = [
+    const [heroSlides, setHeroSlides] = useState([
         {
             image: '/hero_banner_studio.png',
             title: 'Multitracks con Excelencia',
@@ -48,7 +49,7 @@ export default function Landing() {
             title: 'Mezclador Pro Integrado',
             subtitle: 'Control total de tu sonido desde cualquier dispositivo.'
         }
-    ];
+    ]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -62,7 +63,7 @@ export default function Landing() {
         if (savedCart) {
             try {
                 setCart(JSON.parse(savedCart));
-            } catch (e) {
+            } catch { /* ignore */
                 setCart([]);
             }
         }
@@ -105,11 +106,37 @@ export default function Landing() {
                 } else {
                     setSongsForSale([]);
                 }
-            } catch (err) {
+            } catch {
                 // Maintain placeholders if there's an error
             }
         };
         fetchSongs();
+
+        const fetchBanners = async () => {
+            try {
+                const snap = await getDocs(query(collection(db, 'banners'), orderBy('createdAt', 'desc')));
+                if (!snap.empty) {
+                    const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    setHeroSlides(fetched);
+                }
+            } catch (e) {
+                console.error("Error fetching banners:", e);
+            }
+        };
+
+        const fetchLatestApp = async () => {
+            try {
+                const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(1));
+                const snap = await getDocs(q);
+                if (!snap.empty) {
+                    setLatestApp(snap.docs[0].data());
+                }
+            } catch (err) {
+                console.error("Error fetching latest app:", err);
+            }
+        };
+        fetchLatestApp();
+        fetchBanners();
 
         return () => {
             window.removeEventListener('scroll', handleScroll);
@@ -388,6 +415,16 @@ export default function Landing() {
                                 {item.label}
                             </span>
                         ))}
+                        {latestApp && (
+                             <span
+                                onClick={() => window.open(latestApp.downloadUrl, '_blank')}
+                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#00d2d3', fontWeight: 'bold' }}
+                                onMouseEnter={e => e.target.style.color = '#fff'}
+                                onMouseLeave={e => e.target.style.color = '#00d2d3'}
+                            >
+                                Descargar App
+                            </span>
+                        )}
                         <span
                             onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
                             style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
@@ -519,6 +556,15 @@ export default function Landing() {
                         <button className="btn-ghost" style={{ padding: '16px 40px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
                             <Play size={18} fill="currentColor" /> Ver cómo funciona
                         </button>
+                        {latestApp && (
+                            <button 
+                                onClick={() => window.open(latestApp.downloadUrl, '_blank')}
+                                style={{ padding: '16px 40px', fontSize: '1.1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                            >
+                                <img src="/android-logo.png" alt="Android" style={{ width: '20px' }} onError={(e) => e.target.style.display = 'none'} />
+                                Descargar App {latestApp.versionName}
+                            </button>
+                        )}
                     </div>
                 </div>
 

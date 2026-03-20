@@ -5,6 +5,9 @@ import {
 } from '../utils/academyData';
 import { academyAudio } from '../utils/academyAudio';
 import ExercisePlayer from '../components/ExercisePlayer';
+import { db, auth } from '../firebase';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 
 import * as LucideIcons from 'lucide-react';
 
@@ -40,7 +43,6 @@ const getXPToNext = (xp) => {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const pad = n => String(n).padStart(2, '0');
 const accuracy = u => u.totalAnswered > 0 ? Math.round((u.totalCorrect / u.totalAnswered) * 100) : 0;
 
 const TypewriterText = ({ text, speed = 40 }) => {
@@ -154,6 +156,30 @@ const XPToast = ({ amount, onDone }) => {
     );
 };
 
+// ─── Loading Screen (declared outside Academy to prevent state reset on re-render) ─────
+const LoadingScreen = ({ loadingMsg }) => (
+    <div style={{
+        position: 'fixed', inset: 0,
+        background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+        zIndex: 9999, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', color: '#fff'
+    }}>
+        <div style={{ marginBottom: 40 }}>
+            <Mascot
+                pose={loadingMsg.pose}
+                size={160}
+                speech={loadingMsg.text}
+                speechStyle={{ fontSize: 16, padding: '12px 20px', color: '#1e293b' }}
+            />
+        </div>
+        <div style={{ width: 40, height: 40, border: '4px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 20 }}></div>
+        <p style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 2, opacity: 0.8 }}>
+            Preparando Zion Academy
+        </p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+);
+
 // ─── Main Academy Component ───────────────────────────────────────────────────
 const Academy = () => {
     const [user, setUser] = useState(() => {
@@ -162,6 +188,30 @@ const Academy = () => {
             return saved ? JSON.parse(saved) : { ...INITIAL_USER_STATE };
         } catch { return { ...INITIAL_USER_STATE }; }
     });
+
+    const [currentUser, setCurrentUser] = useState(null);
+    
+    // Auth and Firestore Sync
+    useEffect(() => {
+        const unsub = onAuthStateChanged(auth, async (fbUser) => {
+            setCurrentUser(fbUser);
+            if (fbUser) {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
+                    if (userDoc.exists()) {
+                        const data = userDoc.data();
+                        if (data.academyProgress) {
+                            setUser(data.academyProgress);
+                            localStorage.setItem('zion_academy_user', JSON.stringify(data.academyProgress));
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading academy progress from Firestore:", err);
+                }
+            }
+        });
+        return () => unsub();
+    }, []);
     
     const [loading, setLoading] = useState(true);
     const [loadingMsg, setLoadingMsg] = useState({ pose: 'happy', text: 'Cargando tu progreso...' });
@@ -194,35 +244,6 @@ const Academy = () => {
         return () => clearTimeout(timer);
     }, []);
 
-    // ─── Loading Screen Component ───
-    const LoadingScreen = () => (
-        <div style={{
-            position: 'fixed', inset: 0, 
-            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', 
-            zIndex: 9999, display: 'flex', flexDirection: 'column', 
-            alignItems: 'center', justifyContent: 'center', color: '#fff'
-        }}>
-            <div style={{ marginBottom: 40 }}>
-                <Mascot 
-                    pose={loadingMsg.pose} 
-                    size={160} 
-                    speech={loadingMsg.text} 
-                    speechStyle={{ fontSize: 16, padding: '12px 20px', color: '#1e293b' }}
-                />
-            </div>
-            
-            {/* Spinning loader */}
-            <div style={{ width: 40, height: 40, border: '4px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: 20 }}></div>
-            
-            <p style={{ fontWeight: 800, fontSize: 13, textTransform: 'uppercase', letterSpacing: 2, opacity: 0.8 }}>
-                Preparando Zion Academy
-            </p>
-            <style>{`
-                @keyframes spin { to { transform: rotate(360deg); } }
-            `}</style>
-        </div>
-    );
-
     const [activeLevel, setActiveLevel] = useState(null);
     const [activeLesson, setActiveLesson] = useState(null);
     const [currentExerciseIdx, setCurrentExerciseIdx] = useState(0);
@@ -234,8 +255,31 @@ const Academy = () => {
 
     // Persist user
     useEffect(() => {
-        localStorage.setItem('zion_academy_user', JSON.stringify(user));
-    }, [user]);
+        const saveProgress = async () => {
+            localStorage.setItem('zion_academy_user', JSON.stringify(user));
+            
+            if (currentUser) {
+                try {
+                    await updateDoc(doc(db, 'users', currentUser.uid), {
+                        academyProgress: user
+                    });
+                } catch (err) {
+                    // If doc doesn't exist yet, we might need setDoc, but Dashboard usually creates it.
+                    console.warn("Could not update academyProgress, trying setDoc...", err);
+                    try {
+                        await setDoc(doc(db, 'users', currentUser.uid), {
+                            academyProgress: user
+                        }, { merge: true });
+                    } catch (innerErr) {
+                        console.error("Firestore save failed:", innerErr);
+                    }
+                }
+            }
+        };
+
+        const timeout = setTimeout(saveProgress, 1000); // Debounce saves
+        return () => clearTimeout(timeout);
+    }, [user, currentUser]);
 
     // Update streak on mount
     useEffect(() => {
@@ -872,7 +916,7 @@ const Academy = () => {
     // ─── MAIN RENDER ──────────────────────────────────────────────────────────
     return (
         <div className="academy-page">
-            {loading && <LoadingScreen />}
+            {loading && <LoadingScreen loadingMsg={loadingMsg} />}
             {/* XP Toast */}
             {xpToast && <XPToast amount={xpToast} onDone={() => setXpToast(null)} />}
 
