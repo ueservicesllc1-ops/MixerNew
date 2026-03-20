@@ -267,7 +267,10 @@ class AudioEngine {
         }
     }
 
-    setTempo(ratio) { this.tempoRatio = ratio; }
+    setTempo(ratio) {
+        this.tempoRatio = ratio;
+        if (IS_NATIVE) { getNative().then(n => n.setSpeed && n.setSpeed(ratio)); }
+    }
     setPitch(semitones) { this.pitchSemitones = semitones; }
 
     async play() {

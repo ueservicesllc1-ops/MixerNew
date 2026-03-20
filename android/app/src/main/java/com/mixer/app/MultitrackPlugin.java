@@ -30,6 +30,7 @@ public class MultitrackPlugin extends Plugin {
     public native void   nativeSetTrackSolo(String id, boolean solo);
     public native double nativeGetPosition();
     public native int    nativeGetTrackCount();
+    public native void   nativeSetSpeed(float speed);
 
     @Override
     public void load() {
@@ -159,6 +160,13 @@ public class MultitrackPlugin extends Plugin {
     @PluginMethod
     public void clearTracks(PluginCall call) {
         if (nativeLibLoaded) nativeClearTracks();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setSpeed(PluginCall call) {
+        Float speed = call.getFloat("speed");
+        if (speed != null && nativeLibLoaded) nativeSetSpeed(speed);
         call.resolve();
     }
 }

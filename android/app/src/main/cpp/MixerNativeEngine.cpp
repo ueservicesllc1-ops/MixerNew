@@ -35,10 +35,11 @@ public:
     std::list<Track>   tracks;
     std::mutex         mtx;
 
-    double  playbackTimeStart = 0.0; // Seconds when play() was called
-    ma_uint64 engineTimeStart = 0;   // Engine frames when play() was called
+    double  playbackTimeStart = 0.0;
+    ma_uint64 engineTimeStart = 0;
     bool    playing           = false;
     float   masterVolume      = 1.0f;
+    float   speedRatio        = 1.0f; // Tempo: 1.0 = normal speed
 
     static constexpr int kSampleRate = 44100;
 
@@ -166,6 +167,13 @@ public:
     }
     
     void setMasterVolume(float vol) { masterVolume = vol; ma_engine_set_volume(&engine, vol); }
+    void setSpeed(float ratio) {
+        speedRatio = ratio;
+        std::lock_guard<std::mutex> lk(mtx);
+        for (auto& t : tracks) {
+            if (t.soundReady) ma_sound_set_pitch(&t.sound, ratio);
+        }
+    }
     int getTrackCount() { std::lock_guard<std::mutex> lk(mtx); return (int)tracks.size(); }
 };
 
@@ -195,4 +203,5 @@ extern "C" {
     }
     JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetPosition(JNIEnv*, jobject) { return gEngine ? gEngine->getPositionInternal() : 0.0; }
     JNIEXPORT jint JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackCount(JNIEnv*, jobject) { return gEngine ? gEngine->getTrackCount() : 0; }
+    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetSpeed(JNIEnv*, jobject, jfloat speed) { if (gEngine) gEngine->setSpeed(speed); }
 }

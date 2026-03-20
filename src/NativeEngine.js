@@ -168,6 +168,10 @@ export const NativeEngine = {
         try { await MultitrackPlugin.setTrackSolo({ id, solo }); } catch (e) { }
     },
 
+    setSpeed: async (speed) => {
+        try { await MultitrackPlugin.setSpeed({ speed }); } catch (e) { }
+    },
+
     getPosition: async () => {
         try {
             const { position } = await MultitrackPlugin.getPosition();
