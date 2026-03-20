@@ -7,7 +7,11 @@
     "contentInset": "always"
   },
   "android": {
-    "allowMixedContent": true
+    "allowMixedContent": true,
+    "captureInput": true
+  },
+  "server": {
+    "androidScheme": "https"
   },
   "plugins": {
     "ScreenOrientation": {
