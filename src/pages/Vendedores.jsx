@@ -6,12 +6,13 @@ import JSZip from 'jszip';
 import { db, auth } from '../firebase';
 import {
     collection, query, where, onSnapshot, doc, updateDoc,
-    addDoc, serverTimestamp, setDoc
+    addDoc, serverTimestamp, setDoc, getDocs, deleteDoc
 } from 'firebase/firestore';
 import {
     LayoutDashboard, Package, TrendingUp,
     Upload, Loader2, Music, Timer, Camera, ShieldCheck, CreditCard,
-    AlertCircle, ArrowLeft, Wallet, Star, ShoppingBag, CheckCircle2 as CheckIcon
+    AlertCircle, ArrowLeft, Wallet, Star, ShoppingBag, CheckCircle2 as CheckIcon,
+    FileText, Trash2
 } from 'lucide-react';
 
 // Usando clave LIVE de Stripe 
@@ -172,6 +173,25 @@ function Vendedores() {
     // Stats & Products
     const [myProducts, setMyProducts] = useState([]);
 
+    // ── PARTITURAS VENTA STATES ─────────────────────────────────────
+    const [myPartiturasVenta, setMyPartiturasVenta] = useState([]);
+    const [pvTitle, setPvTitle] = useState('');
+    const [pvInstrument, setPvInstrument] = useState('');
+    const [pvLevel, setPvLevel] = useState('Básica');
+    const [pvPrice, setPvPrice] = useState('2.99');
+    const [pvFile, setPvFile] = useState(null);
+    const [pvUploading, setPvUploading] = useState(false);
+    const [pvRatingMap, setPvRatingMap] = useState({}); // partituraId -> {avg, count, userRating}
+    const pvFileRef = useRef();
+
+    const PV_INSTRUMENTS = [
+        'Guitarra','Piano','Bajo','Batería','Violín','Acordeón',
+        'Trompeta','Saxofón','Flauta','Teclado','Ukulele','Mandolina',
+        'Cello','Contrabajo','Clarinete','Oboe','Coro','Voz'
+    ];
+    const PV_LEVELS = ['Básica','Media','Pro'];
+    const PV_LEVEL_COLORS = { 'Básica': '#10b981', 'Media': '#f59e0b', 'Pro': '#ef4444' };
+
     useEffect(() => {
         const unsubAuth = auth.onAuthStateChanged((user) => {
             setCurrentUser(user);
@@ -198,9 +218,32 @@ function Vendedores() {
                     setMyProducts(products.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
                 });
 
+                // Load my partituras for sale
+                const qPv = query(collection(db, 'partituras_venta'), where('userId', '==', user.uid));
+                const unsubPv = onSnapshot(qPv, async (snap) => {
+                    const list = [];
+                    snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+                    list.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
+                    setMyPartiturasVenta(list);
+                    // Load ratings for each
+                    const rmap = {};
+                    await Promise.all(list.map(async (pv) => {
+                        const rSnap = await getDocs(collection(db, 'partituras_venta', pv.id, 'ratings'));
+                        let total = 0, count = 0, userRating = 0;
+                        rSnap.forEach(r => {
+                            total += r.data().stars || 0;
+                            count++;
+                            if (r.id === user.uid) userRating = r.data().stars;
+                        });
+                        rmap[pv.id] = { avg: count > 0 ? (total / count).toFixed(1) : null, count, userRating };
+                    }));
+                    setPvRatingMap(rmap);
+                });
+
                 return () => {
                     unsubUser();
                     unsubProducts();
+                    unsubPv();
                 };
             } else {
                 setLoading(false);
@@ -456,6 +499,83 @@ function Vendedores() {
         setCoverUrl(''); setCoverFileId('');
     };
 
+    const handlePvUpload = async () => {
+        if (!pvFile || !pvInstrument || !pvTitle || !currentUser) return;
+        setPvUploading(true);
+        try {
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const formData = new FormData();
+            formData.append('audioFile', pvFile);
+            formData.append('fileName', `partitura_venta_${currentUser.uid}_${Date.now()}_${pvInstrument.replace(/\s+/g,'_')}.pdf`);
+            const res = await fetch(`${devProxy}/api/upload`, { method: 'POST', body: formData });
+            if (!res.ok) throw new Error('Error subiendo PDF');
+            const data = await res.json();
+            await addDoc(collection(db, 'partituras_venta'), {
+                userId: currentUser.uid,
+                sellerName: userData?.displayName || 'Vendedor',
+                title: pvTitle,
+                instrument: pvInstrument,
+                level: pvLevel,
+                price: parseFloat(pvPrice) || 0,
+                pdfUrl: data.url || '',
+                status: 'active',
+                createdAt: serverTimestamp()
+            });
+            setPvTitle(''); setPvInstrument(''); setPvLevel('Básica'); setPvPrice('2.99'); setPvFile(null);
+            alert('✅ ¡Partitura publicada para venta!');
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setPvUploading(false);
+        }
+    };
+
+    const handlePvRate = async (pvId, stars) => {
+        if (!currentUser) return alert('Debes iniciar sesión para calificar.');
+        try {
+            await setDoc(doc(db, 'partituras_venta', pvId, 'ratings', currentUser.uid), {
+                stars, userId: currentUser.uid, ratedAt: serverTimestamp()
+            });
+            // Update local state
+            const rSnap = await getDocs(collection(db, 'partituras_venta', pvId, 'ratings'));
+            let total = 0, count = 0;
+            rSnap.forEach(r => { total += r.data().stars || 0; count++; });
+            setPvRatingMap(prev => ({
+                ...prev,
+                [pvId]: { avg: count > 0 ? (total / count).toFixed(1) : null, count, userRating: stars }
+            }));
+        } catch (e) { console.error(e); }
+    };
+
+    const handlePvDelete = async (pvId) => {
+        if (!window.confirm('¿Eliminar esta partitura de venta?')) return;
+        try { await deleteDoc(doc(db, 'partituras_venta', pvId)); }
+        catch (e) { alert('Error: ' + e.message); }
+    };
+
+    const StarRating = ({ pvId, readOnly }) => {
+        const info = pvRatingMap[pvId] || {};
+        const userRating = info.userRating || 0;
+        return (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                {[1,2,3,4,5].map(s => (
+                    <span
+                        key={s}
+                        onClick={() => !readOnly && handlePvRate(pvId, s)}
+                        style={{
+                            cursor: readOnly ? 'default' : 'pointer',
+                            color: s <= (readOnly ? parseFloat(info.avg || 0) : userRating) ? '#f59e0b' : '#cbd5e1',
+                            fontSize: '1.1rem',
+                            transition: 'color 0.15s'
+                        }}
+                    >★</span>
+                ))}
+                {info.avg && <span style={{ fontSize: '0.75rem', color: '#94a3b8', marginLeft: '4px' }}>{info.avg} ({info.count})</span>}
+            </div>
+        );
+    };
+
 
     if (loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}><div className="loader"></div></div>;
 
@@ -607,6 +727,7 @@ function Vendedores() {
                     {[
                         { id: 'overview', label: 'Resumen', icon: <LayoutDashboard size={20} /> },
                         { id: 'products', label: 'Mis Canciones', icon: <Package size={20} /> },
+                        { id: 'partituras', label: 'Partituras', icon: <FileText size={20} /> },
                         { id: 'sales', label: 'Reporte de Ventas', icon: <TrendingUp size={20} /> },
                         { id: 'wallet', label: 'Billetera', icon: <Wallet size={20} /> },
                     ].map(tab => (
@@ -716,6 +837,110 @@ function Vendedores() {
                                     </div>
                                 </div>
                             </>
+                        )}
+                        {activeTab === 'partituras' && (
+                            <div>
+                                {/* Upload Form */}
+                                <div style={{ background: 'white', padding: '32px', borderRadius: '24px', border: '1px solid #e2e8f0', marginBottom: '30px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '28px' }}>
+                                        <div style={{ width: '46px', height: '46px', background: 'linear-gradient(135deg,#00bcd4,#9b59b6)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                            <FileText size={22} color="white" />
+                                        </div>
+                                        <div>
+                                            <h3 style={{ margin: 0, fontWeight: '900', color: '#1e293b' }}>Publicar Partitura para Venta</h3>
+                                            <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Sube tu PDF y configura precio y nivel</p>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px', marginBottom: '20px' }}>
+                                        <div style={{ gridColumn: 'span 2' }}>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Título de la Partitura</label>
+                                            <input className="btn-ghost" style={{ width: '100%', background: 'white', color: '#1e293b', border: '1px solid #cbd5e1', textAlign: 'left' }} value={pvTitle} onChange={e => setPvTitle(e.target.value)} placeholder="Ej: Mientras Viva - Cifrado Pro" />
+                                        </div>
+
+                                        <div>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Instrumento</label>
+                                            <select className="btn-ghost" style={{ width: '100%', background: 'white', color: '#1e293b', border: '1px solid #cbd5e1', padding: '12px' }} value={pvInstrument} onChange={e => setPvInstrument(e.target.value)}>
+                                                <option value="">-- Selecciona --</option>
+                                                {PV_INSTRUMENTS.map(i => <option key={i} value={i}>{i}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Nivel</label>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                {PV_LEVELS.map(lv => (
+                                                    <button key={lv} onClick={() => setPvLevel(lv)} style={{
+                                                        flex: 1, padding: '10px 6px', borderRadius: '10px', fontWeight: '800', fontSize: '0.82rem', cursor: 'pointer', border: pvLevel === lv ? `2px solid ${PV_LEVEL_COLORS[lv]}` : '2px solid #e2e8f0',
+                                                        background: pvLevel === lv ? `${PV_LEVEL_COLORS[lv]}15` : 'white',
+                                                        color: pvLevel === lv ? PV_LEVEL_COLORS[lv] : '#94a3b8', transition: 'all 0.15s'
+                                                    }}>{lv}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div style={{ gridColumn: 'span 2' }}>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#00bcd4', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Precio de Venta (USD)</label>
+                                            <input type="number" step="0.01" min="0" className="btn-ghost" style={{ width: '100%', background: 'white', color: '#1e293b', border: '2px solid #00bcd430', textAlign: 'left', fontSize: '1.2rem', fontWeight: '900' }} value={pvPrice} onChange={e => setPvPrice(e.target.value)} />
+                                        </div>
+
+                                        <div style={{ gridColumn: 'span 2' }}>
+                                            <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', display: 'block', marginBottom: '8px', textTransform: 'uppercase' }}>Archivo PDF</label>
+                                            <div onClick={() => pvFileRef.current?.click()} style={{
+                                                border: '2px dashed ' + (pvFile ? '#00bcd4' : '#e2e8f0'), borderRadius: '14px', padding: '24px', textAlign: 'center', cursor: 'pointer',
+                                                background: pvFile ? 'rgba(0,188,212,0.03)' : '#f8fafc', transition: 'all 0.2s'
+                                            }}>
+                                                <FileText size={32} color={pvFile ? '#00bcd4' : '#94a3b8'} style={{ margin: '0 auto 8px' }} />
+                                                {pvFile ? <div><div style={{ fontWeight: '700', color: '#00bcd4' }}>{pvFile.name}</div><div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{(pvFile.size/1024).toFixed(0)} KB</div></div>
+                                                    : <div style={{ color: '#94a3b8', fontWeight: '600' }}>Haz clic para seleccionar un .pdf</div>}
+                                            </div>
+                                            <input ref={pvFileRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setPvFile(e.target.files[0] || null)} />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={handlePvUpload}
+                                        disabled={!pvFile || !pvInstrument || !pvTitle || pvUploading}
+                                        className="btn-teal"
+                                        style={{ width: '100%', padding: '14px', opacity: (!pvFile || !pvInstrument || !pvTitle || pvUploading) ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '1rem', fontWeight: '800' }}
+                                    >
+                                        {pvUploading ? <><Loader2 size={18} className="animate-spin" /> Publicando...</> : <><Upload size={18} /> Publicar Partitura</>}
+                                    </button>
+                                </div>
+
+                                {/* My Partituras List */}
+                                <div style={{ background: 'white', padding: '30px', borderRadius: '24px', border: '1px solid #e2e8f0' }}>
+                                    <h3 style={{ fontWeight: '900', color: '#1e293b', marginBottom: '20px' }}>Mis Partituras en Venta ({myPartiturasVenta.length})</h3>
+                                    {myPartiturasVenta.length === 0 ? (
+                                        <p style={{ color: '#94a3b8', textAlign: 'center', padding: '40px' }}>Aún no has publicado ninguna partitura.</p>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                            {myPartiturasVenta.map(pv => (
+                                                    <div key={pv.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '18px 20px', borderRadius: '16px', background: '#f8fafc', border: '1px solid #f1f5f9' }}>
+                                                        <div style={{ width: '42px', height: '42px', background: `${PV_LEVEL_COLORS[pv.level] || '#00bcd4'}15`, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: PV_LEVEL_COLORS[pv.level] || '#00bcd4', flexShrink: 0 }}>
+                                                            <FileText size={20} />
+                                                        </div>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontWeight: '800', color: '#1e293b', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{pv.title}</div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontSize: '0.72rem', fontWeight: '800', color: PV_LEVEL_COLORS[pv.level], background: `${PV_LEVEL_COLORS[pv.level]}15`, padding: '2px 8px', borderRadius: '100px' }}>{pv.level}</span>
+                                                                <span style={{ fontSize: '0.72rem', color: '#64748b' }}>{pv.instrument}</span>
+                                                                <StarRating pvId={pv.id} readOnly={true} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                            <div style={{ fontWeight: '900', fontSize: '1.1rem', color: '#00bcd4' }}>${parseFloat(pv.price || 0).toFixed(2)}</div>
+                                                            <div style={{ display: 'flex', gap: '8px', marginTop: '6px', justifyContent: 'flex-end' }}>
+                                                                <a href={pv.pdfUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.72rem', color: '#64748b', background: '#e2e8f0', padding: '4px 10px', borderRadius: '6px', textDecoration: 'none', fontWeight: '700' }}>Ver PDF</a>
+                                                                <button onClick={() => handlePvDelete(pv.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}><Trash2 size={14} /></button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
                         {activeTab === 'products' && (
                             <div style={{ background: 'white', padding: '30px', borderRadius: '24px', border: '1px solid #e2e8f0' }}>

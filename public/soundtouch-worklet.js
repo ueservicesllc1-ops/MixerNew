@@ -1,3 +1,4 @@
+/* eslint-disable */
 /*
 * SoundTouch Audio Worklet v0.3.0 AudioWorklet using the
 * SoundTouch audio processing library

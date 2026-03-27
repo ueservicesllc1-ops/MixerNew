@@ -22,6 +22,6 @@ images.forEach(img => {
         execSync(`"${ffmpegPath}" -i "${input}" -vf "${vf}" "${output}" -y`);
         console.log(`Saved ${output}`);
     } catch (e) {
-        console.error(`Error on ${img}`);
+        console.error(`Error on ${img}`, e);
     }
 });

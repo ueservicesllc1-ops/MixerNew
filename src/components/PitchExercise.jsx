@@ -19,7 +19,8 @@ const PitchExercise = ({ targetNote = "A", onComplete }) => {
                 detectorRef.current = new PitchDetector(audioCtxRef.current);
                 await detectorRef.current.start(stream);
                 update();
-            } catch (_err) {
+            } catch (err) {
+                console.warn(err);
                 setError("No se pudo acceder al micrófono. Por favor permite el acceso.");
             }
         };

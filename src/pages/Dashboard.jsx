@@ -10,7 +10,7 @@ import {
     ChevronRight, ArrowLeft, Layers, Cloud,
     Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
     Home, Globe, CreditCard, HelpCircle, LogOut, TrendingUp,
-    Star, CheckCircle2 as CheckIcon
+    Star, CheckCircle2 as CheckIcon, FileText
 } from 'lucide-react';
 
 const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
@@ -182,6 +182,90 @@ function Dashboard() {
     const [successPlanName, setSuccessPlanName] = useState('');
     const [uploadError, setUploadError] = useState(null);
     const [showErrorModal, setShowErrorModal] = useState(false);
+
+    // Partituras states
+    const [isPartituraMOdalOpen, setIsPartituraModalOpen] = useState(false);
+    const [partituraSongId, setPartituraSongId] = useState(null);
+    const [partituraInstrument, setPartituraInstrument] = useState('');
+    const [partituraFile, setPartituraFile] = useState(null);
+    const [partituraUploading, setPartituraUploading] = useState(false);
+    const [existingPartituras, setExistingPartituras] = useState([]);
+    const partituraFileRef = useRef();
+
+    const INSTRUMENTS = [
+        'Guitarra', 'Piano', 'Bajo', 'Batería', 'Violín', 'Acordeón',
+        'Trompeta', 'Saxofón', 'Flauta', 'Teclado', 'Ukulele', 'Mandolina',
+        'Cello', 'Contrabajo', 'Clarinete', 'Oboe', 'Coro', 'Voz'
+    ];
+
+    const openPartituraModal = async (songId) => {
+        setPartituraSongId(songId);
+        setPartituraInstrument('');
+        setPartituraFile(null);
+        // Load existing partituras for this song
+        try {
+            const q = query(collection(db, 'partituras'), where('songId', '==', songId));
+            const snap = await getDocs(q);
+            const list = [];
+            snap.forEach(d => list.push({ id: d.id, ...d.data() }));
+            list.sort((a, b) => (a.instrument || '').localeCompare(b.instrument || ''));
+            setExistingPartituras(list);
+        } catch (e) { console.error(e); }
+        setIsPartituraModalOpen(true);
+    };
+
+    const handlePartituraUpload = async () => {
+        if (!partituraFile || !partituraInstrument || !partituraSongId || !currentUser) return;
+        setPartituraUploading(true);
+        try {
+            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const formData = new FormData();
+            formData.append('audioFile', partituraFile);
+            formData.append('fileName', `partitura_${currentUser.uid}_${Date.now()}_${partituraInstrument.replace(/\s+/g,'_')}.pdf`);
+            const res = await fetch(`${devProxy}/api/upload`, { method: 'POST', body: formData });
+            if (!res.ok) throw new Error('Error subiendo PDF');
+            const data = await res.json();
+            const pdfUrl = data.url || '';
+
+            // Check if already exists for this instrument
+            const q = query(collection(db, 'partituras'), where('songId', '==', partituraSongId), where('instrument', '==', partituraInstrument));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                await updateDoc(doc(db, 'partituras', snap.docs[0].id), { pdfUrl, updatedAt: serverTimestamp() });
+            } else {
+                await addDoc(collection(db, 'partituras'), {
+                    songId: partituraSongId,
+                    userId: currentUser.uid,
+                    instrument: partituraInstrument,
+                    pdfUrl,
+                    createdAt: serverTimestamp()
+                });
+            }
+            // Refresh list
+            const snap2 = await getDocs(query(collection(db, 'partituras'), where('songId', '==', partituraSongId)));
+            const list = [];
+            snap2.forEach(d => list.push({ id: d.id, ...d.data() }));
+            list.sort((a, b) => (a.instrument || '').localeCompare(b.instrument || ''));
+            setExistingPartituras(list);
+            setPartituraFile(null);
+            setPartituraInstrument('');
+            alert(`✅ Partitura de ${partituraInstrument} guardada correctamente.`);
+        } catch (e) {
+            console.error(e);
+            alert('Error al subir la partitura: ' + e.message);
+        } finally {
+            setPartituraUploading(false);
+        }
+    };
+
+    const handleDeletePartitura = async (partId) => {
+        if (!window.confirm('¿Eliminar esta partitura?')) return;
+        try {
+            await deleteDoc(doc(db, 'partituras', partId));
+            setExistingPartituras(prev => prev.filter(p => p.id !== partId));
+        } catch (e) { console.error(e); }
+    };
 
     const [customStorageGB, setCustomStorageGB] = useState(0);
 
@@ -954,6 +1038,42 @@ function Dashboard() {
                         {(activeTab === 'home' || activeTab === 'songs') && (
                             <section>
                                 {!isNativeApp() && activeTab === 'songs' && (
+                                    <>
+                                    {/* FORMAT NOTE BANNER */}
+                                    <div style={{
+                                        marginBottom: '24px',
+                                        padding: '16px 22px',
+                                        borderRadius: '14px',
+                                        background: 'linear-gradient(135deg, rgba(0,210,211,0.06), rgba(155,89,182,0.06))',
+                                        border: '1px solid rgba(0,210,211,0.25)',
+                                        display: 'flex',
+                                        alignItems: 'flex-start',
+                                        gap: '14px'
+                                    }}>
+                                        <span style={{ fontSize: '1.5rem', flexShrink: 0, marginTop: '2px' }}>📋</span>
+                                        <div>
+                                            <div style={{ fontWeight: '800', fontSize: '0.9rem', color: '#00d2d3', marginBottom: '6px', letterSpacing: '0.02em' }}>
+                                                FORMATO DEL NOMBRE DEL ARCHIVO .ZIP
+                                            </div>
+                                            <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: '#e2e8f0', marginBottom: '8px' }}>
+                                                NOMBRE - ARTISTA - NOTA - TEMPO
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                                <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>Ejemplo:</span>
+                                                <code style={{
+                                                    background: 'rgba(0,0,0,0.3)',
+                                                    border: '1px solid rgba(0,210,211,0.2)',
+                                                    borderRadius: '6px',
+                                                    padding: '3px 10px',
+                                                    fontSize: '0.85rem',
+                                                    color: '#00d2d3',
+                                                    fontFamily: 'monospace'
+                                                }}>
+                                                    Mientras Viva - G12 - b - 120bpm.zip
+                                                </code>
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div
                                         onClick={() => fileInputRef.current.click()}
                                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -996,7 +1116,9 @@ function Dashboard() {
                                         </p>
                                         {!isProcessingZip && <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ marginTop: '20px' }}>Seleccionar Archivo</button>}
                                     </div>
+                                    </>
                                 )}
+
 
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
                                     <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>
@@ -1066,6 +1188,9 @@ function Dashboard() {
                                                 </button>
                                                 <button onClick={(e) => { e.stopPropagation(); openChordsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Agregar/Editar Cifrado">
                                                     <Music size={18} />
+                                                </button>
+                                                <button onClick={(e) => { e.stopPropagation(); openPartituraModal(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Partituras">
+                                                    <FileText size={18} />
                                                 </button>
                                                 <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
                                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteSong(song.id); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
@@ -1417,6 +1542,113 @@ function Dashboard() {
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
                                 <button onClick={() => { setIsLyricsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>
                                 <button onClick={saveLyricsHandler} className="btn-teal">Guardar Letra</button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* MODAL PARTITURAS */}
+            {
+                isPartituraMOdalOpen && (
+                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '680px', borderRadius: '24px', padding: '32px', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+                            <button onClick={() => setIsPartituraModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={24} /></button>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '26px' }}>
+                                <div style={{ width: '46px', height: '46px', background: 'linear-gradient(135deg,#00d2d3,#9b59b6)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <FileText size={22} color="white" />
+                                </div>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Partituras</h2>
+                                    <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Sube archivos PDF por instrumento</p>
+                                </div>
+                            </div>
+
+                            {/* EXISTING PARTITURAS */}
+                            {existingPartituras.length > 0 && (
+                                <div style={{ marginBottom: '28px' }}>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '12px' }}>Partituras Guardadas</div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        {existingPartituras.map(p => (
+                                            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(0,210,211,0.05)', border: '1px solid rgba(0,210,211,0.15)', borderRadius: '10px', padding: '12px 16px' }}>
+                                                <FileText size={16} color="#00d2d3" />
+                                                <span style={{ fontWeight: '700', flex: 1 }}>{p.instrument}</span>
+                                                <a href={p.pdfUrl} target="_blank" rel="noreferrer" style={{ color: '#00d2d3', fontSize: '0.8rem', fontWeight: '600', textDecoration: 'none' }}>Ver PDF</a>
+                                                <button onClick={() => handleDeletePartitura(p.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '2px' }}><Trash2 size={16} /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* INSTRUMENT SELECTOR */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', display: 'block', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Instrumento</label>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                                    {INSTRUMENTS.map(inst => (
+                                        <button
+                                            key={inst}
+                                            onClick={() => setPartituraInstrument(inst)}
+                                            style={{
+                                                padding: '7px 14px',
+                                                borderRadius: '20px',
+                                                border: partituraInstrument === inst ? '1px solid #00d2d3' : '1px solid rgba(255,255,255,0.1)',
+                                                background: partituraInstrument === inst ? 'rgba(0,210,211,0.15)' : 'rgba(255,255,255,0.03)',
+                                                color: partituraInstrument === inst ? '#00d2d3' : '#94a3b8',
+                                                fontWeight: partituraInstrument === inst ? '800' : '600',
+                                                fontSize: '0.82rem',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.15s'
+                                            }}
+                                        >
+                                            {inst}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* PDF FILE UPLOAD */}
+                            <div style={{ marginBottom: '24px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: '800', color: '#94a3b8', display: 'block', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Archivo PDF</label>
+                                <div
+                                    onClick={() => partituraFileRef.current?.click()}
+                                    style={{
+                                        border: '2px dashed ' + (partituraFile ? 'rgba(0,210,211,0.5)' : 'rgba(255,255,255,0.1)'),
+                                        borderRadius: '14px',
+                                        padding: '28px',
+                                        textAlign: 'center',
+                                        cursor: 'pointer',
+                                        background: partituraFile ? 'rgba(0,210,211,0.04)' : 'rgba(255,255,255,0.01)',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <FileText size={36} color={partituraFile ? '#00d2d3' : '#475569'} style={{ margin: '0 auto 10px' }} />
+                                    {partituraFile ? (
+                                        <div>
+                                            <div style={{ fontWeight: '700', color: '#00d2d3' }}>{partituraFile.name}</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{(partituraFile.size / 1024).toFixed(0)} KB</div>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div style={{ fontWeight: '600', color: '#64748b' }}>Haz clic para seleccionar un PDF</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#475569', marginTop: '4px' }}>Solo archivos .pdf</div>
+                                        </div>
+                                    )}
+                                </div>
+                                <input ref={partituraFileRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={e => setPartituraFile(e.target.files[0] || null)} />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button onClick={() => setIsPartituraModalOpen(false)} className="btn-ghost" style={{ flex: 1 }}>Cerrar</button>
+                                <button
+                                    onClick={handlePartituraUpload}
+                                    disabled={!partituraFile || !partituraInstrument || partituraUploading}
+                                    className="btn-teal"
+                                    style={{ flex: 1, opacity: (!partituraFile || !partituraInstrument || partituraUploading) ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                                >
+                                    {partituraUploading ? <><Loader2 size={18} className="animate-spin" /> Subiendo...</> : <><Upload size={18} /> Guardar Partitura</>}
+                                </button>
                             </div>
                         </div>
                     </div>

@@ -24,6 +24,9 @@ class AudioEngine {
         this.progress = 0;
         this._updater = null;
 
+        this.workletLoaded = false;
+        this.masterSoundTouchNode = null;
+
         // trackId => { path, volume, muted, solo, buffer }
         this._trackMeta = new Map();
         this.tracks = new Map();
@@ -47,6 +50,16 @@ class AudioEngine {
     async init() {
         this._initWebAudio();
         if (this.ctx.state === 'suspended') await this.ctx.resume();
+
+        if (!this.workletLoaded && !IS_NATIVE) {
+            try {
+                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
+                this.workletLoaded = true;
+                console.log("[AudioEngine] SoundTouchWorklet loaded.");
+            } catch (err) {
+                console.error("[AudioEngine] Failed to load soundtouch-worklet.js", err);
+            }
+        }
     }
 
     /**
@@ -138,18 +151,20 @@ class AudioEngine {
 
     async clear() {
         this._trackMeta.clear();
-        this.tracks.clear();
+        
         try {
             if (IS_NATIVE) {
                 const n = await getNative();
                 await n.stop();
                 await n.clearTracks();
             } else {
-                for (const id of this.tracks.keys()) this.removeTrack(id);
+                for (const id of Array.from(this.tracks.keys())) this.removeTrack(id);
             }
         } catch (e) {
             console.warn("[AudioEngine] Error en clear:", e);
         }
+        
+        this.tracks.clear();
         this.pausePosition = 0;
         this.isPlaying = false;
         if (this._updater) cancelAnimationFrame(this._updater);
@@ -258,7 +273,7 @@ class AudioEngine {
         } else {
             const t = this.tracks.get(id);
             if (t) {
-                if (t.source) { try { t.source.stop(); } catch (e) { } }
+                if (t.source) { try { t.source.stop(); } catch (e) { console.debug("WebAudio stop error", e); } }
                 t.gain.disconnect();
                 t.panner.disconnect();
                 if (t.analyser) t.analyser.disconnect();
@@ -267,11 +282,52 @@ class AudioEngine {
         }
     }
 
-    setTempo(ratio) {
-        this.tempoRatio = ratio;
-        if (IS_NATIVE) { getNative().then(n => n.setSpeed && n.setSpeed(ratio)); }
+    _updateWorkletParams() {
+        if (this.masterSoundTouchNode) {
+            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
+            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
+            
+            // Fix "utututu" starvation: Worklet must NEVER process time stretching.
+            // Native AudioBufferSourceNode handles time-stretching smoothly.
+            if (tempoParam) tempoParam.value = 1.0; 
+            
+            // Compensate for the physical pitch shift introduced by playbackRate
+            const pitchOffset = 12 * Math.log2(this.tempoRatio || 1);
+            const targetWorkletPitch = this.pitchSemitones - pitchOffset;
+            
+            if (pitchParam) pitchParam.value = targetWorkletPitch;
+        }
     }
-    setPitch(semitones) { this.pitchSemitones = semitones; }
+
+    setTempo(ratio) {
+        if (!IS_NATIVE && this.isPlaying) {
+            // Anchor real-world time to avoid playhead jumps
+            const elapsed = this.ctx.currentTime - this._playStartTime;
+            this.pausePosition = this.pausePosition + elapsed * this.tempoRatio;
+            this._playStartTime = this.ctx.currentTime;
+        }
+
+        this.tempoRatio = ratio;
+        if (IS_NATIVE) { 
+            getNative().then(n => n.setSpeed && n.setSpeed(ratio)); 
+        } else {
+            for (const [, track] of this.tracks.entries()) {
+                if (track.source && track.source.playbackRate) {
+                    track.source.playbackRate.setTargetAtTime(ratio, this.ctx.currentTime, 0.05);
+                }
+            }
+            this._updateWorkletParams();
+        }
+    }
+    
+    setPitch(semitones) { 
+        this.pitchSemitones = semitones; 
+        if (IS_NATIVE) {
+            getNative().then(n => n.setPitch && n.setPitch(semitones));
+        } else {
+            this._updateWorkletParams();
+        }
+    }
 
     async play() {
         if (this.isPlaying) return;
@@ -292,6 +348,23 @@ class AudioEngine {
         this._playStartTime = this.ctx.currentTime;
         this.isPlaying = true;
         this._startRAF();
+
+        if (this.masterSoundTouchNode) {
+            try { this.masterSoundTouchNode.disconnect(); } catch (e) { console.debug("Worklet disconnect", e); }
+            this.masterSoundTouchNode = null;
+        }
+        try { this.stSumBus.disconnect(); } catch (e) { console.debug("stSumBus disconnect", e); }
+
+        if (this.workletLoaded) {
+            this.masterSoundTouchNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
+            this._updateWorkletParams();
+
+            this.stSumBus.connect(this.masterSoundTouchNode);
+            this.masterSoundTouchNode.connect(this.masterGain);
+        } else {
+            this.stSumBus.connect(this.masterGain);
+        }
+
         for (const [, track] of this.tracks.entries()) {
             if (track.isVisualOnly) continue;
             if (!track.buffer) {
@@ -303,6 +376,7 @@ class AudioEngine {
 
             // Connect to the chain START (panner)
             src.connect(track.panner);
+            src.playbackRate.value = this.tempoRatio;
 
             src.start(0, Math.max(0, this.pausePosition));
             track.source = src;

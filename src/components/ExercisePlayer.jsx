@@ -589,7 +589,7 @@ const PianoExercise = ({ exercise, status, onKeyPress, pressedKey, flashKey }) =
             <div style={{ overflowX: 'auto', maxWidth: '100%', paddingBottom: 10 }}>
                 <div style={{ position: 'relative', display: 'inline-flex', userSelect: 'none', padding: '0 10px' }}>
                     {/* White keys */}
-                    {WHITE_KEYS.map((note, i) => {
+                    {WHITE_KEYS.map((note) => {
                         const isFlash   = flashKey === note;
                         const isPressed = pressedKey === note;
                         const isTarget  = note === exercise.targetNote;
@@ -676,20 +676,6 @@ const ExercisePlayer = ({ exercise, onCorrect, onWrong, onExit, progress, hearts
         autoRef.current = false;
     }, [exercise]);
 
-    /* Auto-play audio on ear / interval exercises */
-    useEffect(() => {
-        if (autoRef.current) return;
-        const t = exercise?.type;
-        if (t === 'ear-choice' || t === 'note-id') {
-            const tid = setTimeout(() => { playNote(); autoRef.current = true; }, 700);
-            return () => clearTimeout(tid);
-        }
-        if (t === 'interval-id') {
-            const tid = setTimeout(() => { playInterval(); autoRef.current = true; }, 700);
-            return () => clearTimeout(tid);
-        }
-    }, [exercise]);
-
     /* ── Audio helpers ── */
     const playNote = async () => {
         if (playing) return;
@@ -714,6 +700,21 @@ const ExercisePlayer = ({ exercise, onCorrect, onWrong, onExit, progress, hearts
             setTimeout(() => setPlaying(false), 1800);
         }
     };
+
+    /* Auto-play audio on ear / interval exercises */
+    useEffect(() => {
+        if (autoRef.current) return;
+        const t = exercise?.type;
+        if (t === 'ear-choice' || t === 'note-id') {
+            const tid = setTimeout(() => { playNote(); autoRef.current = true; }, 700);
+            return () => clearTimeout(tid);
+        }
+        if (t === 'interval-id') {
+            const tid = setTimeout(() => { playInterval(); autoRef.current = true; }, 700);
+            return () => clearTimeout(tid);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [exercise]);
 
     /* ── Choice logic ── */
     const handleSelect = (i) => {

@@ -26,8 +26,9 @@ const getIconComponent = (name) => {
 };
 
 const Icon = ({ name, size = 20, color = 'currentColor', style = {} }) => {
+     
     const IconComponent = getIconComponent(name);
-    return <IconComponent size={size} color={color} style={style} />;
+    return React.createElement(IconComponent, { size, color, style });
 };
 
 // ─── XP Level thresholds ──────────────────────────────────────────────────────
@@ -136,6 +137,7 @@ const XPToast = ({ amount, onDone }) => {
         const fadeTimer = setTimeout(() => setFading(true), 550);
         const doneTimer = setTimeout(onDone, 800);
         return () => { clearTimeout(fadeTimer); clearTimeout(doneTimer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return (
         <div style={{
@@ -236,12 +238,14 @@ const Academy = () => {
         // Random chance for "intelectual" or others
         if (Math.random() > 0.7) { pose = 'think'; text = '¿Sabías que la música mejora tu memoria? 🧠'; }
 
+         
         setLoadingMsg({ pose, text });
 
         const timer = setTimeout(() => {
             setLoading(false);
         }, 4500);
         return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [activeLevel, setActiveLevel] = useState(null);
@@ -287,12 +291,14 @@ const Academy = () => {
         const last = user.lastPracticeDate;
         if (last !== today) {
             const yesterday = new Date(Date.now() - 86400000).toDateString();
+             
             setUser(prev => ({
                 ...prev,
                 lastPracticeDate: today,
                 streak: last === yesterday ? prev.streak + 1 : (last ? 1 : prev.streak + 1),
             }));
         }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Check achievements
@@ -378,7 +384,7 @@ const Academy = () => {
 
     // ─── VIEWS ────────────────────────────────────────────────────────────────
 
-    const HomeScreen = () => {
+    const renderHomeScreen = () => {
         const userLevel = getUserLevel(user.xp);
         const xpToNextLevel = getXPToNext(user.xp);
         const currentLevelXP = XP_LEVELS[userLevel - 1] || 0;
@@ -503,7 +509,7 @@ const Academy = () => {
         );
     };
 
-    const LearnView = () => {
+    const renderLearnView = () => {
         return (
             <div className="learn-view fade-in">
                 <header className="view-header">
@@ -600,7 +606,7 @@ const Academy = () => {
         );
     };
 
-    const PracticeView = () => {
+    const renderPracticeView = () => {
         const practiceCategories = [
             { icon: 'ear', label: 'Entrenamiento Auditivo', desc: 'Intervalos y notas por oído', levels: [5, 7, 9, 25, 26], color: '#8b5cf6' },
             { icon: 'keyboard', label: 'Teclado Interactivo', desc: 'Aprende a ubicar notas', levels: [10], color: '#6366f1' },
@@ -645,7 +651,7 @@ const Academy = () => {
         );
     };
 
-    const ProgressView = () => {
+    const renderProgressView = () => {
         const acc = accuracy(user);
         const userLevel = getUserLevel(user.xp);
         const circumference = 2 * Math.PI * 45;
@@ -767,7 +773,7 @@ const Academy = () => {
         );
     };
 
-    const ProfileView = () => {
+    const renderProfileView = () => {
         const userLevel = getUserLevel(user.xp);
         const titles = ['Oyente Curioso', 'Aprendiz Musical', 'Estudiante', 'Músico', 'Teórico', 'Virtuoso', 'Maestro'];
         const titleIdx = Math.min(Math.floor((user.unlockedLevel - 1) / 8), titles.length - 1);
@@ -835,7 +841,7 @@ const Academy = () => {
     };
 
     // ─── SUCCESS SCREEN ───────────────────────────────────────────────────────
-    const SuccessScreen = () => (
+    const renderSuccessScreen = () => (
         <div className="lesson-success-flow">
             <div className="success-content ui-card">
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
@@ -889,7 +895,7 @@ const Academy = () => {
     );
 
     // ─── ACHIEVEMENT POPUP ────────────────────────────────────────────────────
-    const AchievementPopup = () => newAchievement && (
+    const renderAchievementPopup = () => newAchievement && (
         <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
             background: 'rgba(0,0,0,0.6)', zIndex: 9998,
@@ -921,12 +927,12 @@ const Academy = () => {
             {xpToast && <XPToast amount={xpToast} onDone={() => setXpToast(null)} />}
 
             {/* Achievement popup */}
-            <AchievementPopup />
+            {renderAchievementPopup()}
 
             {activeLesson ? (
                 <div className="lesson-frame-flow">
                     {showSuccess ? (
-                        <SuccessScreen />
+                        renderSuccessScreen()
                     ) : (
                         <ExercisePlayer
                             exercise={activeLesson.exercises[currentExerciseIdx]}
@@ -945,11 +951,11 @@ const Academy = () => {
             ) : (
                 <>
                     <main className="content-scroll">
-                        {currentTab === 'home'     && <HomeScreen />}
-                        {currentTab === 'learn'    && <LearnView />}
-                        {currentTab === 'practice' && <PracticeView />}
-                        {currentTab === 'progress' && <ProgressView />}
-                        {currentTab === 'profile'  && <ProfileView />}
+                        {currentTab === 'home'     && renderHomeScreen()}
+                        {currentTab === 'learn'    && renderLearnView()}
+                        {currentTab === 'practice' && renderPracticeView()}
+                        {currentTab === 'progress' && renderProgressView()}
+                        {currentTab === 'profile'  && renderProfileView()}
                     </main>
 
                     {/* Bottom Nav */}

@@ -9,57 +9,77 @@ service cloud.firestore {
              request.auth.token.email.lower() == 'ueservicesllc1@gmail.com';
     }
 
-    // ── USERS: owner or admin
+    // -- USERS: owner or admin
     match /users/{userId} {
       allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
     }
 
-    // ── SETLISTS: owner or admin
+    // -- SETLISTS: owner or admin
     match /setlists/{setlistId} {
       allow read, write: if (request.auth != null && request.auth.uid == resource.data.userId) || isAdmin();
       allow create: if (request.auth != null && request.resource.data.userId == request.auth.uid) || isAdmin();
     }
 
-    // ── SONGS: public can read all songs (for metadata); write admin or owner
+    // -- SONGS: public can read all songs (for metadata); write admin or owner
     match /songs/{songId} {
       allow read: if true;
       allow write: if isAdmin() || (request.auth != null && (resource == null || resource.data.userEmail == request.auth.token.email));
     }
 
-    // ── MASTER_ARTISTS: admin can manage, any authenticated or public can read
+    // -- MASTER_ARTISTS: admin can manage, any authenticated or public can read
     match /master_artists/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // ── APP VERSIONS: public can read; admin can manage
+    // -- APP VERSIONS: public can read; admin can manage
     match /app_versions/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // ── SELLER APPLICATIONS: owner can create, admin can manage
+    // -- SELLER APPLICATIONS: owner can create, admin can manage
     match /seller_applications/{userId} {
       allow read, write: if (request.auth != null && request.auth.uid == userId) || isAdmin();
     }
 
-    // ── LYRICS: authenticated users
+    // -- LYRICS: authenticated users
     match /lyrics/{doc} {
       allow read, write: if request.auth != null;
     }
 
-    // ── CHORDS: authenticated users
+    // -- CHORDS: authenticated users
     match /chords/{doc} {
       allow read, write: if request.auth != null;
     }
 
-    // ── BANNERS: public can read; write admin
+    // -- PARTITURAS (linked to songs, for personal use in mixer)
+    match /partituras/{doc} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    // -- PARTITURAS_VENTA (sheet music for sale by sellers)
+    match /partituras_venta/{pvId} {
+      allow read: if true;
+      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Star ratings subcollection: any authenticated user can rate, only their own doc
+      match /ratings/{userId} {
+        allow read: if true;
+        allow write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // -- BANNERS: public can read; write admin
     match /banners/{id} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // ── CONTACTS: anyone can create; only admin can read
+    // -- CONTACTS: anyone can create; only admin can read
     match /contacts/{doc} {
       allow create: if true;
       allow read, update, delete: if isAdmin();

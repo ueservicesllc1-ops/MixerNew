@@ -56,6 +56,7 @@ export const LocalFileManager = {
             // Si tiene igual o mayor cantidad de llaves, asumimos que está lista
             return songKeys.length >= expectedTracksCount && expectedTracksCount > 0;
         } catch (error) {
+            console.error('Error in isSongDownloaded:', error);
             return false;
         }
     },

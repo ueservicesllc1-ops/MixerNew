@@ -19,13 +19,17 @@ export default function WaveformCanvas({ songId, tracks, progress, duration, has
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
+                 
                 setPeaks(new Float32Array(parsed));
+                 
                 setStatusInfo({ isReal: true, source: 'ONDA GUARDADA', color: '#10b981' }); // Verde esmeralda para caché
             } catch (e) {
                 console.error("Error cargando picos persistentes:", e);
             }
         } else {
+             
             setPeaks(null);
+             
             setStatusInfo({ isReal: false, source: 'Analizando...', color: '#64748b' });
         }
     }, [songId]);
@@ -131,6 +135,7 @@ export default function WaveformCanvas({ songId, tracks, progress, duration, has
         const timer = setInterval(updateWaveform, 1500); // Menos frecuencia para ahorrar CPU
         updateWaveform();
         return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tracks, duration, songId]);
 
     // ── Drawing ──────────────────────
