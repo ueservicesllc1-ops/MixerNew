@@ -1,0 +1,275 @@
+﻿
+> mixer@0.0.0 lint
+> eslint .
+
+
+E:\Mixer\src\components\WaveformCanvas.jsx
+   22:17  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  20 |             try {
+  21 |                 const parsed = JSON.parse(saved);
+> 22 |                 setPeaks(new Float32Array(parsed));
+     |                 ^^^^^^^^ Avoid calling setState() directly within an effect
+  23 |                 setStatusInfo({ isReal: true, source: 'ONDA GUARDADA', color: '#10b981' }); // Verde esmeralda para cach├⌐
+  24 |             } catch (e) {
+  25 |                 console.error("Error cargando picos persistentes:", e);  react-hooks/set-state-in-effect
+  134:8   warning  React Hook useEffect has missing dependencies: 'hasPreview' and 'peaks'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/exhaustive-deps
+
+E:\Mixer\src\pages\Academy.jsx
+   30:13  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  28 | const Icon = ({ name, size = 20, color = 'currentColor', style = {} }) => {
+  29 |     const IconComponent = getIconComponent(name);
+> 30 |     return <IconComponent size={size} color={color} style={style} />;
+     |             ^^^^^^^^^^^^^ This component is created during render
+  31 | };
+  32 |
+  33 | // ΓöÇΓöÇΓöÇ XP Level thresholds ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+  27 |
+  28 | const Icon = ({ name, size = 20, color = 'currentColor', style = {} }) => {
+> 29 |     const IconComponent = getIconComponent(name);
+     |                           ^^^^^^^^^^^^^^^^^^^^^^ The component is created during render here
+  30 |     return <IconComponent size={size} color={color} style={style} />;
+  31 | };
+  32 |                                                                                                                                                                                                                                                                                                                                                                                                                                                          react-hooks/static-components
+  139:8   warning  React Hook useEffect has a missing dependency: 'onDone'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            react-hooks/exhaustive-deps
+  239:9   error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  237 |         if (Math.random() > 0.7) { pose = 'think'; text = '┬┐Sab├¡as que la m├║sica mejora tu memoria? ≡ƒºá'; }
+  238 |
+> 239 |         setLoadingMsg({ pose, text });
+      |         ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  240 |
+  241 |         const timer = setTimeout(() => {
+  242 |             setLoading(false);                                                                                                                                                                                                                                                                                                                        react-hooks/set-state-in-effect
+  245:8   warning  React Hook useEffect has missing dependencies: 'user.lastPractice' and 'user.xp'. Either include them or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 react-hooks/exhaustive-deps
+  290:13  error    Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  288 |         if (last !== today) {
+  289 |             const yesterday = new Date(Date.now() - 86400000).toDateString();
+> 290 |             setUser(prev => ({
+      |             ^^^^^^^ Avoid calling setState() directly within an effect
+  291 |                 ...prev,
+  292 |                 lastPracticeDate: today,
+  293 |                 streak: last === yesterday ? prev.streak + 1 : (last ? 1 : prev.streak + 1),                                                                                                                                                                                                                                          react-hooks/set-state-in-effect
+  296:8   warning  React Hook useEffect has a missing dependency: 'user.lastPracticeDate'. Either include it or remove the dependency array                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             react-hooks/exhaustive-deps
+  924:14  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  922 |
+  923 |             {/* Achievement popup */}
+> 924 |             <AchievementPopup />
+      |              ^^^^^^^^^^^^^^^^ This component is created during render
+  925 |
+  926 |             {activeLesson ? (
+  927 |                 <div className="lesson-frame-flow">
+
+  890 |
+  891 |     // ΓöÇΓöÇΓöÇ ACHIEVEMENT POPUP ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+> 892 |     const AchievementPopup = () => newAchievement && (
+      |                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+> 893 |         <div style={{
+      | ^^^^^^^^^^^^^^^^^^^^^
+> 894 |             position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^
+> 913 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^
+> 914 |     );
+      | ^^^^^^ The component is created during render here
+  915 |
+  916 |     // ΓöÇΓöÇΓöÇ MAIN RENDER ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  917 |     return (                                                                                                                                                                                                                                                               react-hooks/static-components
+  929:26  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  927 |                 <div className="lesson-frame-flow">
+  928 |                     {showSuccess ? (
+> 929 |                         <SuccessScreen />
+      |                          ^^^^^^^^^^^^^ This component is created during render
+  930 |                     ) : (
+  931 |                         <ExercisePlayer
+  932 |                             exercise={activeLesson.exercises[currentExerciseIdx]}
+
+  836 |
+  837 |     // ΓöÇΓöÇΓöÇ SUCCESS SCREEN ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+> 838 |     const SuccessScreen = () => (
+      |                           ^^^^^^^
+> 839 |         <div className="lesson-success-flow">
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 840 |             <div className="success-content ui-card">
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 888 |         </div>
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 889 |     );
+      | ^^^^^^ The component is created during render here
+  890 |
+  891 |     // ΓöÇΓöÇΓöÇ ACHIEVEMENT POPUP ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  892 |     const AchievementPopup = () => newAchievement && (                                       react-hooks/static-components
+  948:56  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  946 |                 <>
+  947 |                     <main className="content-scroll">
+> 948 |                         {currentTab === 'home'     && <HomeScreen />}
+      |                                                        ^^^^^^^^^^ This component is created during render
+  949 |                         {currentTab === 'learn'    && <LearnView />}
+  950 |                         {currentTab === 'practice' && <PracticeView />}
+  951 |                         {currentTab === 'progress' && <ProgressView />}
+
+  379 |     // ΓöÇΓöÇΓöÇ VIEWS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  380 |
+> 381 |     const HomeScreen = () => {
+      |                        ^^^^^^^
+> 382 |         const userLevel = getUserLevel(user.xp);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 383 |         const xpToNextLevel = getXPToNext(user.xp);
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 503 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 504 |     };
+      | ^^^^^^ The component is created during render here
+  505 |
+  506 |     const LearnView = () => {
+  507 |         return (                         react-hooks/static-components
+  949:56  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  947 |                     <main className="content-scroll">
+  948 |                         {currentTab === 'home'     && <HomeScreen />}
+> 949 |                         {currentTab === 'learn'    && <LearnView />}
+      |                                                        ^^^^^^^^^ This component is created during render
+  950 |                         {currentTab === 'practice' && <PracticeView />}
+  951 |                         {currentTab === 'progress' && <ProgressView />}
+  952 |                         {currentTab === 'profile'  && <ProfileView />}
+
+  504 |     };
+  505 |
+> 506 |     const LearnView = () => {
+      |                       ^^^^^^^
+> 507 |         return (
+      | ^^^^^^^^^^^^^^^^
+> 508 |             <div className="learn-view fade-in">
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^
+> 600 |         );
+      | ^^^^^^^^^^^^^^^^
+> 601 |     };
+      | ^^^^^^ The component is created during render here
+  602 |
+  603 |     const PracticeView = () => {
+  604 |         const practiceCategories = [                                                                                                                                                               react-hooks/static-components
+  950:56  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  948 |                         {currentTab === 'home'     && <HomeScreen />}
+  949 |                         {currentTab === 'learn'    && <LearnView />}
+> 950 |                         {currentTab === 'practice' && <PracticeView />}
+      |                                                        ^^^^^^^^^^^^ This component is created during render
+  951 |                         {currentTab === 'progress' && <ProgressView />}
+  952 |                         {currentTab === 'profile'  && <ProfileView />}
+  953 |                     </main>
+
+  601 |     };
+  602 |
+> 603 |     const PracticeView = () => {
+      |                          ^^^^^^^
+> 604 |         const practiceCategories = [
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 605 |             { icon: 'ear', label: 'Entrenamiento Auditivo', desc: 'Intervalos y notas por o├¡do', levels: [5, 7, 9, 25, 26], color: '#8b5cf6' },
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 645 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 646 |     };
+      | ^^^^^^ The component is created during render here
+  647 |
+  648 |     const ProgressView = () => {
+  649 |         const acc = accuracy(user);  react-hooks/static-components
+  951:56  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  949 |                         {currentTab === 'learn'    && <LearnView />}
+  950 |                         {currentTab === 'practice' && <PracticeView />}
+> 951 |                         {currentTab === 'progress' && <ProgressView />}
+      |                                                        ^^^^^^^^^^^^ This component is created during render
+  952 |                         {currentTab === 'profile'  && <ProfileView />}
+  953 |                     </main>
+  954 |
+
+  646 |     };
+  647 |
+> 648 |     const ProgressView = () => {
+      |                          ^^^^^^^
+> 649 |         const acc = accuracy(user);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 650 |         const userLevel = getUserLevel(user.xp);
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 767 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 768 |     };
+      | ^^^^^^ The component is created during render here
+  769 |
+  770 |     const ProfileView = () => {
+  771 |         const userLevel = getUserLevel(user.xp);                                                                                                                                                               react-hooks/static-components
+  952:56  error    Error: Cannot create components during render
+
+Components created during render will reset their state each time they are created. Declare components outside of render.
+
+  950 |                         {currentTab === 'practice' && <PracticeView />}
+  951 |                         {currentTab === 'progress' && <ProgressView />}
+> 952 |                         {currentTab === 'profile'  && <ProfileView />}
+      |                                                        ^^^^^^^^^^^ This component is created during render
+  953 |                     </main>
+  954 |
+  955 |                     {/* Bottom Nav */}
+
+  768 |     };
+  769 |
+> 770 |     const ProfileView = () => {
+      |                         ^^^^^^^
+> 771 |         const userLevel = getUserLevel(user.xp);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 772 |         const titles = ['Oyente Curioso', 'Aprendiz Musical', 'Estudiante', 'M├║sico', 'Te├│rico', 'Virtuoso', 'Maestro'];
+      ΓÇª
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 834 |         );
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 835 |     };
+      | ^^^^^^ The component is created during render here
+  836 |
+  837 |     // ΓöÇΓöÇΓöÇ SUCCESS SCREEN ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  838 |     const SuccessScreen = () => (                                 react-hooks/static-components
+
+Γ£û 15 problems (11 errors, 4 warnings)
+

@@ -1,0 +1,206 @@
+﻿diff --git a/src/pages/Multitrack.jsx b/src/pages/Multitrack.jsx
+index 9e27c97..2147a48 100644
+--- a/src/pages/Multitrack.jsx
++++ b/src/pages/Multitrack.jsx
+@@ -65,7 +65,19 @@ export default function Multitrack() {
+     const [activeSongId, setActiveSongId] = useState(null);
+     const [audioReady, setAudioReady] = useState(0); // Trigger re-renders when buffers finish decoding
+     // Bottom tab panel
+-    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings'
++    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings' | 'partituras'
++
++    // ΓöÇΓöÇ PARTITURAS STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++    const [activePartituras, setActivePartituras] = useState([]); // list of {id, instrument, pdfUrl, songId}
++    const [selectedPartitura, setSelectedPartitura] = useState(null); // currently opened partitura object
++    const [pvFullscreen, setPvFullscreen] = useState(false);
++
++    // ESC key closes fullscreen partitura
++    useEffect(() => {
++        const handleEsc = (e) => { if (e.key === 'Escape') setPvFullscreen(false); };
++        window.addEventListener('keydown', handleEsc);
++        return () => window.removeEventListener('keydown', handleEsc);
++    }, []);
+ 
+     // Login Details
+     const [showLoginModal, setShowLoginModal] = useState(false);
+@@ -1089,6 +1101,30 @@ export default function Multitrack() {
+     const [activeChords, setActiveChords] = useState('loading'); // 'loading', null, or string
+     const chordsScrollRef = useRef(null);
+ 
++    // Fetch partituras for active song
++    useEffect(() => {
++        if (!activeSongId) {
++            setActivePartituras([]);
++            setSelectedPartitura(null);
++            return;
++        }
++        const q = query(collection(db, 'partituras'), where('songId', '==', activeSongId));
++        const unsub = onSnapshot(q, (snap) => {
++            const list = [];
++            snap.forEach(d => list.push({ id: d.id, ...d.data() }));
++            list.sort((a, b) => (a.instrument || '').localeCompare(b.instrument || ''));
++            setActivePartituras(list);
++            // Auto-select first if none selected
++            setSelectedPartitura(prev => {
++                if (prev && list.find(p => p.id === prev.id)) return prev;
++                return list[0] || null;
++            });
++        }, (err) => {
++            console.error('[PARTITURAS] Error cargando:', err);
++        });
++        return () => unsub();
++    }, [activeSongId]);
++
+     // Fetch lyrics and chords with offline-first + live sync hybrid approach
+     useEffect(() => {
+         if (!activeSongId) {
+@@ -1542,6 +1578,7 @@ export default function Multitrack() {
+                     { id: 'setlist', label: 'Lista' },
+                     { id: 'library', label: 'Biblioteca' },
+                     { id: 'pads', label: 'Pads' },
++                    { id: 'partituras', label: '≡ƒÄ╝ Partituras' },
+                     { id: 'lyrics', label: 'Lyrics' },
+                     { id: 'chords', label: 'Acordes' },
+                     { id: 'debug', label: 'DEBUG' },
+@@ -1615,7 +1652,7 @@ export default function Multitrack() {
+                                                 <SkipBack size={16} /> MIXER
+                                             </button>
+                                             <h2>
+-                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab === 'chords' ? 'Cifrado' : activeTab === 'debug' ? 'Sistema de Diagn├│stico' : activeTab}
++                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab === 'chords' ? 'Cifrado' : activeTab === 'debug' ? 'Sistema de Diagn├│stico' : activeTab === 'partituras' ? '≡ƒÄ╝ Partituras' : activeTab}
+                                             </h2>
+                                         </div>
+ 
+@@ -1745,6 +1782,84 @@ export default function Multitrack() {
+                                                 </div>
+                                             </div>
+                                         )}
++                                        {activeTab === 'partituras' && (
++                                            <div style={{ flex: 1, display: 'flex', gap: '0', overflow: 'hidden', background: '#0a0a0e', borderRadius: '12px' }}>
++                                                {/* Instrument selector sidebar */}
++                                                <div style={{ width: '180px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto', padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
++                                                    <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '6px' }}>Instrumento</div>
++                                                    {activePartituras.length === 0 ? (
++                                                        <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 6px', lineHeight: 1.5 }}>No hay partituras para esta canci├│n.<br/>S├║belas desde el Dashboard.</div>
++                                                    ) : (
++                                                        activePartituras.map(p => (
++                                                            <button
++                                                                key={p.id}
++                                                                onClick={() => setSelectedPartitura(p)}
++                                                                style={{
++                                                                    background: selectedPartitura?.id === p.id ? 'rgba(0,188,212,0.15)' : 'rgba(255,255,255,0.03)',
++                                                                    border: selectedPartitura?.id === p.id ? '1px solid #00bcd4' : '1px solid rgba(255,255,255,0.06)',
++                                                                    borderRadius: '10px',
++                                                                    color: selectedPartitura?.id === p.id ? '#00bcd4' : '#94a3b8',
++                                                                    padding: '10px 10px',
++                                                                    textAlign: 'left',
++                                                                    cursor: 'pointer',
++                                                                    fontWeight: selectedPartitura?.id === p.id ? '800' : '600',
++                                                                    fontSize: '0.82rem',
++                                                                    transition: 'all 0.18s',
++                                                                    display: 'flex',
++                                                                    alignItems: 'center',
++                                                                    gap: '7px'
++                                                                }}
++                                                            >
++                                                                <span style={{ fontSize: '1.1rem' }}>{{
++                                                                    'Guitarra': '≡ƒÄ╕', 'Piano': '≡ƒÄ╣', 'Bajo': '≡ƒÄ╕', 'Bater├¡a': '≡ƒÑü',
++                                                                    'Viol├¡n': '≡ƒÄ╗', 'Acorde├│n': '≡ƒ¬ù', 'Trompeta': '≡ƒÄ║', 'Saxof├│n': '≡ƒÄ╖',
++                                                                    'Flauta': '≡ƒÄ╢', 'Teclado': '≡ƒÄ╣', 'Ukulele': '≡ƒ¬ò', 'Mandolina': '≡ƒ¬ò',
++                                                                    'Cello': '≡ƒÄ╗', 'Contrabajo': '≡ƒÄ╕', 'Clarinete': '≡ƒÄ╖', 'Oboe': '≡ƒÄ╢',
++                                                                    'Coro': '≡ƒÄñ', 'Voz': '≡ƒÄñ',
++                                                                }[p.instrument] || '≡ƒÄ╡'}</span>
++                                                                {p.instrument}
++                                                            </button>
++                                                        ))
++                                                    )}
++                                                </div>
++
++                                                {/* PDF Viewer area */}
++                                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
++                                                    {selectedPartitura ? (
++                                                        <>
++                                                        {/* Toolbar bar above PDF */}
++                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#111', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
++                                                            <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '700' }}>
++                                                                {selectedPartitura.instrument}
++                                                            </span>
++                                                            <button
++                                                                onClick={() => setPvFullscreen(true)}
++                                                                title="Pantalla completa"
++                                                                style={{ background: 'rgba(0,188,212,0.15)', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', color: '#00bcd4', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
++                                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,188,212,0.3)'}
++                                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,188,212,0.15)'}
++                                                            >
++                                                                Γ¢╢ Pantalla Completa
++                                                            </button>
++                                                        </div>
++                                                        <iframe
++                                                            key={selectedPartitura.id}
++                                                            src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0'}
++                                                            title={`Partitura ${selectedPartitura.instrument}`}
++                                                            style={{ flex: 1, border: 'none', width: '100%', height: '100%', background: 'white' }}
++                                                        />
++                                                        </>
++                                                    ) : (
++                                                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', flexDirection: 'column', gap: '12px' }}>
++                                                            <span style={{ fontSize: '3rem' }}>≡ƒÄ╝</span>
++                                                            <p style={{ fontSize: '1.1rem', color: '#555' }}>
++                                                                {activeSongId ? 'Selecciona un instrumento para ver la partitura.' : 'Carga una canci├│n primero.'}
++                                                            </p>
++                                                        </div>
++                                                    )}
++                                                </div>
++                                            </div>
++                                        )}
+                                     </div>
+                                 </div>
+                             ) : (
+@@ -2334,6 +2449,47 @@ export default function Multitrack() {
+                     </div>
+                 </div>
+             </div>
++            {/* PARTITURA FULLSCREEN OVERLAY */}
++            {pvFullscreen && selectedPartitura && (
++                <div style={{
++                    position: 'fixed', inset: 0, zIndex: 9999,
++                    background: '#000',
++                    display: 'flex', flexDirection: 'column'
++                }}>
++                    {/* Top bar */}
++                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px', background: '#0a0a0e', borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0 }}>
++                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
++                            <span style={{ fontSize: '1.3rem' }}>≡ƒÄ╝</span>
++                            <span style={{ color: 'white', fontWeight: '800', fontSize: '1rem' }}>{selectedPartitura.instrument}</span>
++                        </div>
++                        <button
++                            onClick={() => setPvFullscreen(false)}
++                            title="Cerrar (ESC)"
++                            style={{
++                                background: 'rgba(239,68,68,0.15)',
++                                border: '2px solid rgba(239,68,68,0.4)',
++                                borderRadius: '12px',
++                                color: '#ef4444',
++                                width: '46px', height: '46px',
++                                display: 'flex', alignItems: 'center', justifyContent: 'center',
++                                cursor: 'pointer',
++                                transition: 'all 0.15s'
++                            }}
++                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.35)'; e.currentTarget.style.transform = 'scale(1.08)'; }}
++                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.transform = 'scale(1)'; }}
++                        >
++                            <X size={26} />
++                        </button>
++                    </div>
++                    {/* Full PDF */}
++                    <iframe
++                        key={`fs_${selectedPartitura.id}`}
++                        src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0&view=FitH'}
++                        title={`Partitura FS ${selectedPartitura.instrument}`}
++                        style={{ flex: 1, border: 'none', width: '100%', background: 'white' }}
++                    />
++                </div>
++            )}
+         </div>
+     )
+ }

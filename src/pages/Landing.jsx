@@ -535,125 +535,146 @@ export default function Landing() {
             </nav >
 
             {/* HERO SECTION */}
-            < header className="hero-gradient" style={{ paddingTop: '160px', paddingBottom: '100px', textAlign: 'center', padding: '160px 20px 100px' }}>
-                <div style={{ maxWidth: '1000px', margin: '0 auto' }}>
-                    <h1 className="text-gradient" style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', fontWeight: '900', lineHeight: '1.1', margin: '0 0 24px 0', letterSpacing: '-1px' }}>
-                        Pistas para adoración<br />hechas con excelencia
-                    </h1>
-                    <p style={{ fontSize: '1.25rem', color: '#94a3b8', lineHeight: '1.6', maxWidth: '700px', margin: '0 auto 40px' }}>
-                        Zion Stage es la plataforma definitiva para líderes de alabanza. Multitracks o Secuencias de alta calidad, sincroniza con tu equipo y lleva tu sonido al siguiente nivel con nuestro motor de audio nativo.
-                    </p>
-                    <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-                        {!currentUser ? (
-                            <button className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem' }} onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
-                                Comienza gratis ahora
+            <header className="hero-gradient" style={{ 
+                paddingTop: '120px', 
+                paddingBottom: '140px', 
+                paddingLeft: '60px', 
+                paddingRight: '60px' 
+            }}>
+                <div style={{ 
+                    maxWidth: '1600px', 
+                    margin: '0 auto', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '100px',
+                    flexWrap: 'wrap',
+                    textAlign: 'left'
+                }}>
+                    <div style={{ flex: '0.6 1 350px' }}>
+                        <h1 className="text-gradient" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 3rem)', fontWeight: '900', lineHeight: '1.1', margin: '0 0 20px 0', letterSpacing: '-1px' }}>
+                            Pistas para adoración<br />hechas con excelencia
+                        </h1>
+                        <p style={{ fontSize: '1rem', color: '#94a3b8', lineHeight: '1.6', maxWidth: '450px', margin: '0 0 32px' }}>
+                            Zion Stage es la plataforma definitiva para líderes de alabanza. Multitracks o Secuencias de alta calidad, sincroniza con tu equipo y lleva tu sonido al siguiente nivel con nuestro motor de audio nativo.
+                        </p>
+                        <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+                            {!currentUser ? (
+                                <button className="btn-teal" style={{ padding: '14px 32px', fontSize: '0.95rem' }} onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
+                                    Comienza gratis ahora
+                                </button>
+                            ) : (
+                                <button className="btn-teal" style={{ padding: '14px 32px', fontSize: '0.95rem' }} onClick={() => navigate('/dashboard')}>
+                                    Ir a la Nube Principal
+                                </button>
+                            )}
+                            <button className="btn-ghost" style={{ padding: '14px 32px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <Play size={18} fill="currentColor" /> Ver cómo funciona
                             </button>
-                        ) : (
-                            <button className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem' }} onClick={() => navigate('/dashboard')}>
-                                Ir a la Nube Principal
-                            </button>
-                        )}
-                        <button className="btn-ghost" style={{ padding: '16px 40px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <Play size={18} fill="currentColor" /> Ver cómo funciona
-                        </button>
+                        </div>
                         {latestApp && (
-                            <button 
-                                onClick={() => window.open(latestApp.downloadUrl, '_blank')}
-                                style={{ padding: '16px 40px', fontSize: '1.1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
-                            >
-                                <img src="/android-logo.png" alt="Android" style={{ width: '20px' }} onError={(e) => e.target.style.display = 'none'} />
-                                Descargar App {latestApp.versionName}
-                            </button>
+                            <div style={{ marginTop: '20px' }}>
+                                <button 
+                                    onClick={() => window.open(latestApp.downloadUrl, '_blank')}
+                                    style={{ padding: '10px 24px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                                >
+                                    <img src="/android-logo.png" alt="Android" style={{ width: '16px' }} onError={(e) => e.target.style.display = 'none'} />
+                                    Descargar App {latestApp.versionName}
+                                </button>
+                            </div>
                         )}
                     </div>
-                </div>
 
-                {/* HERO CAROUSEL BANNER */}
-                <div style={{ marginTop: '80px', position: 'relative', maxWidth: '1200px', margin: '80px auto 0', padding: '0 20px' }}>
-                    <div style={{
-                        borderRadius: '30px',
-                        overflow: 'hidden',
-                        boxShadow: '0 50px 100px rgba(0,0,0,0.8)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        background: '#020617',
-                        aspectRatio: '21/9',
-                        position: 'relative'
+                    {/* HERO CAROUSEL BANNER */}
+                    <div style={{ 
+                        flex: '2 1 800px', 
+                        position: 'relative',
+                        minWidth: '320px'
                     }}>
-                        {heroSlides.map((slide, idx) => (
-                            <div
-                                key={idx}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                    opacity: currentHeroSlide === idx ? 1 : 0,
-                                    transition: 'opacity 1s ease-in-out',
-                                    zIndex: currentHeroSlide === idx ? 1 : 0
-                                }}
-                            >
-                                <img
-                                    src={slide.image}
-                                    alt={slide.title}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                />
-                                <div style={{
-                                    position: 'absolute',
-                                    bottom: 0,
-                                    left: 0,
-                                    right: 0,
-                                    padding: '40px 60px',
-                                    background: 'linear-gradient(to top, rgba(2,6,23,0.9), transparent)',
-                                    textAlign: 'left',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    justifyContent: 'flex-end'
-                                }}>
-                                    <h3 style={{ margin: '0 0 8px', fontSize: '1.5rem', fontWeight: '800', color: '#00d2d3' }}>{slide.title}</h3>
-                                    <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: '1rem' }}>{slide.subtitle}</p>
-                                </div>
-                            </div>
-                        ))}
-
-                        {/* Slide Indicators */}
-                        <div style={{ position: 'absolute', bottom: '30px', right: '40px', display: 'flex', gap: '8px', zIndex: 10 }}>
-                            {heroSlides.map((_, idx) => (
+                        <div style={{
+                            borderRadius: '30px',
+                            overflow: 'hidden',
+                            boxShadow: '0 50px 100px rgba(0,0,0,0.8)',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            background: '#020617',
+                            aspectRatio: '16/9',
+                            position: 'relative'
+                        }}>
+                            {heroSlides.map((slide, idx) => (
                                 <div
                                     key={idx}
-                                    onClick={() => setCurrentHeroSlide(idx)}
                                     style={{
-                                        width: currentHeroSlide === idx ? '30px' : '8px',
-                                        height: '8px',
-                                        borderRadius: '4px',
-                                        background: currentHeroSlide === idx ? '#00d2d3' : 'rgba(255,255,255,0.3)',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.3s ease'
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        height: '100%',
+                                        opacity: currentHeroSlide === idx ? 1 : 0,
+                                        transition: 'opacity 1s ease-in-out',
+                                        zIndex: currentHeroSlide === idx ? 1 : 0
                                     }}
-                                />
+                                >
+                                    <img
+                                        src={slide.image}
+                                        alt={slide.title}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                    <div style={{
+                                        position: 'absolute',
+                                        bottom: 0,
+                                        left: 0,
+                                        right: 0,
+                                        padding: '30px 40px',
+                                        background: 'linear-gradient(to top, rgba(2,6,23,0.9), transparent)',
+                                        textAlign: 'left',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        justifyContent: 'flex-end'
+                                    }}>
+                                        <h3 style={{ margin: '0 0 6px', fontSize: '1.3rem', fontWeight: '800', color: '#00d2d3' }}>{slide.title}</h3>
+                                        <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>{slide.subtitle}</p>
+                                    </div>
+                                </div>
                             ))}
+
+                            {/* Slide Indicators */}
+                            <div style={{ position: 'absolute', bottom: '20px', right: '30px', display: 'flex', gap: '8px', zIndex: 10 }}>
+                                {heroSlides.map((_, idx) => (
+                                    <div
+                                        key={idx}
+                                        onClick={() => setCurrentHeroSlide(idx)}
+                                        style={{
+                                            width: currentHeroSlide === idx ? '25px' : '6px',
+                                            height: '6px',
+                                            borderRadius: '3px',
+                                            background: currentHeroSlide === idx ? '#00d2d3' : 'rgba(255,255,255,0.3)',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.3s ease'
+                                        }}
+                                    />
+                                ))}
+                            </div>
                         </div>
+
+                        {/* Navigation Arrows */}
+                        <button
+                            onClick={() => setCurrentHeroSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
+                            style={{ position: 'absolute', left: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
+                        >
+                            <ChevronLeft size={24} />
+                        </button>
+                        <button
+                            onClick={() => setCurrentHeroSlide(prev => (prev + 1) % heroSlides.length)}
+                            style={{ position: 'absolute', right: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
+                        >
+                            <ChevronRight size={24} />
+                        </button>
+
+                        {/* Decorative accents */}
+                        <div style={{ position: 'absolute', top: '-40px', left: '-40px', width: '200px', height: '200px', background: 'rgba(0,210,211,0.2)', filter: 'blur(80px)', zIndex: -1 }}></div>
+                        <div style={{ position: 'absolute', bottom: '-40px', right: '-40px', width: '250px', height: '250px', background: 'rgba(155,89,182,0.15)', filter: 'blur(80px)', zIndex: -1 }}></div>
                     </div>
-
-                    {/* Navigation Arrows */}
-                    <button
-                        onClick={() => setCurrentHeroSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
-                        style={{ position: 'absolute', left: '0', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
-                    >
-                        <ChevronLeft size={24} />
-                    </button>
-                    <button
-                        onClick={() => setCurrentHeroSlide(prev => (prev + 1) % heroSlides.length)}
-                        style={{ position: 'absolute', right: '0', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.5)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
-                    >
-                        <ChevronRight size={24} />
-                    </button>
-
-                    {/* Decorative accents */}
-                    <div style={{ position: 'absolute', top: '-40px', left: '-40px', width: '200px', height: '200px', background: 'rgba(0,210,211,0.2)', filter: 'blur(80px)', zIndex: -1 }}></div>
-                    <div style={{ position: 'absolute', bottom: '-40px', right: '-40px', width: '250px', height: '250px', background: 'rgba(155,89,182,0.15)', filter: 'blur(80px)', zIndex: -1 }}></div>
                 </div>
-            </header >
+            </header>
 
             {/* FEATURED TRACKS CAROUSEL SECTION */}
             < section style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>

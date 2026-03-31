@@ -1,0 +1,1304 @@
+﻿commit e8a92d30c2440f88a0d0d07b0dd9599174da6f81
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Fri Mar 20 19:01:03 2026 -0400
+
+    feat: tempo nativo C++ via ma_sound_set_pitch + setSpeed en toda la cadena
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index 239909a..cb48b42 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -267,7 +267,10 @@ class AudioEngine {
+         }
+     }
+ 
+-    setTempo(ratio) { this.tempoRatio = ratio; }
++    setTempo(ratio) {
++        this.tempoRatio = ratio;
++        if (IS_NATIVE) { getNative().then(n => n.setSpeed && n.setSpeed(ratio)); }
++    }
+     setPitch(semitones) { this.pitchSemitones = semitones; }
+ 
+     async play() {
+
+commit 6cce11e314d38718761ed5fd5dd7fcfca6e39348
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Tue Mar 10 17:22:39 2026 -0400
+
+    Admin track editing, Seller track rename flow, Form UI readability and Store query expansion - Removed hardcoded secrets
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index bc5d41a..239909a 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -187,6 +187,17 @@ class AudioEngine {
+         }
+     }
+ 
++    setTrackPan(id, pan) {
++        if (IS_NATIVE) {
++            getNative().then(n => n.setTrackPan && n.setTrackPan(id, pan));
++        } else {
++            const t = this.tracks.get(id);
++            if (t && t.panner) {
++                t.panner.pan.setTargetAtTime(pan, this.ctx.currentTime, 0.05);
++            }
++        }
++    }
++
+     setTrackSolo(id, val) {
+         if (IS_NATIVE) {
+             const m = this._trackMeta.get(id);
+
+commit 610698266acf1e64994e805958c62781dcf58723
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Sat Mar 7 10:36:37 2026 -0500
+
+    feat: implemented solo/mute native and web support with optimized waveform loading for Android
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index 07ceacc..bc5d41a 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -1,262 +1,370 @@
++/**
++ * AudioEngine.js
++ * Optimized for Native Storage: Direct file loading, minimum RAM usage.
++ */
++
++let _nativeEngine = null;
++async function getNative() {
++    if (!_nativeEngine) {
++        const mod = await import('./NativeEngine');
++        _nativeEngine = mod.NativeEngine;
++    }
++    return _nativeEngine;
++}
++
++const IS_NATIVE =
++    typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
++
+ class AudioEngine {
+     constructor() {
+-        /** @type {AudioContext} */
+-        this.ctx = new (window.AudioContext || window.webkitAudioContext)({
+-            latencyHint: 'interactive'
+-        });
++        this.isPlaying = false;
++        this.pausePosition = 0;
++        this.tempoRatio = 1.0;
++        this.pitchSemitones = 0;
++        this.progress = 0;
++        this._updater = null;
+ 
++        // trackId => { path, volume, muted, solo, buffer }
++        this._trackMeta = new Map();
+         this.tracks = new Map();
++        this._playStartWall = 0;
++        this._playStartPos = 0;
+ 
+-        // Sum bus to mix all tracks before time-stretching
+-        this.stSumBus = this.ctx.createGain();
+-        this.stSumBus.channelCount = 2;
+-        this.stSumBus.channelCountMode = 'explicit';
++        if (!IS_NATIVE) {
++            this._initWebAudio();
++        }
++    }
+ 
++    _initWebAudio() {
++        if (this.ctx) return;
++        this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
++        this.stSumBus = this.ctx.createGain();
+         this.masterGain = this.ctx.createGain();
+-
+-        // Default routing without SoundTouch
+         this.stSumBus.connect(this.masterGain);
+         this.masterGain.connect(this.ctx.destination);
++    }
+ 
+-        this.masterSoundTouchNode = null;
+-
+-        this.isPlaying = false;
+-        this.startTime = 0;
+-        this.pausePosition = 0;
+-        this.tempoRatio = 1.0;
+-        this.pitchSemitones = 0; // 0 = original key, +1 = half-step up, -1 = half-step down
++    async init() {
++        this._initWebAudio();
++        if (this.ctx.state === 'suspended') await this.ctx.resume();
++    }
+ 
+-        this.onProgress = null;
+-        this._updater = null;
++    /**
++     * NATIVE MODE / WEB BATCH: Loads multiple tracks at once for maximum speed.
++     */
++    async addTracksBatch(tracksArray) {
++        if (IS_NATIVE) {
++            const batch = [];
++            for (const t of tracksArray) {
++                const trackInfo = {
++                    path: t.path,
++                    volume: 1,
++                    muted: false,
++                    solo: false,
++                    isVisualOnly: !!t.isVisualOnly,
++                    buffer: t.audioBuffer // Guardar buffer para visuales
++                };
++                this._trackMeta.set(t.id, trackInfo);
++                if (t.path) batch.push({ id: t.id, path: t.path });
++            }
++            if (batch.length > 0) {
++                const n = await getNative();
++                await n.loadTracks(batch);
++            }
++            return;
++        }
+ 
+-        // SoundTouch Worklet Module loading state
+-        this.workletLoaded = false;
++        // Web Audio Batch
++        for (const t of tracksArray) {
++            await this.addTrack(t.id, t.audioBuffer, t.sourceData, { isVisualOnly: t.isVisualOnly });
++        }
+     }
+ 
+-    async init() {
+-        if (this.ctx.state === 'suspended') {
+-            await this.ctx.resume();
+-        }
+-        if (!this.workletLoaded) {
+-            try {
+-                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
+-                this.workletLoaded = true;
+-                console.log("SoundTouchWorklet loaded successfully.");
+-            } catch (err) {
+-                console.error("Failed to load soundtouch-worklet.js", err);
++    async addTrack(id, audioBuffer, sourceData = null, options = {}) {
++        if (IS_NATIVE) {
++            const trackInfo = { path: null, volume: 1, muted: false, solo: false, isVisualOnly: !!options.isVisualOnly };
++            this._trackMeta.set(id, trackInfo);
++
++            if (typeof sourceData === 'string') {
++                trackInfo.path = sourceData;
++                this._pushToNative(id, sourceData);
++            } else if (sourceData instanceof Blob) {
++                const n = await getNative();
++                const path = await n.saveTrackBlob(sourceData, `track_${id}.mp3`);
++                trackInfo.path = path;
++                this._pushToNative(id, path);
+             }
++            return;
+         }
+-    }
+ 
+-    // Creates a complete channel strip per buffer
+-    // rawArrayBuffer: the original compressed bytes (WAV/MP3) ΓÇö used for tempo shift via Audio element
+-    addTrack(id, audioBuffer, rawArrayBuffer = null) {
+-        const gainNode = this.ctx.createGain();
+-        const pannerNode = this.ctx.createStereoPanner
+-            ? this.ctx.createStereoPanner()
+-            : this.ctx.createPanner();
+-
+-        // AnalyserNode for VU meter LEDs
+-        const analyser = this.ctx.createAnalyser();
+-        analyser.fftSize = 256;
+-        analyser.smoothingTimeConstant = 0.75;
+-
+-        // Signal chain: Source ΓåÆ Panner ΓåÆ Gain ΓåÆ Analyser ΓåÆ Sum Bus
+-        pannerNode.connect(gainNode);
+-        gainNode.connect(analyser);
+-        analyser.connect(this.stSumBus);
+-
+-        this.tracks.set(id, {
+-            buffer: audioBuffer,
+-            rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
+-            source: null,
+-            gain: gainNode,
+-            panner: pannerNode,
+-            analyser: analyser,
+-            volume: 1,
+-            muted: false,
+-            solo: false
+-        });
+-    }
++        // Web Audio logic
++        try {
++            let buffer = audioBuffer;
++            if (!buffer && sourceData) {
++                const arrayBuf = (sourceData instanceof Blob) ? await sourceData.arrayBuffer() : sourceData;
++                buffer = await this.ctx.decodeAudioData(arrayBuf);
++            }
+ 
+-    // Returns 0-1 RMS level for a track (used by VU meter LEDs)
+-    getTrackLevel(id) {
+-        const t = this.tracks.get(id);
+-        if (!t || !t.analyser) return 0;
+-        const data = new Uint8Array(t.analyser.frequencyBinCount);
+-        t.analyser.getByteTimeDomainData(data);
+-        let sum = 0;
+-        for (let i = 0; i < data.length; i++) {
+-            const norm = (data[i] - 128) / 128;
+-            sum += norm * norm;
++            const pannerNode = this.ctx.createStereoPanner();
++            const analyser = this.ctx.createAnalyser();
++            analyser.fftSize = 256;
++            const gainNode = this.ctx.createGain();
++
++            pannerNode.connect(analyser);
++            analyser.connect(gainNode);
++
++            if (!options.isVisualOnly) {
++                gainNode.connect(this.stSumBus);
++            }
++
++            this.tracks.set(id, {
++                buffer: buffer,
++                gain: gainNode,
++                analyser: analyser,
++                panner: pannerNode,
++                volume: 1,
++                muted: false,
++                solo: false,
++                isVisualOnly: options.isVisualOnly || false
++            });
++        } catch (e) {
++            console.error(`[AudioEngine] Error decoding web audio for ${id}:`, e);
+         }
+-        return Math.sqrt(sum / data.length);
+     }
+ 
+-    clearTracks() {
+-        this.stop();
+-        for (const [, track] of this.tracks.entries()) {
+-            this._cleanupSource(track);
+-            track.gain.disconnect();
+-            track.panner.disconnect();
+-        }
+-        this.tracks.clear();
++    _pushToNative(id, path) {
++        getNative().then(n => n.loadSingleTrack(id, path)).catch(e => console.error(e));
+     }
+ 
+-    _cleanupSource(track) {
+-        if (track.source) {
+-            try { track.source.stop(); } catch (e) { }
+-            try { track.source.disconnect(); } catch (e) { }
+-            track.source = null;
++    async clear() {
++        this._trackMeta.clear();
++        this.tracks.clear();
++        try {
++            if (IS_NATIVE) {
++                const n = await getNative();
++                await n.stop();
++                await n.clearTracks();
++            } else {
++                for (const id of this.tracks.keys()) this.removeTrack(id);
++            }
++        } catch (e) {
++            console.warn("[AudioEngine] Error en clear:", e);
+         }
++        this.pausePosition = 0;
++        this.isPlaying = false;
++        if (this._updater) cancelAnimationFrame(this._updater);
+     }
+ 
+-    _applyStates() {
+-        let isAnySolo = false;
+-        for (const [, track] of this.tracks.entries()) {
+-            if (track.solo) isAnySolo = true;
+-        }
+-        for (const [, track] of this.tracks.entries()) {
+-            let finalGain = track.volume;
+-            if (track.muted) finalGain = 0;
+-            if (isAnySolo && !track.solo) finalGain = 0;
+-            track.gain.gain.setTargetAtTime(finalGain, this.ctx.currentTime, 0.015);
+-        }
++    // -- Volume / Mute --
++    setMasterVolume(vol) {
++        if (IS_NATIVE) { getNative().then(n => n.setMasterVolume(vol)); }
++        else { this.masterGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.015); }
+     }
+ 
+     setTrackVolume(id, vol) {
+-        const t = this.tracks.get(id);
+-        if (t) { t.volume = vol; this._applyStates(); }
++        if (IS_NATIVE) {
++            const m = this._trackMeta.get(id);
++            if (m) { m.volume = vol; getNative().then(n => n.setTrackVolume(id, vol)); }
++        } else {
++            const t = this.tracks.get(id);
++            if (t) {
++                t.volume = vol;
++                this._updateMuteSoloState();
++            }
++        }
+     }
+ 
+     setTrackMute(id, val) {
+-        const t = this.tracks.get(id);
+-        if (t) { t.muted = val; this._applyStates(); }
++        if (IS_NATIVE) {
++            const m = this._trackMeta.get(id);
++            if (m) { m.muted = val; getNative().then(n => n.setTrackMute(id, val)); }
++        } else {
++            const t = this.tracks.get(id);
++            if (t) {
++                t.muted = val;
++                this._updateMuteSoloState();
++            }
++        }
+     }
+ 
+     setTrackSolo(id, val) {
+-        const t = this.tracks.get(id);
+-        if (t) { t.solo = val; this._applyStates(); }
+-    }
+-
+-    // ΓöÇΓöÇ Master Tempo / Pitch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+-    setTempo(ratio) {
+-        this.tempoRatio = ratio;
+-        this._updateWorkletParams();
++        if (IS_NATIVE) {
++            const m = this._trackMeta.get(id);
++            if (m) {
++                m.solo = val;
++                getNative().then(n => {
++                    if (n.setTrackSolo) n.setTrackSolo(id, val);
++                });
++            }
++        } else {
++            const t = this.tracks.get(id);
++            if (t) {
++                t.solo = val;
++                this._updateMuteSoloState();
++            }
++        }
+     }
+ 
+-    setPitch(semitones) {
+-        this.pitchSemitones = semitones;
+-        this._updateWorkletParams();
++    _updateMuteSoloState() {
++        if (IS_NATIVE) return;
++        let anySolo = false;
++        for (const t of this.tracks.values()) {
++            if (t.solo) { anySolo = true; break; }
++        }
++        for (const t of this.tracks.values()) {
++            let muteIt = t.muted;
++            if (anySolo && !t.solo) muteIt = true;
++            t.gain.gain.setTargetAtTime(muteIt ? 0 : t.volume, this.ctx.currentTime, 0.01);
++        }
+     }
+ 
+-    _updateWorkletParams() {
+-        if (this.masterSoundTouchNode) {
+-            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
+-            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
+-            if (tempoParam) tempoParam.value = this.tempoRatio;
+-            if (pitchParam) pitchParam.value = this.pitchSemitones;
++    getTrackLevel(id) {
++        if (!this.isPlaying) return 0;
++        if (IS_NATIVE) {
++            // Fake level for native since no native meter implemented yet
++            const m = this._trackMeta.get(id);
++            if (!m || m.muted) return 0;
++            return (Math.random() * 0.4 + 0.3) * (m.volume || 1);
++        } else {
++            const t = this.tracks.get(id);
++            if (!t || !t.analyser) return 0;
++            const dataArray = new Uint8Array(t.analyser.frequencyBinCount);
++            t.analyser.getByteTimeDomainData(dataArray);
++
++            let max = 0;
++            for (let i = 0; i < dataArray.length; i++) {
++                const v = Math.abs(dataArray[i] - 128) / 128;
++                if (v > max) max = v;
++            }
++            return max * t.volume;
+         }
+     }
+ 
+-    play() {
+-        if (this.isPlaying) return;
+-        this._applyStates();
+-
+-        const syncTime = this.ctx.currentTime + 0.08;
+-        this.playStartTime = this.ctx.currentTime;
+-
+-        // Manage Master SoundTouch Node
+-        if (this.masterSoundTouchNode) {
+-            try { this.masterSoundTouchNode.disconnect(); } catch (e) { }
+-            this.masterSoundTouchNode = null;
++    removeTrack(id) {
++        if (IS_NATIVE) {
++            this._trackMeta.delete(id);
++            getNative().then(n => n.removeTrack && n.removeTrack(id));
++        } else {
++            const t = this.tracks.get(id);
++            if (t) {
++                if (t.source) { try { t.source.stop(); } catch (e) { } }
++                t.gain.disconnect();
++                t.panner.disconnect();
++                if (t.analyser) t.analyser.disconnect();
++                this.tracks.delete(id);
++            }
+         }
++    }
+ 
+-        try { this.stSumBus.disconnect(); } catch (e) { }
+-
+-        if (this.workletLoaded && (this.tempoRatio !== 1.0 || this.pitchSemitones !== 0)) {
+-            this.masterSoundTouchNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
+-            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
+-            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
+-            if (tempoParam) tempoParam.value = this.tempoRatio;
+-            if (pitchParam) pitchParam.value = this.pitchSemitones;
++    setTempo(ratio) { this.tempoRatio = ratio; }
++    setPitch(semitones) { this.pitchSemitones = semitones; }
+ 
+-            this.stSumBus.connect(this.masterSoundTouchNode);
+-            this.masterSoundTouchNode.connect(this.masterGain);
+-        } else {
+-            // Bypass if no tempo/pitch shift applied OR worklet not loaded
+-            this.stSumBus.connect(this.masterGain);
++    async play() {
++        if (this.isPlaying) return;
++        if (!IS_NATIVE && this.ctx.state === 'suspended') await this.ctx.resume();
++
++        if (IS_NATIVE) {
++            const native = await getNative();
++            if (this.pausePosition > 0) await native.seek(this.pausePosition);
++            await native.play();
++            this._playStartWall = performance.now();
++            this._playStartPos = this.pausePosition;
++            this.isPlaying = true;
++            this._startRAF();
++            return;
+         }
+ 
++        // Web Audio Play...
++        this._playStartTime = this.ctx.currentTime;
++        this.isPlaying = true;
++        this._startRAF();
+         for (const [, track] of this.tracks.entries()) {
+-            this._cleanupSource(track);
++            if (track.isVisualOnly) continue;
++            if (!track.buffer) {
++                console.warn("[AudioEngine] No se puede reproducir pista sin buffer.");
++                continue;
++            }
++            const src = this.ctx.createBufferSource();
++            src.buffer = track.buffer;
+ 
+-            const source = this.ctx.createBufferSource();
+-            source.buffer = track.buffer;
++            // Connect to the chain START (panner)
++            src.connect(track.panner);
+ 
+-            source.connect(track.panner);
+-            source.start(syncTime, Math.max(0, this.pausePosition));
+-            track.source = source;
++            src.start(0, Math.max(0, this.pausePosition));
++            track.source = src;
+         }
+-
+-        this.isPlaying = true;
+-        this._startRAF();
+     }
+ 
+-    pause() {
++    async pause() {
+         if (!this.isPlaying) return;
+-
+-        // Calculate pause position based on elapsed time and tempo
+-        const realElapsed = this.ctx.currentTime - this.playStartTime;
+-        this.pausePosition = this.pausePosition + (realElapsed * this.tempoRatio);
+-
+-        for (const [, track] of this.tracks.entries()) {
+-            this._cleanupSource(track);
++        if (IS_NATIVE) {
++            const elapsed = (performance.now() - this._playStartWall) / 1000;
++            this.pausePosition = this._playStartPos + elapsed;
++            const native = await getNative();
++            await native.pause();
++        } else {
++            const elapsed = this.ctx.currentTime - this._playStartTime;
++            this.pausePosition = this.pausePosition + elapsed * this.tempoRatio;
++            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+         }
+-
+         this.isPlaying = false;
+         if (this._updater) cancelAnimationFrame(this._updater);
+     }
+ 
+-    seek(time) {
++    async seek(seconds) {
++        if (IS_NATIVE) {
++            const native = await getNative();
++            await native.seek(seconds);
++            this._playStartWall = performance.now();
++            this._playStartPos = seconds;
++            this.pausePosition = seconds;
++            this.progress = seconds;
++            return;
++        }
++
++        // Web Audio logic
+         const wasPlaying = this.isPlaying;
+         if (wasPlaying) {
+-            // Stop current sources
+-            for (const [, track] of this.tracks.entries()) {
+-                this._cleanupSource(track);
+-            }
+-            this.isPlaying = false;
++            // No podemos usar this.pause() porque sumaria tiempo extra
++            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+         }
+-
+-        this.pausePosition = time;
+-
++        this.pausePosition = seconds;
++        this.progress = seconds;
+         if (wasPlaying) {
+-            this.play();
++            this.isPlaying = false; // Forzar reinicio en play()
++            await this.play();
+         } else {
+-            if (this.onProgress) this.onProgress(this.pausePosition);
++            if (this.onProgress) this.onProgress(this.progress);
+         }
+     }
+ 
+-
+-    stop() {
+-        this.pause();
++    async stop() {
++        if (IS_NATIVE) {
++            const native = await getNative();
++            await native.stop();
++        } else {
++            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
++        }
+         this.pausePosition = 0;
+-        if (this.onProgress) this.onProgress(0);
+-        // Cleanup all media elements fully
+-        for (const [, track] of this.tracks.entries()) this._cleanupSource(track);
++        this.isPlaying = false;
++        this.progress = 0;
++        if (this._updater) cancelAnimationFrame(this._updater);
+     }
+ 
+     _startRAF() {
+-        const update = () => {
+-            if (this.isPlaying && this.onProgress) {
+-                // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
+-                const realElapsed = this.ctx.currentTime - this.playStartTime;
+-                const currentPos = this.pausePosition + (realElapsed * this.tempoRatio);
+-                this.onProgress(currentPos);
++        const update = async () => {
++            if (!this.isPlaying) return;
++            if (IS_NATIVE) {
++                const n = await getNative();
++                this.progress = await n.getPosition();
++            } else {
++                const elapsed = this.ctx.currentTime - this._playStartTime;
++                this.progress = this.pausePosition + (elapsed * this.tempoRatio);
+             }
+-            if (this.isPlaying) {
+-                this._updater = requestAnimationFrame(update);
++            if (this.onProgress) {
++                this.onProgress(this.progress);
+             }
++            this._updater = requestAnimationFrame(update);
+         };
+         this._updater = requestAnimationFrame(update);
+     }
+
+commit 6b539b859b8e01849a8c5a4006eed0e64609d52f
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Fri Mar 6 15:28:52 2026 -0500
+
+    Refine sidebar layout, fix character encoding (Mojibake), and restore setlist management buttons (+Setlist, +Canciones)
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index f9c05a3..07ceacc 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -6,9 +6,20 @@ class AudioEngine {
+         });
+ 
+         this.tracks = new Map();
++
++        // Sum bus to mix all tracks before time-stretching
++        this.stSumBus = this.ctx.createGain();
++        this.stSumBus.channelCount = 2;
++        this.stSumBus.channelCountMode = 'explicit';
++
+         this.masterGain = this.ctx.createGain();
++
++        // Default routing without SoundTouch
++        this.stSumBus.connect(this.masterGain);
+         this.masterGain.connect(this.ctx.destination);
+ 
++        this.masterSoundTouchNode = null;
++
+         this.isPlaying = false;
+         this.startTime = 0;
+         this.pausePosition = 0;
+@@ -50,16 +61,15 @@ class AudioEngine {
+         analyser.fftSize = 256;
+         analyser.smoothingTimeConstant = 0.75;
+ 
+-        // Signal chain: Source ΓåÆ Panner ΓåÆ Gain ΓåÆ Analyser ΓåÆ Master
++        // Signal chain: Source ΓåÆ Panner ΓåÆ Gain ΓåÆ Analyser ΓåÆ Sum Bus
+         pannerNode.connect(gainNode);
+         gainNode.connect(analyser);
+-        analyser.connect(this.masterGain);
++        analyser.connect(this.stSumBus);
+ 
+         this.tracks.set(id, {
+             buffer: audioBuffer,
+             rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
+             source: null,
+-            soundtouchNode: null, // Holds the AudioWorkletNode
+             gain: gainNode,
+             panner: pannerNode,
+             analyser: analyser,
+@@ -99,10 +109,6 @@ class AudioEngine {
+             try { track.source.disconnect(); } catch (e) { }
+             track.source = null;
+         }
+-        if (track.soundtouchNode) {
+-            try { track.soundtouchNode.disconnect(); } catch (e) { }
+-            track.soundtouchNode = null;
+-        }
+     }
+ 
+     _applyStates() {
+@@ -145,13 +151,11 @@ class AudioEngine {
+     }
+ 
+     _updateWorkletParams() {
+-        for (const [, track] of this.tracks.entries()) {
+-            if (track.soundtouchNode) {
+-                const tempoParam = track.soundtouchNode.parameters.get('tempo');
+-                const pitchParam = track.soundtouchNode.parameters.get('pitchSemitones');
+-                if (tempoParam) tempoParam.value = this.tempoRatio;
+-                if (pitchParam) pitchParam.value = this.pitchSemitones;
+-            }
++        if (this.masterSoundTouchNode) {
++            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
++            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
++            if (tempoParam) tempoParam.value = this.tempoRatio;
++            if (pitchParam) pitchParam.value = this.pitchSemitones;
+         }
+     }
+ 
+@@ -162,30 +166,35 @@ class AudioEngine {
+         const syncTime = this.ctx.currentTime + 0.08;
+         this.playStartTime = this.ctx.currentTime;
+ 
++        // Manage Master SoundTouch Node
++        if (this.masterSoundTouchNode) {
++            try { this.masterSoundTouchNode.disconnect(); } catch (e) { }
++            this.masterSoundTouchNode = null;
++        }
++
++        try { this.stSumBus.disconnect(); } catch (e) { }
++
++        if (this.workletLoaded && (this.tempoRatio !== 1.0 || this.pitchSemitones !== 0)) {
++            this.masterSoundTouchNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
++            const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
++            const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
++            if (tempoParam) tempoParam.value = this.tempoRatio;
++            if (pitchParam) pitchParam.value = this.pitchSemitones;
++
++            this.stSumBus.connect(this.masterSoundTouchNode);
++            this.masterSoundTouchNode.connect(this.masterGain);
++        } else {
++            // Bypass if no tempo/pitch shift applied OR worklet not loaded
++            this.stSumBus.connect(this.masterGain);
++        }
++
+         for (const [, track] of this.tracks.entries()) {
+             this._cleanupSource(track);
+ 
+             const source = this.ctx.createBufferSource();
+             source.buffer = track.buffer;
+ 
+-            if (this.workletLoaded) {
+-                // ΓöÇΓöÇ SOUNDTOUCH AUDIO WORKLET NODE ΓöÇΓöÇ
+-                const stNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
+-
+-                // Initialize parameters
+-                const tempoParam = stNode.parameters.get('tempo');
+-                const pitchParam = stNode.parameters.get('pitchSemitones');
+-                if (tempoParam) tempoParam.value = this.tempoRatio;
+-                if (pitchParam) pitchParam.value = this.pitchSemitones;
+-
+-                source.connect(stNode);
+-                stNode.connect(track.panner);
+-                track.soundtouchNode = stNode;
+-            } else {
+-                // Flashback to normal buffer if worklet failed to load
+-                source.connect(track.panner);
+-            }
+-
++            source.connect(track.panner);
+             source.start(syncTime, Math.max(0, this.pausePosition));
+             track.source = source;
+         }
+
+commit 50a4e26432fb814f7cc0d5c1388eea7c256e82d0
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Fri Mar 6 10:55:52 2026 -0500
+
+    chore: prepare for Railway deployment, add B2 env vars and mobile UI fixes
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index f1d22c2..f9c05a3 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -160,7 +160,7 @@ class AudioEngine {
+         this._applyStates();
+ 
+         const syncTime = this.ctx.currentTime + 0.08;
+-        this.startTime = this.ctx.currentTime - this.pausePosition;
++        this.playStartTime = this.ctx.currentTime;
+ 
+         for (const [, track] of this.tracks.entries()) {
+             this._cleanupSource(track);
+@@ -198,7 +198,8 @@ class AudioEngine {
+         if (!this.isPlaying) return;
+ 
+         // Calculate pause position based on elapsed time and tempo
+-        this.pausePosition = this.pausePosition + (this.ctx.currentTime - this.startTime) * this.tempoRatio;
++        const realElapsed = this.ctx.currentTime - this.playStartTime;
++        this.pausePosition = this.pausePosition + (realElapsed * this.tempoRatio);
+ 
+         for (const [, track] of this.tracks.entries()) {
+             this._cleanupSource(track);
+@@ -208,6 +209,25 @@ class AudioEngine {
+         if (this._updater) cancelAnimationFrame(this._updater);
+     }
+ 
++    seek(time) {
++        const wasPlaying = this.isPlaying;
++        if (wasPlaying) {
++            // Stop current sources
++            for (const [, track] of this.tracks.entries()) {
++                this._cleanupSource(track);
++            }
++            this.isPlaying = false;
++        }
++
++        this.pausePosition = time;
++
++        if (wasPlaying) {
++            this.play();
++        } else {
++            if (this.onProgress) this.onProgress(this.pausePosition);
++        }
++    }
++
+ 
+     stop() {
+         this.pause();
+@@ -221,9 +241,9 @@ class AudioEngine {
+         const update = () => {
+             if (this.isPlaying && this.onProgress) {
+                 // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
+-                const realElapsed = this.ctx.currentTime - this.startTime;
+-                const pseudoPosition = this.pausePosition + (realElapsed * this.tempoRatio);
+-                this.onProgress(pseudoPosition);
++                const realElapsed = this.ctx.currentTime - this.playStartTime;
++                const currentPos = this.pausePosition + (realElapsed * this.tempoRatio);
++                this.onProgress(currentPos);
+             }
+             if (this.isPlaying) {
+                 this._updater = requestAnimationFrame(update);
+
+commit d2e0c5b2147a044f657c46d9885ead2ed7b1a323
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Thu Mar 5 18:42:20 2026 -0500
+
+    feat: Add professional Ambient Pads engine with EQ Octaves and secure setlists
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+index 22a77ac..f1d22c2 100644
+--- a/src/AudioEngine.js
++++ b/src/AudioEngine.js
+@@ -2,45 +2,64 @@ class AudioEngine {
+     constructor() {
+         /** @type {AudioContext} */
+         this.ctx = new (window.AudioContext || window.webkitAudioContext)({
+-            latencyHint: 'interactive' // DAW-level low latency
++            latencyHint: 'interactive'
+         });
+ 
+-        this.tracks = new Map(); // Stores track info, gain node, panner, spatial info
++        this.tracks = new Map();
+         this.masterGain = this.ctx.createGain();
+         this.masterGain.connect(this.ctx.destination);
+ 
+         this.isPlaying = false;
+         this.startTime = 0;
+         this.pausePosition = 0;
++        this.tempoRatio = 1.0;
++        this.pitchSemitones = 0; // 0 = original key, +1 = half-step up, -1 = half-step down
+ 
+-        this.onProgress = null; // Callback for UI time updates
++        this.onProgress = null;
+         this._updater = null;
++
++        // SoundTouch Worklet Module loading state
++        this.workletLoaded = false;
+     }
+ 
+     async init() {
+         if (this.ctx.state === 'suspended') {
+             await this.ctx.resume();
+         }
++        if (!this.workletLoaded) {
++            try {
++                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
++                this.workletLoaded = true;
++                console.log("SoundTouchWorklet loaded successfully.");
++            } catch (err) {
++                console.error("Failed to load soundtouch-worklet.js", err);
++            }
++        }
+     }
+ 
+     // Creates a complete channel strip per buffer
+-    addTrack(id, audioBuffer) {
++    // rawArrayBuffer: the original compressed bytes (WAV/MP3) ΓÇö used for tempo shift via Audio element
++    addTrack(id, audioBuffer, rawArrayBuffer = null) {
+         const gainNode = this.ctx.createGain();
+-        const pannerNode = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : this.ctx.createPanner();
++        const pannerNode = this.ctx.createStereoPanner
++            ? this.ctx.createStereoPanner()
++            : this.ctx.createPanner();
+ 
+-        // AnalyserNode for VU meter LEDs ΓÇö high frequency refresh
++        // AnalyserNode for VU meter LEDs
+         const analyser = this.ctx.createAnalyser();
+         analyser.fftSize = 256;
+         analyser.smoothingTimeConstant = 0.75;
+ 
+-        // Signal chain: Source -> Panner -> Gain -> Analyser -> Master
++        // Signal chain: Source ΓåÆ Panner ΓåÆ Gain ΓåÆ Analyser ΓåÆ Master
+         pannerNode.connect(gainNode);
+         gainNode.connect(analyser);
+         analyser.connect(this.masterGain);
+ 
+         this.tracks.set(id, {
+             buffer: audioBuffer,
++            rawBuffer: rawArrayBuffer, // Kept for resetting/re-creating sources
+             source: null,
++            soundtouchNode: null, // Holds the AudioWorkletNode
+             gain: gainNode,
+             panner: pannerNode,
+             analyser: analyser,
+@@ -56,7 +75,6 @@ class AudioEngine {
+         if (!t || !t.analyser) return 0;
+         const data = new Uint8Array(t.analyser.frequencyBinCount);
+         t.analyser.getByteTimeDomainData(data);
+-        // Compute RMS
+         let sum = 0;
+         for (let i = 0; i < data.length; i++) {
+             const norm = (data[i] - 128) / 128;
+@@ -67,53 +85,73 @@ class AudioEngine {
+ 
+     clearTracks() {
+         this.stop();
+-        for (const [id, track] of this.tracks.entries()) {
+-            if (track.source) {
+-                try { track.source.stop(); track.source.disconnect(); } catch (e) { }
+-            }
++        for (const [, track] of this.tracks.entries()) {
++            this._cleanupSource(track);
+             track.gain.disconnect();
+             track.panner.disconnect();
+         }
+         this.tracks.clear();
+     }
+ 
++    _cleanupSource(track) {
++        if (track.source) {
++            try { track.source.stop(); } catch (e) { }
++            try { track.source.disconnect(); } catch (e) { }
++            track.source = null;
++        }
++        if (track.soundtouchNode) {
++            try { track.soundtouchNode.disconnect(); } catch (e) { }
++            track.soundtouchNode = null;
++        }
++    }
++
+     _applyStates() {
+         let isAnySolo = false;
+-        for (const [id, track] of this.tracks.entries()) {
++        for (const [, track] of this.tracks.entries()) {
+             if (track.solo) isAnySolo = true;
+         }
+-
+-        for (const [id, track] of this.tracks.entries()) {
++        for (const [, track] of this.tracks.entries()) {
+             let finalGain = track.volume;
+             if (track.muted) finalGain = 0;
+             if (isAnySolo && !track.solo) finalGain = 0;
+-
+-            // Apply smoothly to avoid clicks (JUCE style ramp)
+             track.gain.gain.setTargetAtTime(finalGain, this.ctx.currentTime, 0.015);
+         }
+     }
+ 
+     setTrackVolume(id, vol) {
+         const t = this.tracks.get(id);
+-        if (t) {
+-            t.volume = vol;
+-            this._applyStates();
+-        }
++        if (t) { t.volume = vol; this._applyStates(); }
+     }
+ 
+     setTrackMute(id, val) {
+         const t = this.tracks.get(id);
+-        if (t) {
+-            t.muted = val;
+-            this._applyStates();
+-        }
++        if (t) { t.muted = val; this._applyStates(); }
+     }
+ 
+     setTrackSolo(id, val) {
+         const t = this.tracks.get(id);
+-        if (t) {
+-            t.solo = val;
+-            this._applyStates();
++        if (t) { t.solo = val; this._applyStates(); }
++    }
++
++    // ΓöÇΓöÇ Master Tempo / Pitch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
++    setTempo(ratio) {
++        this.tempoRatio = ratio;
++        this._updateWorkletParams();
++    }
++
++    setPitch(semitones) {
++        this.pitchSemitones = semitones;
++        this._updateWorkletParams();
++    }
++
++    _updateWorkletParams() {
++        for (const [, track] of this.tracks.entries()) {
++            if (track.soundtouchNode) {
++                const tempoParam = track.soundtouchNode.parameters.get('tempo');
++                const pitchParam = track.soundtouchNode.parameters.get('pitchSemitones');
++                if (tempoParam) tempoParam.value = this.tempoRatio;
++                if (pitchParam) pitchParam.value = this.pitchSemitones;
++            }
+         }
+     }
+ 
+@@ -121,18 +159,34 @@ class AudioEngine {
+         if (this.isPlaying) return;
+         this._applyStates();
+ 
++        const syncTime = this.ctx.currentTime + 0.08;
+         this.startTime = this.ctx.currentTime - this.pausePosition;
+ 
+-        // Schedule all sources to start at the exact same atomic clock tick
+-        const syncTime = this.ctx.currentTime + 0.05; // 50ms buffer for thread locking
++        for (const [, track] of this.tracks.entries()) {
++            this._cleanupSource(track);
+ 
+-        for (const [id, track] of this.tracks.entries()) {
+-            // Re-create sources (they are single-use in WebAudio)
+             const source = this.ctx.createBufferSource();
+             source.buffer = track.buffer;
+-            source.connect(track.panner);
+ 
+-            source.start(syncTime, this.pausePosition);
++            if (this.workletLoaded) {
++                // ΓöÇΓöÇ SOUNDTOUCH AUDIO WORKLET NODE ΓöÇΓöÇ
++                const stNode = new AudioWorkletNode(this.ctx, 'soundtouch-processor');
++
++                // Initialize parameters
++                const tempoParam = stNode.parameters.get('tempo');
++                const pitchParam = stNode.parameters.get('pitchSemitones');
++                if (tempoParam) tempoParam.value = this.tempoRatio;
++                if (pitchParam) pitchParam.value = this.pitchSemitones;
++
++                source.connect(stNode);
++                stNode.connect(track.panner);
++                track.soundtouchNode = stNode;
++            } else {
++                // Flashback to normal buffer if worklet failed to load
++                source.connect(track.panner);
++            }
++
++            source.start(syncTime, Math.max(0, this.pausePosition));
+             track.source = source;
+         }
+ 
+@@ -143,32 +197,33 @@ class AudioEngine {
+     pause() {
+         if (!this.isPlaying) return;
+ 
+-        for (const [id, track] of this.tracks.entries()) {
+-            if (track.source) {
+-                track.source.stop();
+-                track.source.disconnect();
+-                track.source = null;
+-            }
++        // Calculate pause position based on elapsed time and tempo
++        this.pausePosition = this.pausePosition + (this.ctx.currentTime - this.startTime) * this.tempoRatio;
++
++        for (const [, track] of this.tracks.entries()) {
++            this._cleanupSource(track);
+         }
+ 
+-        // Record where we left off
+-        this.pausePosition = this.ctx.currentTime - this.startTime;
+         this.isPlaying = false;
+-
+         if (this._updater) cancelAnimationFrame(this._updater);
+     }
+ 
++
+     stop() {
+         this.pause();
+         this.pausePosition = 0;
+         if (this.onProgress) this.onProgress(0);
++        // Cleanup all media elements fully
++        for (const [, track] of this.tracks.entries()) this._cleanupSource(track);
+     }
+ 
+     _startRAF() {
+         const update = () => {
+             if (this.isPlaying && this.onProgress) {
+-                const currentPos = this.ctx.currentTime - this.startTime;
+-                this.onProgress(currentPos);
++                // Since AudioWorklets consume buffer over time at a mutated rate, we estimate position
++                const realElapsed = this.ctx.currentTime - this.startTime;
++                const pseudoPosition = this.pausePosition + (realElapsed * this.tempoRatio);
++                this.onProgress(pseudoPosition);
+             }
+             if (this.isPlaying) {
+                 this._updater = requestAnimationFrame(update);
+
+commit 68c2284e99150da27d72254b77bc1d2288d8db79
+Author: Freedom Labs <freedomlabs@mixer.app>
+Date:   Wed Mar 4 22:17:01 2026 -0500
+
+    feat: Multitrack DAW completo - VU meters, preload instantaneo, waveform canvas
+    
+    - LEDs VU Meters 14 segmentos por canal (verde/ambar/rojo)
+    - Pre-loading Prime-style en RAM al seleccionar setlist (cambio instantaneo)
+    - Forma de onda real del audio en WaveformCanvas con playhead animado
+    - Play/Pause/Stop/Rewind funcionales - auto-stop al cambiar cancion
+    - Master Volume slider en transport bar conectado a AudioEngine
+    - Libreria Global VIP - canciones de todos los usuarios
+    - Tabs Mi Libreria / Global VIP con badge de usuario
+    - Descarga offline a IndexedDB (LocalForage) offline-first
+    - Setlists y Library en drawers independientes
+    - Badges preload status (hora/rayo) en cards de setlist
+    - Mixer grid 9 columnas x 2 filas responsive sin scroll
+    - Click y Guide tracks auto-rojos y al frente
+    - Upload ZIP con auto-parseo de metadatos desde filename
+    - Backblaze B2 storage via proxy b2-proxy.mjs
+    - Firebase Auth Google + Email/Password
+
+diff --git a/src/AudioEngine.js b/src/AudioEngine.js
+new file mode 100644
+index 0000000..22a77ac
+--- /dev/null
++++ b/src/AudioEngine.js
+@@ -0,0 +1,181 @@
++class AudioEngine {
++    constructor() {
++        /** @type {AudioContext} */
++        this.ctx = new (window.AudioContext || window.webkitAudioContext)({
++            latencyHint: 'interactive' // DAW-level low latency
++        });
++
++        this.tracks = new Map(); // Stores track info, gain node, panner, spatial info
++        this.masterGain = this.ctx.createGain();
++        this.masterGain.connect(this.ctx.destination);
++
++        this.isPlaying = false;
++        this.startTime = 0;
++        this.pausePosition = 0;
++
++        this.onProgress = null; // Callback for UI time updates
++        this._updater = null;
++    }
++
++    async init() {
++        if (this.ctx.state === 'suspended') {
++            await this.ctx.resume();
++        }
++    }
++
++    // Creates a complete channel strip per buffer
++    addTrack(id, audioBuffer) {
++        const gainNode = this.ctx.createGain();
++        const pannerNode = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : this.ctx.createPanner();
++
++        // AnalyserNode for VU meter LEDs ΓÇö high frequency refresh
++        const analyser = this.ctx.createAnalyser();
++        analyser.fftSize = 256;
++        analyser.smoothingTimeConstant = 0.75;
++
++        // Signal chain: Source -> Panner -> Gain -> Analyser -> Master
++        pannerNode.connect(gainNode);
++        gainNode.connect(analyser);
++        analyser.connect(this.masterGain);
++
++        this.tracks.set(id, {
++            buffer: audioBuffer,
++            source: null,
++            gain: gainNode,
++            panner: pannerNode,
++            analyser: analyser,
++            volume: 1,
++            muted: false,
++            solo: false
++        });
++    }
++
++    // Returns 0-1 RMS level for a track (used by VU meter LEDs)
++    getTrackLevel(id) {
++        const t = this.tracks.get(id);
++        if (!t || !t.analyser) return 0;
++        const data = new Uint8Array(t.analyser.frequencyBinCount);
++        t.analyser.getByteTimeDomainData(data);
++        // Compute RMS
++        let sum = 0;
++        for (let i = 0; i < data.length; i++) {
++            const norm = (data[i] - 128) / 128;
++            sum += norm * norm;
++        }
++        return Math.sqrt(sum / data.length);
++    }
++
++    clearTracks() {
++        this.stop();
++        for (const [id, track] of this.tracks.entries()) {
++            if (track.source) {
++                try { track.source.stop(); track.source.disconnect(); } catch (e) { }
++            }
++            track.gain.disconnect();
++            track.panner.disconnect();
++        }
++        this.tracks.clear();
++    }
++
++    _applyStates() {
++        let isAnySolo = false;
++        for (const [id, track] of this.tracks.entries()) {
++            if (track.solo) isAnySolo = true;
++        }
++
++        for (const [id, track] of this.tracks.entries()) {
++            let finalGain = track.volume;
++            if (track.muted) finalGain = 0;
++            if (isAnySolo && !track.solo) finalGain = 0;
++
++            // Apply smoothly to avoid clicks (JUCE style ramp)
++            track.gain.gain.setTargetAtTime(finalGain, this.ctx.currentTime, 0.015);
++        }
++    }
++
++    setTrackVolume(id, vol) {
++        const t = this.tracks.get(id);
++        if (t) {
++            t.volume = vol;
++            this._applyStates();
++        }
++    }
++
++    setTrackMute(id, val) {
++        const t = this.tracks.get(id);
++        if (t) {
++            t.muted = val;
++            this._applyStates();
++        }
++    }
++
++    setTrackSolo(id, val) {
++        const t = this.tracks.get(id);
++        if (t) {
++            t.solo = val;
++            this._applyStates();
++        }
++    }
++
++    play() {
++        if (this.isPlaying) return;
++        this._applyStates();
++
++        this.startTime = this.ctx.currentTime - this.pausePosition;
++
++        // Schedule all sources to start at the exact same atomic clock tick
++        const syncTime = this.ctx.currentTime + 0.05; // 50ms buffer for thread locking
++
++        for (const [id, track] of this.tracks.entries()) {
++            // Re-create sources (they are single-use in WebAudio)
++            const source = this.ctx.createBufferSource();
++            source.buffer = track.buffer;
++            source.connect(track.panner);
++
++            source.start(syncTime, this.pausePosition);
++            track.source = source;
++        }
++
++        this.isPlaying = true;
++        this._startRAF();
++    }
++
++    pause() {
++        if (!this.isPlaying) return;
++
++        for (const [id, track] of this.tracks.entries()) {
++            if (track.source) {
++                track.source.stop();
++                track.source.disconnect();
++                track.source = null;
++            }
++        }
++
++        // Record where we left off
++        this.pausePosition = this.ctx.currentTime - this.startTime;
++        this.isPlaying = false;
++
++        if (this._updater) cancelAnimationFrame(this._updater);
++    }
++
++    stop() {
++        this.pause();
++        this.pausePosition = 0;
++        if (this.onProgress) this.onProgress(0);
++    }
++
++    _startRAF() {
++        const update = () => {
++            if (this.isPlaying && this.onProgress) {
++                const currentPos = this.ctx.currentTime - this.startTime;
++                this.onProgress(currentPos);
++            }
++            if (this.isPlaying) {
++                this._updater = requestAnimationFrame(update);
++            }
++        };
++        this._updater = requestAnimationFrame(update);
++    }
++}
++
++export const audioEngine = new AudioEngine();

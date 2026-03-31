@@ -1,0 +1,30 @@
+﻿diff --git a/src/PadEngine.js b/src/PadEngine.js
+index 7abaea6..71d26fe 100644
+--- a/src/PadEngine.js
++++ b/src/PadEngine.js
+@@ -55,6 +55,7 @@ export class PadEngine {
+                 buffer = await this.ctx.decodeAudioData(arrayBuffer);
+                 break;
+             } catch (error) {
++                console.debug('loadBuffer try format error', error);
+                 // Siguiente formato
+             }
+         }
+@@ -87,7 +88,7 @@ export class PadEngine {
+         if (this.currentSource) {
+             const src = this.currentSource;
+             setTimeout(() => {
+-                try { src.stop(); src.disconnect(); } catch (e) { }
++                try { src.stop(); src.disconnect(); } catch (e) { console.warn('pad stop error', e); }
+             }, 2100);
+         }
+ 
+@@ -113,7 +114,7 @@ export class PadEngine {
+             oldGain.gain.setValueCurveAtTime(this.fadeOutCurve, now, this.fadeTime);
+ 
+             setTimeout(() => {
+-                try { oldSource.stop(); oldSource.disconnect(); } catch (e) { }
++                try { oldSource.stop(); oldSource.disconnect(); } catch (e) { console.warn('pad stop error', e); }
+             }, this.fadeTime * 1000 + 100);
+         }
+ 
