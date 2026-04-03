@@ -187,7 +187,19 @@ const Academy = () => {
     const [user, setUser] = useState(() => {
         try {
             const saved = localStorage.getItem('zion_academy_user');
-            return saved ? JSON.parse(saved) : { ...INITIAL_USER_STATE };
+            const base = saved ? JSON.parse(saved) : { ...INITIAL_USER_STATE };
+            // Update streak on load (runs once on mount, no effect needed)
+            const today = new Date().toDateString();
+            const last = base.lastPracticeDate;
+            if (last !== today) {
+                const yesterday = new Date(Date.now() - 86400000).toDateString();
+                return {
+                    ...base,
+                    lastPracticeDate: today,
+                    streak: last === yesterday ? base.streak + 1 : (last ? 1 : base.streak + 1),
+                };
+            }
+            return base;
         } catch { return { ...INITIAL_USER_STATE }; }
     });
 
@@ -216,36 +228,26 @@ const Academy = () => {
     }, []);
     
     const [loading, setLoading] = useState(true);
-    const [loadingMsg, setLoadingMsg] = useState({ pose: 'happy', text: 'Cargando tu progreso...' });
-
-    useEffect(() => {
-        // Decide loading message based on user state
+    const [loadingMsg] = useState(() => {
         const hour = new Date().getHours();
         const lastPractice = user.lastPractice ? new Date(user.lastPractice) : null;
         const daysSince = lastPractice ? Math.floor((new Date() - lastPractice) / (1000 * 60 * 60 * 24)) : 0;
-        
         let pose = 'happy';
         let text = '¡Hola de nuevo! 🎵';
-        
         if (hour < 10) { text = '¡Buenos días! Un café y a practicar ☕'; pose = 'happy'; }
         else if (hour > 20) { text = '¿Practicando de noche? ¡Eso es pasión! 🌙'; pose = 'happy'; }
-        
         if (daysSince > 3) { text = '¡Te extrañamos! ¿Listo para volver?'; pose = 'sad'; }
         else if (daysSince === 0 && user.xp > 0) { text = '¡Vas muy bien hoy! Sigamos así 🔥'; pose = 'celebrate'; }
-        
         if (user.xp === 0) { text = '¡Bienvenido! Empecemos tu viaje musical 🚀'; pose = 'happy'; }
-        
-        // Random chance for "intelectual" or others
         if (Math.random() > 0.7) { pose = 'think'; text = '¿Sabías que la música mejora tu memoria? 🧠'; }
+        return { pose, text };
+    });
 
-         
-        setLoadingMsg({ pose, text });
-
+    useEffect(() => {
         const timer = setTimeout(() => {
             setLoading(false);
         }, 4500);
         return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const [activeLevel, setActiveLevel] = useState(null);
@@ -285,21 +287,6 @@ const Academy = () => {
         return () => clearTimeout(timeout);
     }, [user, currentUser]);
 
-    // Update streak on mount
-    useEffect(() => {
-        const today = new Date().toDateString();
-        const last = user.lastPracticeDate;
-        if (last !== today) {
-            const yesterday = new Date(Date.now() - 86400000).toDateString();
-             
-            setUser(prev => ({
-                ...prev,
-                lastPracticeDate: today,
-                streak: last === yesterday ? prev.streak + 1 : (last ? 1 : prev.streak + 1),
-            }));
-        }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
     // Check achievements
     const checkAchievements = useCallback((updatedUser) => {

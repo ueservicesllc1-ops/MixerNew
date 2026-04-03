@@ -141,6 +141,10 @@ export default function Landing() {
         return () => {
             window.removeEventListener('scroll', handleScroll);
             unsubscribe();
+            // Clear engines callback when unmounting
+            import('../AudioEngine').then(({ audioEngine }) => {
+                if (audioEngine.onProgress) audioEngine.onProgress = null;
+            }).catch(() => {});
         };
     }, []);
 
@@ -352,7 +356,7 @@ export default function Landing() {
 
             {/* TOAST DE NOTIFICACIÓN PROFESIONAL */}
             {toast && (
-                <div style={{
+                <div key="toast-notification" style={{
                     position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
                     background: '#0f172a', border: '1px solid #00d2d3', color: 'white',
                     padding: '12px 24px', borderRadius: '50px', zIndex: 5000,
@@ -366,7 +370,7 @@ export default function Landing() {
                 </div>
             )}
 
-            <style>{`
+            <style key="local-styles">{`
                 @keyframes slideUp {
                     from { transform: translate(-50%, 50px); opacity: 0; }
                     to { transform: translate(-50%, 0); opacity: 1; }
@@ -677,7 +681,7 @@ export default function Landing() {
             </header>
 
             {/* FEATURED TRACKS CAROUSEL SECTION */}
-            < section style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>
+            <section style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '48px', maxWidth: '1300px', margin: '0 auto 48px', padding: '0 60px' }}>
                     <div>
                         <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>Pistas en Venta</h2>
@@ -759,7 +763,7 @@ export default function Landing() {
             </section>
 
             {/* INFO SECTION: BEYOND THE TRACKS */}
-            < section style={{ backgroundColor: '#020617', padding: '100px 60px' }}>
+            <section style={{ backgroundColor: '#020617', padding: '100px 60px' }}>
                 <div style={{ maxWidth: '1300px', margin: '0 auto', display: 'flex', gap: '60px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ flex: '1 1 500px' }}>
                         <img
@@ -791,7 +795,7 @@ export default function Landing() {
             </section >
 
             {/* TOP 10 RANKING SECTION */}
-            < section style={{ padding: '100px 60px', backgroundColor: '#0f172a' }}>
+            <section style={{ padding: '100px 60px', backgroundColor: '#0f172a' }}>
                 <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
                     <h2 style={{ textAlign: 'center', fontSize: '2.5rem', fontWeight: '800', marginBottom: '60px' }}>Top 10 de este Mes</h2>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
@@ -838,7 +842,7 @@ export default function Landing() {
             </section >
 
             {/* PRICING SECTION */}
-            < section id="precios" style={{ padding: '100px 60px', backgroundColor: '#020617' }}>
+            <section id="precios" style={{ padding: '100px 60px', backgroundColor: '#020617' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: '60px' }}>
                         <h2 style={{ fontSize: '3rem', fontWeight: '900', margin: '0 0 16px' }}>Planes diseñados para tu equipo</h2>
@@ -939,7 +943,7 @@ export default function Landing() {
             </section >
 
             {/* PRE-FOOTER / PARTNERS FEATURE */}
-            < section style={{ padding: '100px 40px', backgroundColor: '#0f172a', borderTop: '1px solid rgba(255,255,255,0.02)' }}>
+            <section style={{ padding: '100px 40px', backgroundColor: '#0f172a', borderTop: '1px solid rgba(255,255,255,0.02)' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '60px', alignItems: 'center' }}>
                         <div style={{ textAlign: 'left' }}>
@@ -990,7 +994,7 @@ export default function Landing() {
             {/* PREVIEW MODAL (Horizontal Studio Design) - Compact Version */}
             {
                 previewSong && (
-                    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
+                    <div key="preview-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
                         <div style={{ background: '#020617', width: '100%', maxWidth: '700px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', boxShadow: '0 30px 60px rgba(0,0,0,0.7)', color: 'white' }}>
 
                             <div style={{ padding: '14px 25px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1076,7 +1080,7 @@ export default function Landing() {
             {/* FULLSCREEN AUTH OVERLAY (Improved Design) */}
             {
                 showLoginPanel && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: '#f9fafb', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', color: '#111827' }}>
+                    <div key="auth-modal" style={{ position: 'fixed', inset: 0, backgroundColor: '#f9fafb', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', overflowY: 'auto', color: '#111827' }}>
                         <div style={{ position: 'absolute', top: '24px', right: '32px' }}>
                             <button onClick={() => setShowLoginPanel(false)} style={{ background: '#e5e7eb', border: 'none', width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                 <X size={20} color="#6b7280" />

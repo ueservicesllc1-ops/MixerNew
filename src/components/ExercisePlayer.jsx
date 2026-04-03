@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useReducer } from 'react';
 import { academyAudio } from '../utils/academyAudio';
 import { Star, Lightbulb, ArrowRight, RefreshCcw, BookOpen, Music, Play, Ear, Layers, Keyboard, Check, X, Target, Heart } from 'lucide-react';
 
@@ -653,42 +653,45 @@ const PianoExercise = ({ exercise, status, onKeyPress, pressedKey, flashKey }) =
     );
 };
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   MAIN EXERCISE PLAYER
-───────────────────────────────────────────────────────────────────────────── */
+const QUIZ_INIT = { selected: null, status: 'idle', explanation: null, pressedKey: null, flashKey: null, playing: false };
+const quizReducer = (state, action) => {
+    switch (action.type) {
+        case 'RESET': return { ...QUIZ_INIT };
+        case 'SET': return { ...state, ...action.payload };
+        default: return state;
+    }
+};
+
 const ExercisePlayer = ({ exercise, onCorrect, onWrong, onExit, progress, hearts }) => {
-    const [selected, setSelected]     = useState(null);
-    const [status, setStatus]         = useState('idle');   // idle | correct | wrong
-    const [explanation, setExplanation] = useState(null);
-    const [pressedKey, setPressedKey] = useState(null);
-    const [flashKey, setFlashKey]     = useState(null);
-    const [playing, setPlaying]       = useState(false);
+    const [quiz, dispatch] = useReducer(quizReducer, QUIZ_INIT);
+    const { selected, status, explanation, pressedKey, flashKey, playing } = quiz;
+    const setSelected    = (v) => dispatch({ type: 'SET', payload: { selected: v } });
+    const setStatus      = (v) => dispatch({ type: 'SET', payload: { status: v } });
+    const setExplanation = (v) => dispatch({ type: 'SET', payload: { explanation: v } });
+    const setPressedKey  = (v) => dispatch({ type: 'SET', payload: { pressedKey: v } });
+    const setFlashKey    = (v) => dispatch({ type: 'SET', payload: { flashKey: v } });
+    const setPlaying     = (v) => dispatch({ type: 'SET', payload: { playing: v } });
     const autoRef = useRef(false);
 
-    /* Reset every time exercise changes */
+    /* Reset every time exercise changes — single dispatch avoids cascading renders */
     useEffect(() => {
-        setSelected(null);
-        setStatus('idle');
-        setExplanation(null);
-        setPressedKey(null);
-        setFlashKey(null);
-        setPlaying(false);
+        dispatch({ type: 'RESET' });
         autoRef.current = false;
     }, [exercise]);
 
-    /* ── Audio helpers ── */
-    const playNote = async () => {
+    /* ── Audio helpers — declared before the useEffect that calls them ── */
+    const playNote = useCallback(async () => {
         if (playing) return;
-        const note = exercise.audio1 || exercise.audio;
+        const note = exercise?.audio1 || exercise?.audio;
         if (!note || note.includes('-')) return; // skip placeholder IDs like 'scale-C'
         setPlaying(true);
         await academyAudio.playNote(note, '2n');
         setTimeout(() => setPlaying(false), 1400);
-    };
+    }, [exercise, playing]);
 
-    const playInterval = async () => {
+    const playInterval = useCallback(async () => {
         if (playing) return;
-        const notes = exercise.notes || [];
+        const notes = exercise?.notes || [];
         if (!notes.length) return;
         setPlaying(true);
         const isChord = notes.length >= 3;
@@ -699,7 +702,7 @@ const ExercisePlayer = ({ exercise, onCorrect, onWrong, onExit, progress, hearts
             await academyAudio.playInterval(notes[0], notes[1]);
             setTimeout(() => setPlaying(false), 1800);
         }
-    };
+    }, [exercise, playing]);
 
     /* Auto-play audio on ear / interval exercises */
     useEffect(() => {
@@ -713,8 +716,7 @@ const ExercisePlayer = ({ exercise, onCorrect, onWrong, onExit, progress, hearts
             const tid = setTimeout(() => { playInterval(); autoRef.current = true; }, 700);
             return () => clearTimeout(tid);
         }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [exercise]);
+    }, [exercise, playNote, playInterval]);
 
     /* ── Choice logic ── */
     const handleSelect = (i) => {

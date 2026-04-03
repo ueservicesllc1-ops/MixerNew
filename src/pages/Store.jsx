@@ -303,7 +303,14 @@ export default function Store() {
             setStoreSongs(sorted);
         });
 
-        return () => { unsubAuth(); unsubSongs(); };
+        return () => { 
+            unsubAuth(); 
+            unsubSongs();
+            // Clear engine callback
+            import('../AudioEngine').then(({ audioEngine }) => {
+                if (audioEngine.onProgress) audioEngine.onProgress = null;
+            }).catch(() => {});
+        };
     }, []);
 
 
@@ -317,7 +324,7 @@ export default function Store() {
 
             {/* NOTIFICACIÓN TIPO TOAST */}
             {toast && (
-                <div style={{
+                <div key="toast-notification" style={{
                     position: 'fixed', bottom: '30px', left: '50%', transform: 'translateX(-50%)',
                     background: '#1e293b', border: `1px solid ${toast.type === 'error' ? '#ef4444' : '#00d2d3'}`, color: 'white',
                     padding: '12px 24px', borderRadius: '50px', zIndex: 5000,
@@ -501,7 +508,7 @@ export default function Store() {
 
             {/* PREVIEW MODAL (Multitrack Mixer) */}
             {previewSong && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
+                <div key="preview-modal" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '15px' }}>
                     <div style={{ background: '#020617', width: '100%', maxWidth: '700px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', boxShadow: '0 30px 60px rgba(0,0,0,0.7)', color: 'white' }}>
 
                         <div style={{ padding: '14px 25px', background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

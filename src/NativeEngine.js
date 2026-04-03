@@ -45,8 +45,8 @@ async function fileExists(filename) {
         });
         fileCache.add(filename);
         return true;
-    } catch (e) {
-        console.warn('[NativeEngine] fileExists error', e);
+    } catch {
+        console.warn('[NativeEngine] fileExists error: unknown');
         return false;
     }
 }
@@ -64,8 +64,8 @@ async function initFileCache() {
         files.forEach(f => fileCache.add(f.name));
         cacheInitialized = true;
         console.log(`[NativeEngine] File list cached: ${fileCache.size} files.`);
-    } catch (e) {
-        console.warn('[NativeEngine] Could not initialize file cache:', e);
+    } catch (err) {
+        console.warn('[NativeEngine] Could not initialize file cache:', err);
     }
 }
 initFileCache();
@@ -124,8 +124,8 @@ export const NativeEngine = {
         try {
             const { count } = await MultitrackPlugin.getTrackCount();
             return count;
-        } catch (e) { 
-            console.warn('[NativeEngine] getTrackCount error', e); 
+        } catch (err) { 
+            console.warn('[NativeEngine] getTrackCount error', err); 
             return 0; 
         }
     },
@@ -142,46 +142,46 @@ export const NativeEngine = {
     },
 
     play: async () => {
-        try { await MultitrackPlugin.play(); } catch (e) { console.warn('play error', e); }
+        try { await MultitrackPlugin.play(); } catch (err) { console.warn('play error', err); }
     },
 
     pause: async () => {
-        try { await MultitrackPlugin.pause(); } catch (e) { console.warn('pause error', e); }
+        try { await MultitrackPlugin.pause(); } catch (err) { console.warn('pause error', err); }
     },
 
     stop: async () => {
-        try { await MultitrackPlugin.stop(); } catch (e) { console.warn('stop error', e); }
+        try { await MultitrackPlugin.stop(); } catch (err) { console.warn('stop error', err); }
     },
 
     seek: async (seconds) => {
-        try { await MultitrackPlugin.seek({ seconds }); } catch (e) { console.warn('seek error', e); }
+        try { await MultitrackPlugin.seek({ seconds }); } catch (err) { console.warn('seek error', err); }
     },
 
     setMasterVolume: async (volume) => {
-        try { await MultitrackPlugin.setVolume({ volume }); } catch (e) { console.warn('setVolume error', e); }
+        try { await MultitrackPlugin.setVolume({ volume }); } catch (err) { console.warn('setVolume error', err); }
     },
 
     setTrackVolume: async (id, volume) => {
-        try { await MultitrackPlugin.setTrackVolume({ id, volume }); } catch (e) { console.warn('setTrackVol error', e); }
+        try { await MultitrackPlugin.setTrackVolume({ id, volume }); } catch (err) { console.warn('setTrackVol error', err); }
     },
 
     setTrackMute: async (id, muted) => {
-        try { await MultitrackPlugin.setTrackMute({ id, muted }); } catch (e) { console.warn('mute error', e); }
+        try { await MultitrackPlugin.setTrackMute({ id, muted }); } catch (err) { console.warn('mute error', err); }
     },
     setTrackSolo: async (id, solo) => {
-        try { await MultitrackPlugin.setTrackSolo({ id, solo }); } catch (e) { console.warn('solo error', e); }
+        try { await MultitrackPlugin.setTrackSolo({ id, solo }); } catch (err) { console.warn('solo error', err); }
     },
 
     setSpeed: async (speed) => {
-        try { await MultitrackPlugin.setSpeed({ speed }); } catch (e) { console.warn('speed error', e); }
+        try { await MultitrackPlugin.setSpeed({ speed }); } catch (err) { console.warn('speed error', err); }
     },
 
     getPosition: async () => {
         try {
             const { position } = await MultitrackPlugin.getPosition();
             return position;
-        } catch (e) {
-            console.warn('[NativeEngine] getPosition error', e);
+        } catch (err) {
+            console.warn('[NativeEngine] getPosition error', err);
             return 0;
         }
     },

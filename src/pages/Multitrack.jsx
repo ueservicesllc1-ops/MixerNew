@@ -461,6 +461,7 @@ export default function Multitrack() {
 
         return () => {
             unsubAuth();
+            if (audioEngine) audioEngine.onProgress = null;
         };
     }, []);
 

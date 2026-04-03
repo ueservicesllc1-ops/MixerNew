@@ -139,7 +139,10 @@ export default function Recursos() {
                             position: 'relative',
                             overflow: 'hidden'
                         }}
-                            onClick={() => res.category === 'music' && res.title.includes('Letras') ? navigate('/library') : null}
+                            onClick={() => {
+                                if (res.category === 'music' && res.title.includes('Letras')) navigate('/library');
+                                if (res.category === 'tech' && res.title.includes('Audio')) navigate('/recursos/audio');
+                            }}
                             onMouseEnter={e => {
                                 e.currentTarget.style.transform = 'translateY(-8px)';
                                 e.currentTarget.style.borderColor = 'rgba(0,210,211,0.3)';

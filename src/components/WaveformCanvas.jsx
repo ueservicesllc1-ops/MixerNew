@@ -7,30 +7,41 @@ import { audioEngine } from '../AudioEngine';
  */
 export default function WaveformCanvas({ songId, tracks, progress, duration, hasPreview }) {
     const canvasRef = useRef(null);
-    const [peaks, setPeaks] = useState(null);
-    const [statusInfo, setStatusInfo] = useState({ isReal: false, source: 'Analizando...', color: '#64748b' });
+
+    // Lazy init: read persisted peaks from localStorage on first mount
+    const [peaks, setPeaks] = useState(() => {
+        if (!songId) return null;
+        try {
+            const saved = localStorage.getItem(`peaks_${songId}`);
+            return saved ? new Float32Array(JSON.parse(saved)) : null;
+        } catch { return null; }
+    });
+    const [statusInfo, setStatusInfo] = useState(() => {
+        if (!songId) return { isReal: false, source: 'Analizando...', color: '#64748b' };
+        try {
+            const saved = localStorage.getItem(`peaks_${songId}`);
+            return saved
+                ? { isReal: true, source: 'ONDA GUARDADA', color: '#10b981' }
+                : { isReal: false, source: 'Analizando...', color: '#64748b' };
+        } catch { return { isReal: false, source: 'Analizando...', color: '#64748b' }; }
+    });
 
     const actualDuration = duration || 180;
 
-    // ── Cargar persistencia al cambiar de canción ──
+    // ── Reset when songId changes (after initial mount) ──
     useEffect(() => {
         if (!songId) return;
-        const saved = localStorage.getItem(`peaks_${songId}`);
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                 
-                setPeaks(new Float32Array(parsed));
-                 
-                setStatusInfo({ isReal: true, source: 'ONDA GUARDADA', color: '#10b981' }); // Verde esmeralda para caché
-            } catch (e) {
-                console.error("Error cargando picos persistentes:", e);
+        try {
+            const saved = localStorage.getItem(`peaks_${songId}`);
+            if (saved) {
+                setPeaks(new Float32Array(JSON.parse(saved)));
+                setStatusInfo({ isReal: true, source: 'ONDA GUARDADA', color: '#10b981' });
+            } else {
+                setPeaks(null);
+                setStatusInfo({ isReal: false, source: 'Analizando...', color: '#64748b' });
             }
-        } else {
-             
-            setPeaks(null);
-             
-            setStatusInfo({ isReal: false, source: 'Analizando...', color: '#64748b' });
+        } catch (e) {
+            console.error("Error cargando picos persistentes:", e);
         }
     }, [songId]);
 
