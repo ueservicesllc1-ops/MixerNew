@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth, db, storage } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -336,6 +336,21 @@ export default function Landing() {
         } catch (error) {
             console.error("Auth error:", error);
             setErrorMsg(error.message);
+        }
+    };
+
+    const handleForgotPassword = async () => {
+        if (!email) {
+            setErrorMsg("Por favor, ingresa tu correo electrónico primero.");
+            return;
+        }
+        try {
+            await sendPasswordResetEmail(auth, email);
+            setErrorMsg('');
+            alert("Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.");
+        } catch (error) {
+            console.error("Reset Password Error:", error);
+            setErrorMsg("Error al enviar el correo: " + error.message);
         }
     };
 
@@ -1189,6 +1204,17 @@ export default function Landing() {
                                     <button type="submit" className="btn-teal" style={{ padding: '14px', width: '100%', fontSize: '1rem', marginTop: '8px' }}>
                                         {isLogin ? 'Entrar ahora' : 'Registrarme'}
                                     </button>
+
+                                    {isLogin && (
+                                        <div style={{ textAlign: 'right', marginTop: '-8px' }}>
+                                            <span 
+                                                onClick={handleForgotPassword} 
+                                                style={{ fontSize: '0.8rem', color: '#6b7280', cursor: 'pointer', textDecoration: 'underline' }}
+                                            >
+                                                ¿Olvidaste tu contraseña?
+                                            </span>
+                                        </div>
+                                    )}
                                     <div style={{ position: 'relative', textAlign: 'center', margin: '10px 0' }}>
                                         <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb' }} />
                                         <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '0 12px', color: '#9ca3af', fontSize: '0.8rem' }}>O CONTINÚA CON</span>

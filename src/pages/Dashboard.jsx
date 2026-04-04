@@ -927,7 +927,17 @@ function Dashboard() {
                         )}
                         {step === 'details' && (
                             <div>
-                                <h3 style={{ marginBottom: '24px' }}>Detalles de la Canción</h3>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                                    <h3 style={{ margin: 0 }}>Detalles de la Canción</h3>
+                                    <button 
+                                        onClick={() => alert("Formato recomendado para autocompletar:\nNOMBRE - ARTISTA - NOTA - TEMPO\nEj: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM")} 
+                                        style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '5px 15px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,210,211,0.2)'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,210,211,0.1)'}
+                                    >
+                                        Guía
+                                    </button>
+                                </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '24px' }}>
                                     <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>NOMBRE</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box', background: 'white', color: 'black', border: '1px solid #cbd5e1' }} value={songName} onChange={e => setSongName(e.target.value)} /></div>
                                     <div style={{ flex: '1 1 calc(50% - 20px)', minWidth: '200px' }}><label style={{ fontSize: '0.8rem', color: '#64748b', display: 'block', marginBottom: '8px' }}>ARTISTA</label><input className="btn-ghost" style={{ width: '100%', textAlign: 'left', padding: '12px', boxSizing: 'border-box', background: 'white', color: 'black', border: '1px solid #cbd5e1' }} value={artist} onChange={e => setArtist(e.target.value)} /></div>
@@ -1050,15 +1060,19 @@ function Dashboard() {
                                         alignItems: 'flex-start',
                                         gap: '14px'
                                     }}>
-                                        <span style={{ fontSize: '1.5rem', flexShrink: 0, marginTop: '2px' }}>📋</span>
+                                        <div style={{ fontSize: '1.5rem', flexShrink: 0, marginTop: '2px' }}>📋</div>
                                         <div>
                                             <div style={{ fontWeight: '800', fontSize: '0.9rem', color: '#00d2d3', marginBottom: '6px', letterSpacing: '0.02em' }}>
-                                                FORMATO DEL NOMBRE DEL ARCHIVO .ZIP
+                                                FORMATO REQUERIDO PARA SUBIR CANCIONES
                                             </div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: '#e2e8f0', marginBottom: '8px' }}>
+                                            <div style={{ fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '8px', lineHeight: '1.4' }}>
+                                                Sube un archivo <strong>.ZIP</strong> que contenga las pistas individuales (en <strong>MP3</strong> o <strong>WAV</strong>).<br/>
+                                                El nombre del ZIP debe seguir este formato para auto-completar los datos:
+                                            </div>
+                                            <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: '#00d2d3', marginBottom: '8px', background: 'rgba(0,0,0,0.2)', padding: '5px 10px', borderRadius: '4px', display: 'inline-block' }}>
                                                 NOMBRE - ARTISTA - NOTA - TEMPO
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px' }}>
                                                 <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>Ejemplo:</span>
                                                 <code style={{
                                                     background: 'rgba(0,0,0,0.3)',
@@ -1066,10 +1080,10 @@ function Dashboard() {
                                                     borderRadius: '6px',
                                                     padding: '3px 10px',
                                                     fontSize: '0.85rem',
-                                                    color: '#00d2d3',
+                                                    color: '#fff',
                                                     fontFamily: 'monospace'
                                                 }}>
-                                                    Mientras Viva - G12 - b - 120bpm.zip
+                                                    Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM.zip
                                                 </code>
                                             </div>
                                         </div>
@@ -1106,9 +1120,9 @@ function Dashboard() {
                                         <p style={{ color: '#64748b', fontSize: '1.1rem' }}>
                                             {isProcessingZip ? 'Por favor espera mientras extraemos tus pistas...' : (
                                                 <>
-                                                    Arrastra tu archivo .ZIP aquí o haz clic para buscar.<br/>
+                                                    Arrastra tu archivo <strong>.ZIP</strong> (con pistas <strong>MP3</strong> o <strong>WAV</strong>) aquí.<br/>
                                                     <span style={{ fontSize: '0.85rem', color: '#00d2d3', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
-                                                        Formato requerido: NOMBRE - ARTISTA - NOTA - TEMPO<br/>
+                                                        Formato recomendado: NOMBRE - ARTISTA - NOTA - TEMPO<br/>
                                                         Ej: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM
                                                     </span>
                                                 </>

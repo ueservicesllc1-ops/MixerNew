@@ -4,7 +4,7 @@ import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon } from 'lucide-react'
-import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from '../firebase'
+import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
@@ -58,6 +58,7 @@ export default function Multitrack() {
     const [librarySongs, setLibrarySongs] = useState([]);
     const [globalSongs, setGlobalSongs] = useState([]);
     const [libraryTab, setLibraryTab] = useState('mine'); // 'mine' | 'global'
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Download States
     const [downloadProgress, setDownloadProgress] = useState({ songId: null, text: '' });
@@ -948,14 +949,29 @@ export default function Multitrack() {
                 await ScreenOrientation.lock({ orientation: 'landscape' });
             }
         } catch (error) {
-            console.error("Auth fall├│:", error);
+            console.error("Auth falló:", error);
             if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-                setLoginError('Correo o contrase├▒a incorrectos');
+                setLoginError('Correo o contraseña incorrectos');
             } else if (error.code === 'auth/email-already-in-use') {
-                setLoginError('Este correo ya est├í registrado');
+                setLoginError('Este correo ya está registrado');
             } else {
                 setLoginError(error.message);
             }
+        }
+    };
+
+    const handleForgotPasswordMultitrack = async () => {
+        if (!loginEmail) {
+            setLoginError('Ingresa tu correo primero.');
+            return;
+        }
+        try {
+            await sendPasswordResetEmail(auth, loginEmail);
+            setLoginError('');
+            alert("Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.");
+        } catch (error) {
+            console.error("Reset Password Error:", error);
+            setLoginError("Error: " + error.message);
         }
     };
 
@@ -1333,8 +1349,20 @@ export default function Multitrack() {
                         </div>
                         <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
                         <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                            <input type="email" placeholder="Correo electr├│nico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
-                            <input type="password" placeholder="Contrase├▒a" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            <input type="email" placeholder="Correo electrónico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                <input type="password" placeholder="Contraseña" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
+                                {!loginIsRegister && (
+                                    <div style={{ textAlign: 'right' }}>
+                                        <span 
+                                            onClick={handleForgotPasswordMultitrack} 
+                                            style={{ fontSize: '0.75rem', color: '#888', cursor: 'pointer', textDecoration: 'underline' }}
+                                        >
+                                            ¿Olvidaste tu contraseña?
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                             {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center' }}>{loginError}</div>}
                             <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>{loginIsRegister ? 'Registrarse' : 'Entrar'}</button>
                         </form>
@@ -2379,16 +2407,58 @@ export default function Multitrack() {
                         </button>
                     </div>
 
+                    {/* Buscador de Pistas */}
+                    <div style={{ marginBottom: '12px', position: 'relative' }}>
+                        <input
+                            type="text"
+                            placeholder={libraryTab === 'mine' ? "Buscar en mi librería..." : "Buscar pistas Global (VIP)..."}
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                border: '1px solid #e2e8f0',
+                                background: '#fff',
+                                color: '#333',
+                                fontSize: '0.9rem',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                                transition: 'all 0.2s',
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
+                            }}
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery('')}
+                                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                            >
+                                <X size={16} />
+                            </button>
+                        )}
+                    </div>
+
                     <div style={{ flex: 1, backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #ccc', padding: '10px', overflowY: 'auto' }}>
                         {!currentUser ? (
                             <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
                                 Debes iniciar sesión para ver la librería.
                             </div>
                         ) : (() => {
-                            const songs = libraryTab === 'mine' ? librarySongs : globalSongs;
+                            const songs = (libraryTab === 'mine' ? librarySongs : globalSongs).filter(song => {
+                                if (!searchQuery) return true;
+                                const q = searchQuery.toLowerCase();
+                                return (
+                                    song.name?.toLowerCase().includes(q) ||
+                                    song.artist?.toLowerCase().includes(q) ||
+                                    song.uploadedBy?.toLowerCase().includes(q)
+                                );
+                            });
                             if (songs.length === 0) return (
                                 <div style={{ textAlign: 'center', color: '#666', marginTop: '30px', padding: '0 20px' }}>
-                                    {libraryTab === 'mine' ? (
+                                    {searchQuery ? (
+                                        <div style={{ fontSize: '0.9rem' }}>No se encontraron coincidencias para "{searchQuery}".</div>
+                                    ) : (
+                                        libraryTab === 'mine' ? (
                                         <>
                                             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
                                             {!isAppNative && (
@@ -2400,6 +2470,7 @@ export default function Multitrack() {
                                         </>
                                     ) : (
                                         <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
+                                    )
                                     )}
                                 </div>
                             );
