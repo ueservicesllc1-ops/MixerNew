@@ -35,5 +35,12 @@ google-services.json
 
 # Local scripts
 compress-pads.mjs
+# Secrets
+.env
+.env.development
+.env.production
+.env.local
+.env.*.local
+
 .gemini/
 .agents/

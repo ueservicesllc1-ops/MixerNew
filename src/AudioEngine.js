@@ -115,7 +115,22 @@ class AudioEngine {
             let buffer = audioBuffer;
             if (!buffer && sourceData) {
                 const arrayBuf = (sourceData instanceof Blob) ? await sourceData.arrayBuffer() : sourceData;
-                buffer = await this.ctx.decodeAudioData(arrayBuf);
+                
+                if (!arrayBuf || arrayBuf.byteLength < 500) {
+                    throw new Error(`Buffer de audio corrupto o demasiado pequeño (${arrayBuf?.byteLength || 0} bytes).`);
+                }
+
+                try {
+                    buffer = await this.ctx.decodeAudioData(arrayBuf);
+                } catch (decodeErr) {
+                    console.error(`[AudioEngine] Error de decodificación para ${id}. Es posible que el archivo no sea un audio válido.`, decodeErr);
+                    throw decodeErr;
+                }
+            }
+
+            if (!buffer) {
+                // Si no hay buffer, no creamos la cadena de nodos para esta pista
+                return;
             }
 
             const pannerNode = this.ctx.createStereoPanner();

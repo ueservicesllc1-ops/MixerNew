@@ -15,15 +15,23 @@ import Stripe from 'stripe';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
-// Usando la clave secreta LIVE de Stripe (se debe configurar en variables de entorno):
+// Usando la clave secreta de Stripe:
 let stripe = null;
-if (process.env.STRIPE_SECRET_KEY) {
-    stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-        apiVersion: '2023-10-16',
-    });
-} else {
-    console.warn("⚠️ STRIPE_SECRET_KEY no configurada. Las funciones de pago no estarán disponibles.");
-}
+const initStripe = () => {
+    if (process.env.STRIPE_SECRET_KEY) {
+        try {
+            stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+                apiVersion: '2023-10-16',
+            });
+            console.log("✅ Stripe inicializado con éxito.");
+        } catch (err) {
+            console.error("🚨 Error crítico al inicializar Stripe:", err.message);
+        }
+    } else {
+        console.warn("⚠️ STRIPE_SECRET_KEY no configurada en las variables de entorno.");
+    }
+};
+initStripe();
 
 // Configuración de productos/precios para sincronizar con Stripe
 const STRIPE_PLANS_CONFIG = {
@@ -137,10 +145,16 @@ const handleDownload = async (req, res) => {
             throw new Error("Cuerpo de respuesta vacío");
         }
     } catch (error) {
-        console.error("🚨 Error en download:", error.message);
-        // Si el error es por pipe, puede que ya se hayan enviado encabezados
+        console.error("🚨 Error detallado en proxy download:", {
+            message: error.message,
+            url: req.query.url,
+            stack: error.stack
+        });
         if (!res.headersSent) {
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+                error: "Fallo al obtener el audio desde el almacenamiento.",
+                details: error.message 
+            });
         }
     }
 };
@@ -156,6 +170,11 @@ app.post('/api/stripe/create-single-payment', async (req, res) => {
         if (!songId || !price || !email) {
             console.warn("⚠️ Datos de compra incompletos:", req.body);
             return res.status(400).json({ error: 'Faltan datos de la compra (ID, precio o email)' });
+        }
+
+        if (!stripe) {
+            console.error("🚨 Intento de pago fallido: Stripe no está configurado (STRIPE_SECRET_KEY faltante)");
+            return res.status(500).json({ error: 'El servidor de pagos no está configurado. Por favor, contacta al administrador.' });
         }
 
         const cleanEmail = email.trim().toLowerCase();
