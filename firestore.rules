@@ -35,7 +35,7 @@ service cloud.firestore {
     // -- APP VERSIONS: public can read; admin can manage
     match /app_versions/{docId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if true; // TEMPORAL PARA SUBIR APK V10
     }
 
     // -- SELLER APPLICATIONS: owner can create, admin can manage

@@ -7,7 +7,8 @@ import {
     FileText,
     Mic2,
     ChevronRight,
-    X
+    X,
+    Bell
 } from 'lucide-react';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
@@ -22,6 +23,7 @@ export default function Library() {
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [viewingChords, setViewingChords] = useState(null); // stores { text, title, artist }
     const [isLoadingChords, setIsLoadingChords] = useState(false);
+    const [chordNotice, setChordNotice] = useState(null); // { message, title }
 
     useEffect(() => {
         // Fetch all verified songs for the public library
@@ -63,11 +65,17 @@ export default function Library() {
                     artist: song.artist
                 });
             } else {
-                alert("Esta canción aún no tiene cifrado disponible en nuestra base de datos.");
+                setChordNotice({
+                    title: "Próximamente disponible",
+                    message: "este MT aun no tiene cifrado subido, muy pronto estara disponible Bro"
+                });
             }
         } catch (e) {
             console.error(e);
-            alert("Error al cargar el cifrado.");
+            setChordNotice({
+                title: "No disponible",
+                message: "este MT aun no tiene cifrado subido, muy pronto estara disponible Bro"
+            });
         } finally {
             setIsLoadingChords(false);
         }
@@ -79,6 +87,60 @@ export default function Library() {
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', fontFamily: '"Outfit", sans-serif' }}>
+            {/* Custom Modal for Notifications (Chord Notice) */}
+            {chordNotice && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ 
+                        background: '#1e293b', 
+                        border: '1px solid rgba(255,255,255,0.1)', 
+                        borderRadius: '24px', 
+                        padding: '40px', 
+                        maxWidth: '450px', 
+                        width: '100%', 
+                        textAlign: 'center',
+                        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                        animation: 'modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}>
+                        <div style={{ 
+                            width: '80px', 
+                            height: '80px', 
+                            background: 'rgba(0,210,211,0.1)', 
+                            borderRadius: '24px', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            margin: '0 auto 24px',
+                            color: '#00d2d3'
+                        }}>
+                            <Bell size={40} />
+                        </div>
+                        <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '12px', color: 'white' }}>{chordNotice.title}</h2>
+                        <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '32px' }}>
+                            {chordNotice.message}
+                        </p>
+                        <button 
+                            onClick={() => setChordNotice(null)}
+                            style={{ 
+                                background: '#00d2d3', 
+                                color: '#0f172a', 
+                                border: 'none', 
+                                padding: '14px 40px', 
+                                borderRadius: '12px', 
+                                fontWeight: '800', 
+                                fontSize: '1rem', 
+                                cursor: 'pointer',
+                                width: '100%',
+                                transition: 'transform 0.2s'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
+                            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                            Lo entiendo
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Modal for Chords */}
             {viewingChords && (
                 <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px' }}>

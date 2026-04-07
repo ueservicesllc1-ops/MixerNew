@@ -1,7 +1,7 @@
 {
   "webDir": "dist",
   "appId": "com.mixer.app",
-  "appName": "Mixer",
+  "appName": "Zion Stage",
   "bundledWebRuntime": false,
   "ios": {
     "contentInset": "always"

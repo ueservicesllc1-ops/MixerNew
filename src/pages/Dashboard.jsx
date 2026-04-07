@@ -50,7 +50,7 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
 };
 
 const STORAGE_PLANS = [
-    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 0.3, storageMB: 300, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
+    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 1, storageMB: 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
     { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 2, storageMB: 2000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
     { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 5, storageMB: 5000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
     { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
@@ -305,13 +305,14 @@ function Dashboard() {
                         // User exists in auth but not in users collection yet
                         setDoc(doc(db, 'users', user.uid), {
                             planId: 'free',
+                            customStorageGB: 1,
                             email: user.email || '',
                             displayName: user.displayName || '',
                             createdAt: serverTimestamp()
                         }, { merge: true })
                             .then(() => {
                                 setUserPlan(STORAGE_PLANS[0]);
-                                setCustomStorageGB(0);
+                                setCustomStorageGB(1);
                                 setTimeout(() => {
                                     setIsInitialPlanSelection(true);
                                     setIsPricingModalOpen(true);
@@ -1477,7 +1478,7 @@ function Dashboard() {
                                                     <div key={p.id} style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div>
                                                             <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{p.id === 'free' ? 'Plan Gratis' : `Plan ${p.name}`}</div>
-                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.id === 'free' ? '300 MB de almacenamiento' : `${p.storageGB} GB Storage`}</div>
+                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.id === 'free' ? '1 GB de almacenamiento' : `${p.storageGB} GB Storage`}</div>
                                                         </div>
                                                         <div style={{ textAlign: 'right' }}>
                                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>

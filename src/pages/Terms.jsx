@@ -81,7 +81,7 @@ export default function Terms() {
                 </Section>
 
                 <Section title="5. Plan Gratuito y Limitaciones">
-                    <p>El plan Gratuito ofrece 300 MB de almacenamiento y acceso a las funciones básicas de la plataforma. Freedom Labs se reserva el derecho de modificar los límites del plan Gratuito con previo aviso.</p>
+                    <p>El plan Gratuito ofrece 1 GB de almacenamiento y acceso a las funciones básicas de la plataforma. Freedom Labs se reserva el derecho de modificar los límites del plan Gratuito con previo aviso.</p>
                 </Section>
 
                 <Section title="6. Marketplace — Ventas de Contenido">

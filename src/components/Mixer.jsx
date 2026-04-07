@@ -120,7 +120,7 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
         return '#00d2d3';
     };
 
-    const trackColor = getTrackColor(name);
+
 
     const handleVolume = (e) => {
         const val = parseFloat(e.target.value);
@@ -168,9 +168,45 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
         audioEngine.setTrackSolo(id, next);
     };
 
+    const [customColor, setCustomColor] = useState(null);
+    const trackColor = customColor || getTrackColor(name);
+
+    const [editableName, setEditableName] = useState(name);
+
     return (
         <div className={`channel-strip ${isSpecial ? 'special-track' : ''} ${isPlaceholder ? 'is-loading' : ''}`}>
-            <div className="channel-name">{name}</div>
+            <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '12px', minHeight: '20px' }}>
+                {/* Left Column: Color Picker */}
+                <div style={{ position: 'relative', width: '20px', display: 'flex', justifyContent: 'flex-start' }}>
+                    <div style={{ width: '16px', height: '8px', borderRadius: '2px', backgroundColor: trackColor, border: '1px solid rgba(255,255,255,0.2)' }} />
+                    <input 
+                        type="color" 
+                        value={trackColor}
+                        onChange={(e) => setCustomColor(e.target.value)}
+                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                        title="Cambiar color del track"
+                    />
+                </div>
+                
+                {/* Center Column: Name */}
+                <div 
+                    className="channel-name" 
+                    style={{ 
+                        fontSize: '0.9rem', 
+                        fontWeight: '800', 
+                        textAlign: 'center',
+                        flex: 1,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                    }}
+                >
+                    {name}
+                </div>
+
+                {/* Right Column: Placeholder for balance */}
+                <div style={{ width: '20px' }} />
+            </div>
 
             <div className="fader-stack" ref={stackRef}>
                 {/* DB SCALE — Absolutely positioned to match points */}
@@ -203,7 +239,8 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
                         className="meter-fill"
                         style={{
                             height: `${volume * 100}%`,
-                            background: isSpecial ? '#f97316' : 'rgba(19, 181, 182, 0.6)'
+                            background: trackColor,
+                            opacity: 0.8
                         }}
                     ></div>
                 </div>

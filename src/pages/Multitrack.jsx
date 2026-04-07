@@ -86,6 +86,7 @@ export default function Multitrack() {
     const [loginPassword, setLoginPassword] = useState('');
     const [loginIsRegister, setLoginIsRegister] = useState(false);
     const [loginError, setLoginError] = useState('');
+    const [loginSuccess, setLoginSuccess] = useState('');
 
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -323,9 +324,9 @@ export default function Multitrack() {
     //   <= 8 GB  -> 2 songs
     //   <= 16 GB -> 4 songs
     //   > 16 GB  -> 6 songs
-    const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 1
-        : estimatedRAM <= 8 ? 2
-            : estimatedRAM <= 16 ? 4
+    const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 3
+        : estimatedRAM <= 8 ? 4
+            : estimatedRAM <= 16 ? 5
                 : 6;
 
 
@@ -366,7 +367,7 @@ export default function Multitrack() {
                     console.log("Auto-loading last setlist:", found.name);
                     setActiveSetlist(found);
                     // Preload only the start of the setlist
-                    const subset = (found.songs || []).slice(0, 4);
+                    const subset = (found.songs || []).slice(0, 2);
                     preloadSetlistSongs(subset);
                 }
             }
@@ -493,17 +494,17 @@ export default function Multitrack() {
         setIsSetlistMenuOpen(false);
         localStorage.setItem('mixer_lastSetlistId', list.id);
         // Preload only the start of the setlist
-        const subset = (list.songs || []).slice(0, 4);
+        const subset = (list.songs || []).slice(0, 2);
         preloadSetlistSongs(subset);
     };
 
     // Auto-preload songs when active setlist changes or gets new songs
     useEffect(() => {
         if (activeSetlist && activeSetlist.songs) {
-            // Only preload the "nearby" songs (current + next 3) to avoid RAM saturation
+            // Only preload the "nearby" songs (current + next 1) to avoid RAM saturation
             const currentIndex = activeSetlist.songs.findIndex(s => s.id === activeSongId);
             const startIdx = Math.max(0, currentIndex === -1 ? 0 : currentIndex);
-            const subset = activeSetlist.songs.slice(startIdx, startIdx + 4);
+            const subset = activeSetlist.songs.slice(startIdx, startIdx + 2);
             preloadSetlistSongs(subset);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -814,7 +815,7 @@ export default function Multitrack() {
                 const allSongs = activeSetlist.songs;
                 const currentIdx = allSongs.findIndex(s => s.id === song.id);
                 if (currentIdx !== -1) {
-                    const subset = allSongs.slice(currentIdx + 1, currentIdx + 4).filter(s => !preloadCache.current.has(s.id));
+                    const subset = allSongs.slice(currentIdx + 1, currentIdx + 2).filter(s => !preloadCache.current.has(s.id));
                     if (subset.length > 0) preloadSetlistSongs(subset);
                 }
             }
@@ -963,15 +964,23 @@ export default function Multitrack() {
     const handleForgotPasswordMultitrack = async () => {
         if (!loginEmail) {
             setLoginError('Ingresa tu correo primero.');
+            setLoginSuccess('');
             return;
         }
         try {
             await sendPasswordResetEmail(auth, loginEmail);
             setLoginError('');
-            alert("Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.");
+            setLoginSuccess('✓ Correo enviado. Revisa tu bandeja de entrada y sigue el enlace para restablecer tu contraseña.');
         } catch (error) {
             console.error("Reset Password Error:", error);
-            setLoginError("Error: " + error.message);
+            setLoginSuccess('');
+            if (error.code === 'auth/user-not-found') {
+                setLoginError('No existe una cuenta con ese correo.');
+            } else if (error.code === 'auth/invalid-email') {
+                setLoginError('El correo ingresado no es válido.');
+            } else {
+                setLoginError('Error al enviar el correo. Intenta de nuevo.');
+            }
         }
     };
 
@@ -1356,22 +1365,23 @@ export default function Multitrack() {
                                     <div style={{ textAlign: 'right' }}>
                                         <span 
                                             onClick={handleForgotPasswordMultitrack} 
-                                            style={{ fontSize: '0.75rem', color: '#888', cursor: 'pointer', textDecoration: 'underline' }}
+                                            style={{ fontSize: '0.75rem', color: '#00d2d3', cursor: 'pointer', textDecoration: 'underline' }}
                                         >
                                             ¿Olvidaste tu contraseña?
                                         </span>
                                     </div>
                                 )}
                             </div>
-                            {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center' }}>{loginError}</div>}
+                            {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '6px', background: 'rgba(255,82,82,0.1)' }}>{loginError}</div>}
+                            {loginSuccess && <div style={{ color: '#4ade80', fontSize: '0.82rem', textAlign: 'center', padding: '10px', borderRadius: '6px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', lineHeight: '1.4' }}>{loginSuccess}</div>}
                             <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>{loginIsRegister ? 'Registrarse' : 'Entrar'}</button>
                         </form>
 
 
 
                         <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                            <span onClick={() => { setLoginIsRegister(!loginIsRegister); setLoginError(''); }} style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none' }}>
-                                {loginIsRegister ? '┬┐Ya tienes cuenta? Inicia sesi├│n' : '┬┐No tienes cuenta? reg├¡strate aqu├¡'}
+                            <span onClick={() => { setLoginIsRegister(!loginIsRegister); setLoginError(''); setLoginSuccess(''); }} style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none' }}>
+                                {loginIsRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? regístrate aquí'}
                             </span>
                         </div>
                     </div>
@@ -2034,9 +2044,9 @@ export default function Multitrack() {
                     </div>
                     <button
                         onClick={() => setIsSettingsOpen(false)}
-                        style={{ background: darkMode ? '#333' : '#f0f0f0', border: 'none', width: '32px', height: '32px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}
+                        style={{ background: darkMode ? '#333' : '#f0f0f0', border: 'none', width: '48px', height: '48px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666' }}
                     >
-                        <X size={16} />
+                        <X size={24} />
                     </button>
                 </div>
 
@@ -2241,7 +2251,7 @@ export default function Multitrack() {
             <div className={`setlist-drawer ${isPadsOpen ? 'open' : ''}`} style={{ zIndex: 1005 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h2>Ambient Pads</h2>
-                    <button onClick={() => setIsPadsOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                    <button onClick={() => setIsPadsOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     <div className="pads-header" style={{ marginBottom: '20px' }}>
@@ -2275,7 +2285,7 @@ export default function Multitrack() {
                         <ListMusic size={22} color="#00bcd4" />
                         <h2 style={{ margin: 0 }}>{activeSetlist?.name || 'Lista de Canciones'}</h2>
                     </div>
-                    <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                    <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>
@@ -2319,7 +2329,7 @@ export default function Multitrack() {
                                 </DndContext>
                             )}
                             <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
-                                <button onClick={() => setIsLibraryMenuOpen(true)} className="action-btn" style={{ flex: 1 }}>+ Añadir Pistas</button>
+                                <button onClick={() => { setIsCurrentListOpen(false); setIsLibraryMenuOpen(true); }} className="action-btn" style={{ flex: 1 }}>+ Añadir Pistas</button>
                                 <button onClick={() => { setIsCurrentListOpen(false); setIsSetlistMenuOpen(true); }} className="action-btn secondary" style={{ flex: 1 }}>Mis Setlists</button>
                             </div>
                         </div>
@@ -2331,7 +2341,7 @@ export default function Multitrack() {
             <div className={`setlist-drawer ${isSetlistMenuOpen ? 'open' : ''}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h2>Mis Setlists</h2>
-                    <button onClick={() => setIsSetlistMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                    <button onClick={() => setIsSetlistMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -2387,7 +2397,7 @@ export default function Multitrack() {
             <div className={`library-drawer ${isLibraryMenuOpen ? 'open' : ''}`}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h2>Pistas en la Nube</h2>
-                    <button onClick={() => setIsLibraryMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666' }}>&times;</button>
+                    <button onClick={() => setIsLibraryMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>

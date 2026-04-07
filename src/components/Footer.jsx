@@ -76,7 +76,7 @@ export default function Footer() {
                 {/* Bottom Bar */}
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
                     <div style={{ fontSize: '0.85rem' }}>
-                        © {new Date().getFullYear()} Freedom Labs LLC · Zion Stage. Todos los derechos reservados.
+                        © {new Date().getFullYear()} <a href="https://freedomlabs.dev" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none', fontWeight: '700', transition: 'color 0.2s' }} onMouseEnter={e => e.currentTarget.style.color = '#00d2d3'} onMouseLeave={e => e.currentTarget.style.color = 'inherit'}>Freedom Labs LLC</a> · Zion Stage. Todos los derechos reservados.
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', backgroundColor: 'rgba(0,210,211,0.05)', padding: '6px 12px', borderRadius: '100px', border: '1px solid rgba(0,210,211,0.1)' }}>
                         <Zap size={14} color="#00d2d3" />

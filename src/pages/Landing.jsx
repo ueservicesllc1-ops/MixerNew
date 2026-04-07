@@ -329,6 +329,7 @@ export default function Landing() {
                     email,
                     ...(photoURL && { photoURL }),
                     planId: 'free',
+                    customStorageGB: 1,
                     createdAt: serverTimestamp()
                 }, { merge: true });
             }
