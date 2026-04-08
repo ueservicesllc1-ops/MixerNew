@@ -1292,7 +1292,6 @@ function Dashboard() {
                                                 <span style={{ textAlign: 'right' }}>Acciones</span>
                                             </div>
                                             {userSongs.filter(s =>
-                                                s.isGlobal === true &&
                                                 Array.isArray(s.tracks) && s.tracks.length > 0 &&
                                                 (s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                                 (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase()))
