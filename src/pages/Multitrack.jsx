@@ -1740,7 +1740,7 @@ export default function Multitrack() {
                                         )}
                                         
                                         {(activeTab === 'lyrics' || activeTab === 'chords') && (
-                                            <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px' }}>
+                                            <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', marginLeft: '2px', marginRight: '10px' }}>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <div style={{ position: 'relative', flex: 1 }}>
                                                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
