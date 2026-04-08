@@ -180,8 +180,8 @@ function Dashboard() {
     const [, setIsProcessingStripe] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [successPlanName, setSuccessPlanName] = useState('');
-    const [uploadError, setUploadError] = useState(null);
     const [showErrorModal, setShowErrorModal] = useState(false);
+    const [showUploadHelp, setShowUploadHelp] = useState(false); // Nuevo: Modal de ayuda de subida
 
     // Partituras states
     const [isPartituraMOdalOpen, setIsPartituraModalOpen] = useState(false);
@@ -842,10 +842,18 @@ function Dashboard() {
                         </p>
                     </div>
                     {!isNativeApp() && (activeTab === 'songs' || activeTab === 'home') && step === 'idle' && (
-                        <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={isProcessingZip}>
-                            {isProcessingZip ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
-                            {isProcessingZip ? `Procesando ZIP (${zipProgress}%)...` : 'Subir Canción'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button 
+                                onClick={() => setShowUploadHelp(true)} 
+                                style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '10px 15px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
+                            >
+                                <HelpCircle size={18} /> ¿Cómo subir?
+                            </button>
+                            <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={isProcessingZip}>
+                                {isProcessingZip ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
+                                {isProcessingZip ? `Procesando ZIP (${zipProgress}%)...` : 'Subir Canción'}
+                            </button>
+                        </div>
                     )}
                     {(activeTab === 'setlists') && (
                         <button onClick={() => setIsSetlistModalOpen(true)} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -931,12 +939,12 @@ function Dashboard() {
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                                     <h3 style={{ margin: 0 }}>Detalles de la Canción</h3>
                                     <button 
-                                        onClick={() => alert("Formato recomendado para autocompletar:\nNOMBRE - ARTISTA - NOTA - TEMPO\nEj: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM")} 
+                                        onClick={() => setShowUploadHelp(true)} 
                                         style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '5px 15px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s' }}
                                         onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,210,211,0.2)'}
                                         onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,210,211,0.1)'}
                                     >
-                                        Guía
+                                        Guía de Formato
                                     </button>
                                 </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', marginBottom: '24px' }}>
@@ -1782,6 +1790,59 @@ function Dashboard() {
                     </div>
                 )
             }
+            {/* MODAL DE AYUDA DE SUBIDA */}
+            {showUploadHelp && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: '#1e293b', width: '100%', maxWidth: '700px', borderRadius: '32px', padding: '40px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', position: 'relative' }}>
+                        <button onClick={() => setShowUploadHelp(false)} style={{ position: 'absolute', top: '25px', right: '25px', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', border: 'none', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}><X size={24} /></button>
+                        
+                        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+                            <div style={{ width: '70px', height: '70px', background: 'rgba(0,210,211,0.1)', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3', margin: '0 auto 20px' }}><HelpCircle size={40} /></div>
+                            <h2 style={{ fontSize: '2rem', fontWeight: '900', margin: 0 }}>¿Cómo subir un Multitrack?</h2>
+                            <p style={{ color: '#94a3b8', marginTop: '10px' }}>Sigue estas reglas para que tus canciones se procesen correctamente.</p>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <h4 style={{ margin: '0 0 10px 0', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><CheckIcon size={18} /> Formato del Archivo</h4>
+                                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.5' }}>
+                                    Debes subir un archivo <strong>.ZIP</strong> que contenga las pistas individuales en formato <strong>WAV o MP3</strong>. Asegúrate de que las pistas no estén dentro de subcarpetas internas.
+                                </p>
+                            </div>
+
+                            <div style={{ background: 'linear-gradient(135deg, rgba(0,210,211,0.1), rgba(155,89,182,0.1))', padding: '20px', borderRadius: '16px', border: '1px solid rgba(0,210,211,0.2)' }}>
+                                <h4 style={{ margin: '0 0 10px 0', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><TrendingUp size={18} /> Nomenclatura del ZIP (Automatización)</h4>
+                                <p style={{ margin: '0 0 15px 0', color: '#f8fafc', fontSize: '0.95rem', lineHeight: '1.5' }}>
+                                    Nombra tu archivo ZIP de la siguiente manera para que el sistema detecte automáticamente los datos:
+                                </p>
+                                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '15px', borderRadius: '10px', fontFamily: 'monospace', fontSize: '0.9rem', color: '#00d2d3', border: '1px dashed rgba(0,210,211,0.3)', textAlign: 'center' }}>
+                                    Nombre de Canción - Artista - Tono - Tempo.zip
+                                </div>
+                                <p style={{ margin: '15px 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
+                                    Ejemplo: <span style={{ color: 'white' }}>Hosanna - Marco Barrientos - E - 130BPM.zip</span>
+                                </p>
+                            </div>
+
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <h4 style={{ margin: '0 0 10px 0', color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px' }}><Info size={18} /> Consejos para el Mixer</h4>
+                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#94a3b8', fontSize: '0.9rem', lineHeight: '1.6' }}>
+                                    <li>Nombra las pistas de audio con el instrumento (ej: Piano.wav, Bajo.mp3).</li>
+                                    <li>Si la pista se llama <strong>"ClickTrack"</strong>, se renombrará a <strong>"Click"</strong> automáticamente.</li>
+                                    <li>Intenta que todos los instrumentos empiecen en el mismo punto de tiempo.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => setShowUploadHelp(false)} 
+                            className="btn-teal" 
+                            style={{ width: '100%', marginTop: '30px', padding: '15px', fontSize: '1rem', fontWeight: '800' }}
+                        >
+                            ENTENDIDO
+                        </button>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }
