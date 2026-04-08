@@ -2454,7 +2454,8 @@ export default function Multitrack() {
                                 Debes iniciar sesión para ver la librería.
                             </div>
                         ) : (() => {
-                            const songs = (libraryTab === 'mine' ? librarySongs : globalSongs).filter(song => {
+                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs.filter(s => s.isGlobal === true && Array.isArray(s.tracks) && s.tracks.length > 0);
+                            const songs = baseSongs.filter(song => {
                                 if (!searchQuery) return true;
                                 const q = searchQuery.toLowerCase();
                                 return (

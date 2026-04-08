@@ -1292,8 +1292,10 @@ function Dashboard() {
                                                 <span style={{ textAlign: 'right' }}>Acciones</span>
                                             </div>
                                             {userSongs.filter(s =>
-                                                s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
-                                                (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
+                                                s.isGlobal === true &&
+                                                Array.isArray(s.tracks) && s.tracks.length > 0 &&
+                                                (s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
+                                                (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase()))
                                             ).map((song) => (
                                                 <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
                                                     <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(241,196,15,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f' }}><Music2 size={20} /></div>
