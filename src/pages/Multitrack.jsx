@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
@@ -72,6 +72,11 @@ export default function Multitrack() {
     const [activePartituras, setActivePartituras] = useState([]); // list of {id, instrument, pdfUrl, songId}
     const [selectedPartitura, setSelectedPartitura] = useState(null); // currently opened partitura object
     const [pvFullscreen, setPvFullscreen] = useState(false);
+
+    // ── QUICK TEXT SEARCH STATES ───────────────────────────────────
+    const [viewedSongId, setViewedSongId] = useState(null);
+    const [quickTextSearch, setQuickTextSearch] = useState('');
+    const [isSearchingTexts, setIsSearchingTexts] = useState(false);
 
     // ESC key closes fullscreen partitura
     useEffect(() => {
@@ -762,6 +767,7 @@ export default function Multitrack() {
         console.log(`[SELECT] Seleccionando "${song.name}"...`);
         // Visual feedback inmediato antes de cualquier await bloqueante
         setActiveSongId(song.id);
+        setViewedSongId(song.id); // Ensure lyrics/chords follow the loaded song
         setTracks([]); // Limpiar mixer mientras carga (evita confusi├│n)
         setIsPlaying(false);
         setProgress(0);
@@ -1147,19 +1153,25 @@ export default function Multitrack() {
             });
         }, (err) => {
             console.error('[PARTITURAS] Error cargando:', err);
-        });
         return () => unsub();
+    }, [activeSongId]);
+
+    // Update viewedSongId when activeSong changes if not already set
+    useEffect(() => {
+        if (activeSongId && !viewedSongId) {
+            setViewedSongId(activeSongId);
+        }
     }, [activeSongId]);
 
     // Fetch lyrics and chords with offline-first + live sync hybrid approach
     useEffect(() => {
-        if (!activeSongId) {
+        if (!viewedSongId) {
             setActiveLyrics(null);
             setActiveChords(null);
             return;
         }
 
-        console.log(`[TEXTS] ≡ƒöì Buscando Letras y Acordes para ID: ${activeSongId}`);
+        console.log(`[TEXTS] ≡ƒöì Buscando Letras y Acordes para ID: ${viewedSongId}`);
         setActiveLyrics('loading');
         setActiveChords('loading');
 
@@ -1168,41 +1180,45 @@ export default function Multitrack() {
 
         const loadTexts = async () => {
             // 1. CARGA R├üPIDA OFFLINE
-            const offlineLyrics = await LocalFileManager.getTextLocal(activeSongId, 'lyrics');
-            const offlineChords = await LocalFileManager.getTextLocal(activeSongId, 'chords');
+            const offlineLyrics = await LocalFileManager.getTextLocal(viewedSongId, 'lyrics');
+            const offlineChords = await LocalFileManager.getTextLocal(viewedSongId, 'chords');
 
             if (offlineLyrics) setActiveLyrics(offlineLyrics);
             if (offlineChords) setActiveChords(offlineChords);
 
             // 2. SINCRONIZACI├ôN EN VIVO DESDE FIRESTORE (si hay internet)
             // Lyrics sync
-            const qLyrics = query(collection(db, 'lyrics'), where('songId', '==', activeSongId));
+            const qLyrics = query(collection(db, 'lyrics'), where('songId', '==', viewedSongId));
             unsubLyrics = onSnapshot(qLyrics, (snap) => {
                 if (!snap.empty) {
                     const text = snap.docs[0].data().text;
                     setActiveLyrics(text);
-                    LocalFileManager.saveTextLocal(activeSongId, 'lyrics', text); // Update local cache
+                    LocalFileManager.saveTextLocal(viewedSongId, 'lyrics', text); // Update local cache
                 } else if (!offlineLyrics) {
-                    setActiveLyrics(activeSong?.lyrics || null);
+                    const song = globalSongs.find(s => s.id === viewedSongId) || librarySongs.find(s => s.id === viewedSongId);
+                    setActiveLyrics(song?.lyrics || null);
                 }
             }, (err) => {
                 console.error("[LYRICS] Offline / error", err);
-                if (!offlineLyrics) setActiveLyrics(activeSong?.lyrics || null);
+                const song = globalSongs.find(s => s.id === viewedSongId) || librarySongs.find(s => s.id === viewedSongId);
+                if (!offlineLyrics) setActiveLyrics(song?.lyrics || null);
             });
 
             // Chords sync
-            const qChords = query(collection(db, 'chords'), where('songId', '==', activeSongId));
+            const qChords = query(collection(db, 'chords'), where('songId', '==', viewedSongId));
             unsubChords = onSnapshot(qChords, (snap) => {
                 if (!snap.empty) {
                     const text = snap.docs[0].data().text;
                     setActiveChords(text);
-                    LocalFileManager.saveTextLocal(activeSongId, 'chords', text); // Update local cache
+                    LocalFileManager.saveTextLocal(viewedSongId, 'chords', text); // Update local cache
                 } else if (!offlineChords) {
-                    setActiveChords(activeSong?.chords || null);
+                    const song = globalSongs.find(s => s.id === viewedSongId) || librarySongs.find(s => s.id === viewedSongId);
+                    setActiveChords(song?.chords || null);
                 }
             }, (err) => {
                 console.error("[CHORDS] Offline / error", err);
-                if (!offlineChords) setActiveChords(activeSong?.chords || null);
+                const song = globalSongs.find(s => s.id === viewedSongId) || librarySongs.find(s => s.id === viewedSongId);
+                if (!offlineChords) setActiveChords(song?.chords || null);
             });
         };
 
@@ -1212,7 +1228,7 @@ export default function Multitrack() {
             unsubLyrics();
             unsubChords();
         };
-    }, [activeSongId, activeSong?.lyrics, activeSong?.chords]);
+    }, [viewedSongId]);
 
     const handleRetryLyrics = () => {
         const id = activeSongId;
@@ -1721,6 +1737,71 @@ export default function Multitrack() {
                                                 </div>
                                                 {activeTab === 'lyrics' && activeLyrics === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Letra...</span>}
                                                 {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
+                                            </div>
+                                        )}
+                                        
+                                        {(activeTab === 'lyrics' || activeTab === 'chords') && (
+                                            <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px' }}>
+                                                <div style={{ display: 'flex', gap: '8px' }}>
+                                                    <div style={{ position: 'relative', flex: 1 }}>
+                                                        <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                                        <input 
+                                                            type="text" 
+                                                            placeholder={`Buscar otra ${activeTab === 'lyrics' ? 'letra' : 'progresión'}...`}
+                                                            value={quickTextSearch}
+                                                            onChange={(e) => setQuickTextSearch(e.target.value)}
+                                                            onFocus={() => setIsSearchingTexts(true)}
+                                                            style={{
+                                                                width: '100%',
+                                                                padding: '10px 15px 10px 40px',
+                                                                background: '#1c1c1e',
+                                                                border: '1px solid #333',
+                                                                borderRadius: '8px',
+                                                                color: 'white',
+                                                                fontSize: '0.9rem'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    {viewedSongId !== activeSongId && (
+                                                        <button 
+                                                            onClick={() => { setViewedSongId(activeSongId); setQuickTextSearch(''); setIsSearchingTexts(false); }}
+                                                            style={{ padding: '0 15px', background: 'rgba(0,188,212,0.1)', color: '#00bcd4', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', cursor: 'pointer' }}
+                                                        >
+                                                            VOLVER AL MIX
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {/* Resultados rápidos del buscador */}
+                                                {isSearchingTexts && quickTextSearch && (
+                                                    <div style={{ 
+                                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, 
+                                                        background: '#1c1c1e', border: '1px solid #333', borderRadius: '8px', 
+                                                        marginTop: '5px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', 
+                                                        maxHeight: '250px', overflowY: 'auto' 
+                                                    }}>
+                                                        {[...globalSongs, ...librarySongs]
+                                                            .filter(s => s.name.toLowerCase().includes(quickTextSearch.toLowerCase()) || (s.artist || '').toLowerCase().includes(quickTextSearch.toLowerCase()))
+                                                            .slice(0, 10)
+                                                            .map(song => (
+                                                                <div 
+                                                                    key={song.id} 
+                                                                    onClick={() => { setViewedSongId(song.id); setQuickTextSearch(''); setIsSearchingTexts(false); }}
+                                                                    style={{ padding: '12px 15px', borderBottom: '1px solid #333', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                                                                    onMouseEnter={e => e.currentTarget.style.background = '#2c2c2e'}
+                                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                                >
+                                                                    <div>
+                                                                        <div style={{ color: 'white', fontWeight: '700', fontSize: '0.9rem' }}>{song.name}</div>
+                                                                        <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{song.artist || 'Artista desconocido'}</div>
+                                                                    </div>
+                                                                    <ArrowRight size={16} color="#00bcd4" />
+                                                                </div>
+                                                            ))
+                                                        }
+                                                        <div onClick={() => setIsSearchingTexts(false)} style={{ padding: '10px', textAlign: 'center', color: '#555', fontSize: '0.75rem', cursor: 'pointer' }}>Cerrar buscador</div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
