@@ -1695,7 +1695,7 @@ export default function Multitrack() {
                     ) : (
                         <>
                             {activeTab ? (
-                                <div className="tab-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                                <div className="tab-content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '0 15px' }}>
                                     {/* Shared Tab Header */}
                                     <div className="tab-header">
                                         <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
