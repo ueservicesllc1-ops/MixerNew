@@ -2407,13 +2407,13 @@ export default function Multitrack() {
                             onClick={() => setLibraryTab('mine')}
                             style={{ flex: 1, padding: '9px', background: libraryTab === 'mine' ? '#00d2d3' : 'transparent', color: libraryTab === 'mine' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                         >
-                            🎵 Mi Librería
+                            🎵 Mi Librería ({librarySongs.length})
                         </button>
                         <button
                             onClick={() => setLibraryTab('global')}
                             style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                         >
-                            🌐 Global (VIP)
+                            🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
                         </button>
                     </div>
 

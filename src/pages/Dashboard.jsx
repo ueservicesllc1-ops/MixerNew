@@ -1269,7 +1269,12 @@ function Dashboard() {
                                 {userPlan?.isVIP ? (
                                     <>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
-                                            <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>Explorar Comunidad (Acceso VIP)</h3>
+                                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>Explorar Comunidad (Acceso VIP)</h3>
+                                                <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '4px' }}>
+                                                    {userSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length} pistas de audio disponibles
+                                                </span>
+                                            </div>
                                             <div style={{ position: 'relative', width: '350px' }}>
                                                 <input
                                                     type="text"
