@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic } from 'lucide-react';
+import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight } from 'lucide-react';
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -14,9 +14,12 @@ export default function Admin() {
     const [libraryChords, setLibraryChords] = useState([]); // Nuevo: Cifrados importados
     const [sellerApps, setSellerApps] = useState([]); // Nuevo: Solicitudes de vendedores
     const [activeTab, setActiveTab] = useState('pending');
+    const [isBulkImporting, setIsBulkImporting] = useState(false);
+    const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
     const [searchUser, setSearchUser] = useState('');
     const [searchArtist, setSearchArtist] = useState('');
     const [filterLetter, setFilterLetter] = useState('ALL'); // Nuevo: Filtro por letra
+    const [expandedArtist, setExpandedArtist] = useState(null); // Nuevo: Acordeón de biblioteca
 
     const [coupons, setCoupons] = useState([]); // Nuevo: Gestión de cupones
     const [newCouponCode, setNewCouponCode] = useState('');
@@ -323,13 +326,22 @@ export default function Admin() {
         }
     };
 
-    const importArtistSong = async (song, btnId) => {
-        if (!window.confirm(`¿Importar cifrado y letra de "${song.name}" de ${selectedArtist.name}?`)) return;
+    const importArtistSong = async (song, btnId = null, silent = false, artist = null) => {
+        const targetArtist = artist || selectedArtist;
+        if (!targetArtist) {
+            console.error("No target artist provided for importArtistSong");
+            return false;
+        }
 
-        const btn = document.getElementById(btnId);
-        if (btn) {
-            btn.innerText = 'IMPORTANDO...';
-            btn.disabled = true;
+        if (!silent && !window.confirm(`¿Importar cifrado y letra de "${song.name}" de ${targetArtist.name}?`)) return;
+
+        let btn = null;
+        if (btnId) {
+            btn = document.getElementById(btnId);
+            if (btn) {
+                btn.innerText = 'IMPORTANDO...';
+                btn.disabled = true;
+            }
         }
 
         try {
@@ -337,7 +349,7 @@ export default function Admin() {
                 ? 'http://localhost:3001'
                 : 'https://mixernew-production.up.railway.app';
 
-            const resp = await fetch(`${devProxy}/api/scrape-full-song?artistSlug=${selectedArtist.slug}&songSlug=${song.slug}`);
+            const resp = await fetch(`${devProxy}/api/scrape-full-song?artistSlug=${targetArtist.slug}&songSlug=${song.slug}`);
             if (!resp.ok) throw new Error(`Error en el servidor: ${resp.status}`);
 
             const data = await resp.json();
@@ -345,11 +357,11 @@ export default function Admin() {
             if (data.content) {
                 const docRef = await addDoc(collection(db, 'songs'), {
                     name: song.name,
-                    artist: selectedArtist.name,
+                    artist: targetArtist.name,
                     status: 'active',
                     isGlobal: true,
-                    price: 9.99,
-                    useType: 'sell',
+                    price: 0,
+                    useType: 'chord',
                     userEmail: 'admin@zionstage.com',
                     createdAt: serverTimestamp()
                 });
@@ -360,13 +372,16 @@ export default function Admin() {
                     createdAt: serverTimestamp()
                 });
 
-                alert(`✅ ¡IMPORTACIÓN EXITOSA!\n\n"${song.name}" de ${selectedArtist.name} ya está en tu biblioteca.`);
+                if (!silent) alert(`✅ ¡IMPORTACIÓN EXITOSA!\n\n"${song.name}" de ${targetArtist.name} ya está en tu biblioteca.`);
+                return true;
             } else {
-                alert(`❌ No se pudo extraer el contenido de "${song.name}".`);
+                if (!silent) alert(`❌ No se pudo extraer el contenido de "${song.name}".`);
+                return false;
             }
         } catch (e) {
             console.error("Error importando canción:", e);
-            alert(`❌ Error al importar: ${e.message}`);
+            if (!silent) alert(`❌ Error al importar: ${e.message}`);
+            return false;
         } finally {
             if (btn) {
                 btn.innerText = '¡IMPORTADO!';
@@ -374,6 +389,65 @@ export default function Admin() {
                 btn.style.color = 'white';
             }
         }
+    };
+
+    const importAllFromArtist = async (artist = null) => {
+        const targetArtist = artist || selectedArtist;
+        if (!targetArtist || !targetArtist.slug) {
+            alert("Selecciona un artista con slug primero.");
+            return;
+        }
+
+        // 1. Si no tenemos la lista de canciones para este artista, primero las traemos
+        let songsToImport = artistSongs;
+        if (!artistSongs.length || (selectedArtist && selectedArtist.id !== targetArtist.id)) {
+            setIsBulkImporting(true);
+            try {
+                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const resp = await fetch(`${devProxy}/api/list-artist-songs?slug=${targetArtist.slug}`);
+                const data = await resp.json();
+                if (data.songs) {
+                    songsToImport = data.songs;
+                    setArtistSongs(data.songs);
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error obteniendo lista de canciones.");
+                setIsBulkImporting(false);
+                return;
+            }
+        }
+
+        if (!songsToImport.length) {
+            alert("No se encontraron canciones para importar.");
+            setIsBulkImporting(false);
+            return;
+        }
+
+        if (!window.confirm(`¿Importar AUTOMÁTICAMENTE las ${songsToImport.length} canciones de ${targetArtist.name}?`)) {
+            setIsBulkImporting(false);
+            return;
+        }
+
+        setSelectedArtist(targetArtist);
+        setIsBulkImporting(true);
+        setBulkProgress({ current: 0, total: songsToImport.length });
+
+        let count = 0;
+        let errors = 0;
+
+        for (const s of songsToImport) {
+            const success = await importArtistSong(s, null, true, targetArtist);
+            if (success) count++;
+            else errors++;
+            setBulkProgress(prev => ({ ...prev, current: prev.current + 1 }));
+            // Pequeña espera para no saturar
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        setIsBulkImporting(false);
+        alert(`🎉 Proceso terminado!\nImportadas: ${count}\nErrores: ${errors}`);
     };
 
     const toggleSongVisibility = async (id, currentStatus) => {
@@ -565,12 +639,13 @@ export default function Admin() {
     if (loading) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}>Cargando Admin...</div>;
     if (!isAdmin) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}><ShieldAlert size={48} color="red" /><h2>Acceso Denegado</h2></div>;
 
-    const forSaleSongs = songs.filter(s => s.forSale === true);
-    const filteredSongs = songs.filter(s =>
-        s.userEmail?.toLowerCase().includes(searchUser.toLowerCase()) ||
-        s.name?.toLowerCase().includes(searchUser.toLowerCase()) ||
-        searchUser === ''
-    );
+    const forSaleSongs = songs.filter(s => s.forSale === true && s.isGlobal !== true);
+    const filteredSongs = songs.filter(s => {
+        const matchesSearch = s.userEmail?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                             s.name?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                             searchUser === '';
+        return matchesSearch && s.isGlobal !== true;
+    });
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
@@ -586,7 +661,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({coupons.length})</button>
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
-                <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({songs.length})</button>
+                <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({filteredSongs.length})</button>
                 <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({appHistory.length})</button>
                 <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({banners.length})</button>
                 <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length})</button>
@@ -661,6 +736,7 @@ export default function Admin() {
                                     </div>
                                     <div style={{ display: 'flex', gap: '10px' }}>
                                         <button onClick={() => fetchArtistSongs(ma)} style={{ background: '#00d2d3', border: 'none', color: '#000', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>LISTAR</button>
+                                        <button onClick={() => importAllFromArtist(ma)} style={{ background: '#f43f5e', border: 'none', color: 'white', padding: '5px 10px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>IMPORTAR TODO</button>
                                         <button onClick={() => deleteMasterArtist(ma.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={16} /></button>
                                     </div>
                                 </div>
@@ -671,7 +747,16 @@ export default function Admin() {
                         <div id="song-scrape-results" style={{ marginTop: '40px', background: 'rgba(0,0,0,0.6)', padding: '30px', borderRadius: '30px', border: '3px solid #00d2d3', boxShadow: '0 0 50px rgba(0, 210, 211, 0.2)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                                 <h3 style={{ margin: 0 }}>Canciones de {selectedArtist.name}</h3>
-                                <button onClick={() => setSelectedArtist(null)} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>Cerrar</button>
+                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                    <button
+                                        onClick={() => importAllFromArtist()}
+                                        disabled={isBulkImporting}
+                                        style={{ background: '#f1c40f', color: '#000', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.8rem' }}
+                                    >
+                                        {isBulkImporting ? `IMPORTANDO... (${bulkProgress.current}/${bulkProgress.total})` : `🔥 IMPORTAR TODAS (${artistSongs.length})`}
+                                    </button>
+                                    <button onClick={() => setSelectedArtist(null)} style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer' }}>Cerrar</button>
+                                </div>
                             </div>
 
                             {isFetchingSongs ? (
@@ -707,32 +792,85 @@ export default function Admin() {
                         </span>
                     </div>
 
-                    <div style={{ background: '#1e293b', borderRadius: '20px', padding: '20px' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '15px' }}>
-                            {songs
+                    <div style={{ background: '#1e293b', borderRadius: '20px', padding: '30px', display: 'flex', flexDirection: 'column', gap: '30px' }}>
+                        {Object.entries(
+                            songs
                                 .filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com')
-                                .map(s => {
-                                    const hasChords = libraryChords.some(c => c.songId === s.id);
-                                    return (
-                                        <div key={s.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '15px 20px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                            <div>
-                                                <div style={{ fontWeight: '800', fontSize: '1rem' }}>{s.name}</div>
-                                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{s.artist}</div>
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '10px', background: hasChords ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: hasChords ? '#10b981' : '#ef4444' }}>
-                                                    {hasChords ? '✓ CON CIFRADO' : '✗ SIN CIFRADO'}
-                                                </span>
-                                                <div style={{ display: 'flex', gap: '8px' }}>
-                                                    {hasChords && <button onClick={() => setViewingChord(libraryChords.find(c => c.songId === s.id))} style={{ background: '#00d2d3', border: 'none', color: 'black', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold' }}>VER CIFRADO</button>}
-                                                    <button onClick={() => deleteSong(s.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={16} /></button>
-                                                </div>
+                                .reduce((acc, s) => {
+                                    const artistName = s.artist || 'Desconocido';
+                                    if (!acc[artistName]) acc[artistName] = [];
+                                    acc[artistName].push(s);
+                                    return acc;
+                                }, {})
+                        )
+                        .sort(([a], [b]) => a.localeCompare(b))
+                        .map(([artistName, artistSongsList]) => {
+                            const isExpanded = expandedArtist === artistName;
+                            return (
+                                <div key={artistName} style={{ background: 'rgba(255,255,255,0.02)', borderRadius: '20px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    {/* Header del Artista (Clickable) */}
+                                    <div 
+                                        onClick={() => setExpandedArtist(isExpanded ? null : artistName)}
+                                        style={{ 
+                                            padding: '20px 25px', 
+                                            background: isExpanded ? 'rgba(0,210,211,0.1)' : 'transparent',
+                                            cursor: 'pointer',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        <h3 style={{ margin: 0, color: isExpanded ? '#00d2d3' : 'white', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.1rem' }}>
+                                            <User size={20} />
+                                            {artistName} 
+                                            <span style={{ fontSize: '0.8rem', opacity: 0.5, fontWeight: 'normal' }}>({artistSongsList.length} canciones)</span>
+                                        </h3>
+                                        {isExpanded ? <ChevronDown size={20} color="#00d2d3" /> : <ChevronRight size={20} color="#64748b" />}
+                                    </div>
+                                    
+                                    {/* Lista de Canciones (Colapsable) */}
+                                    {isExpanded && (
+                                        <div style={{ padding: '20px 25px', background: 'rgba(0,0,0,0.2)', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '15px' }}>
+                                                {artistSongsList
+                                                    .sort((a, b) => a.name.localeCompare(b.name))
+                                                    .map(s => {
+                                                        const hasChords = libraryChords.some(c => c.songId === s.id);
+                                                        return (
+                                                            <div key={s.id} style={{ background: 'rgba(255,255,255,0.03)', padding: '15px 20px', borderRadius: '15px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                                                <div style={{ fontWeight: '800', fontSize: '0.9rem' }}>{s.name}</div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '10px', background: hasChords ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: hasChords ? '#10b981' : '#ef4444' }}>
+                                                                        {hasChords ? '✓ CON CIFRADO' : '✗ SIN CIFRADO'}
+                                                                    </span>
+                                                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                                                        {hasChords && (
+                                                                            <button 
+                                                                                onClick={() => setViewingChord(libraryChords.find(c => c.songId === s.id))} 
+                                                                                style={{ background: '#00d2d3', border: 'none', color: 'black', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}
+                                                                            >
+                                                                                VER
+                                                                            </button>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => deleteSong(s.id)} 
+                                                                            style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}
+                                                                        >
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                }
                                             </div>
                                         </div>
-                                    );
-                                })
-                            }
-                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     {viewingChord && (

@@ -5,8 +5,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return request.auth != null && 
-             request.auth.token.email != null && 
-             request.auth.token.email.lower() == 'ueservicesllc1@gmail.com';
+             (request.auth.uid == 'qMQmpXvp1Fe5da8Ud64tyNgcRbH2' || 
+              (request.auth.token.email != null && 
+               request.auth.token.email.lower() == 'ueservicesllc1@gmail.com'));
     }
 
     // -- USERS: owner or admin
