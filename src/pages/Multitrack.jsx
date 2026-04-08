@@ -1151,8 +1151,7 @@ export default function Multitrack() {
                 if (prev && list.find(p => p.id === prev.id)) return prev;
                 return list[0] || null;
             });
-        }, (err) => {
-            console.error('[PARTITURAS] Error cargando:', err);
+        });
         return () => unsub();
     }, [activeSongId]);
 
@@ -1171,7 +1170,7 @@ export default function Multitrack() {
             return;
         }
 
-        console.log(`[TEXTS] ≡ƒöì Buscando Letras y Acordes para ID: ${viewedSongId}`);
+        console.log(`[TEXTS] 🔍 Buscando Letras y Acordes para ID: ${viewedSongId}`);
         setActiveLyrics('loading');
         setActiveChords('loading');
 
@@ -1299,7 +1298,7 @@ export default function Multitrack() {
     const [countdown, setCountdown] = useState(10);
     const countdownRef = useRef(null);
 
-    // ΓöÇΓöÇ ORIENTATION MANAGEMENT ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // ── ORIENTATION MANAGEMENT ───────────────────────────────────
     useEffect(() => {
         // Detect native environment
         const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
@@ -1747,7 +1746,7 @@ export default function Multitrack() {
                                                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                                                         <input 
                                                             type="text" 
-                                                            placeholder={`Buscar otra ${activeTab === 'lyrics' ? 'letra' : 'progresión'}...`}
+                                                            placeholder={`Buscar otra ${activeTab === 'lyrics' ? 'letra' : 'progresion'}...`}
                                                             value={quickTextSearch}
                                                             onChange={(e) => setQuickTextSearch(e.target.value)}
                                                             onFocus={() => setIsSearchingTexts(true)}
@@ -2655,8 +2654,8 @@ export default function Multitrack() {
                 </div>
             )}
         </div>
-    )
-}
+        );
+    }
 
 function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) {
     const {
@@ -2687,7 +2686,6 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    {/* Reorder handle */}
                     <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
