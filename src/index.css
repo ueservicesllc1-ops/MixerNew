@@ -1654,9 +1654,9 @@ input[type="tel"],
 input[type="password"],
 textarea, 
 select {
-  color: #000000 !important;
-  background-color: #ffffff !important;
-  border: 1px solid #cbd5e1 !important;
+  color: #000000;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
 }
 
 body.dark-mode input[type="text"],
@@ -1665,9 +1665,9 @@ body.dark-mode input[type="email"],
 body.dark-mode input[type="tel"],
 body.dark-mode textarea,
 body.dark-mode select {
-  background: #ffffff !important;
-  border-color: #94a3b8 !important;
-  color: #000000 !important;
+  background: #ffffff;
+  border-color: #94a3b8;
+  color: #000000;
 }
 
 body.dark-mode .drawer-overlay {

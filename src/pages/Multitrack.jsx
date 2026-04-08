@@ -1742,7 +1742,7 @@ export default function Multitrack() {
                                         {(activeTab === 'lyrics' || activeTab === 'chords') && (
                                             <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', marginLeft: '2px', marginRight: '10px' }}>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
-                                                    <div style={{ position: 'relative', flex: 1 }}>
+                                                    <div style={{ position: 'relative', width: '250px', transform: 'translateX(-40px)', marginLeft: '0px' }}>
                                                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
                                                         <input 
                                                             type="text" 
@@ -1753,10 +1753,10 @@ export default function Multitrack() {
                                                             style={{
                                                                 width: '100%',
                                                                 padding: '10px 15px 10px 40px',
-                                                                background: '#1c1c1e',
-                                                                border: '1px solid #333',
+                                                                background: '#ffffff',
+                                                                border: '1px solid #cbd5e1',
                                                                 borderRadius: '8px',
-                                                                color: 'white',
+                                                                color: '#000000',
                                                                 fontSize: '0.9rem'
                                                             }}
                                                         />
