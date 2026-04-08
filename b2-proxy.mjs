@@ -757,6 +757,64 @@ app.get('/api/scrape-full-song', async (req, res) => {
     }
 });
 
+// ── Search LaCuerda by artist + song name ────────────────────────────────────
+// GET /api/search-lacuerda?artist=montesanto&song=herencia
+app.get('/api/search-lacuerda', async (req, res) => {
+    try {
+        const { artist = '', song = '' } = req.query;
+        const q = encodeURIComponent(`${artist} ${song}`.trim());
+        const searchUrl = `https://acordes.lacuerda.net/busca.php?q=${q}`;
+
+        console.log(`🔍 Buscando en LaCuerda: "${artist} - ${song}"...`);
+        const resp = await fetch(searchUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            timeout: 12000
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const html = await resp.text();
+
+        const results = [];
+        const seen = new Set();
+
+        // LaCuerda search results: links like /artist_slug/song_slug or /artist_slug/song_slug.shtml
+        // Pattern: href="/artistSlug/songSlug" or href="/artistSlug/songSlug.shtml"
+        const regex = /href=['"]\/([a-z0-9_-]+)\/([a-z0-9_-]+?)(?:\.shtml)?['"]/gi;
+        let m;
+        while ((m = regex.exec(html)) !== null) {
+            const artistSlug = m[1];
+            const songSlug = m[2];
+            const key = `${artistSlug}/${songSlug}`;
+            // Skip navigation/non-content links
+            if (['ARCH','busca', 'indices'].includes(artistSlug)) continue;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            // Try to extract display name from surrounding context
+            // Look for text near this link in the HTML
+            const idx = m.index;
+            const snippet = html.slice(Math.max(0, idx - 20), idx + 300);
+            const nameMatch = snippet.match(/\u003e([^<]{3,80})\u003c\/a\u003e/i);
+            const displayName = nameMatch ? nameMatch[1].replace(/\s+/g, ' ').trim() : `${artistSlug} / ${songSlug}`;
+
+            results.push({
+                artistSlug,
+                songSlug,
+                displayName,
+                url: `https://acordes.lacuerda.net/${artistSlug}/${songSlug}`
+            });
+
+            if (results.length >= 12) break; // max 12 results
+        }
+
+        console.log(`✅ Búsqueda completada: ${results.length} resultados.`);
+        res.json({ results });
+    } catch (error) {
+        console.error("🚨 Error Search LaCuerda:", error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
 // CONFIGURACIÓN DE FRONTEND Y SPA (DEBE IR AL FINAL)
 if (fs.existsSync(distPath)) {
     console.log("📂 Carpeta 'dist' detectada. Sirviendo aplicación...");

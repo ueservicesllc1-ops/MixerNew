@@ -34,10 +34,19 @@ export default function Recursos() {
     const resources = [
         {
             category: 'music',
-            title: 'Base de Letras y Acordes',
-            desc: 'Accede a miles de cifrados precisos preparados para Zion Stage.',
+            title: 'Letras (Teleprompter)',
+            desc: 'Letras limpias listas para usar en el teleprompter de Zion Stage. Ordenadas por artista.',
             icon: <FileText size={40} color="#00d2d3" />,
-            status: 'Disponible'
+            status: 'Disponible',
+            path: '/library?type=lyrics'
+        },
+        {
+            category: 'music',
+            title: 'Cifrados Oficiales',
+            desc: 'Miles de cifrados precisos con acordes para tus músicos. Ordenados por artista.',
+            icon: <Music size={40} color="#f1c40f" />,
+            status: 'Disponible',
+            path: '/library?type=chords'
         },
         {
             category: 'leads',
@@ -140,8 +149,8 @@ export default function Recursos() {
                             overflow: 'hidden'
                         }}
                             onClick={() => {
-                                if (res.category === 'music' && res.title.includes('Letras')) navigate('/library');
-                                if (res.category === 'tech' && res.title.includes('Audio')) navigate('/recursos/audio');
+                                if (res.path) navigate(res.path);
+                                else if (res.category === 'tech' && res.title.includes('Audio')) navigate('/recursos/audio');
                             }}
                             onMouseEnter={e => {
                                 e.currentTarget.style.transform = 'translateY(-8px)';

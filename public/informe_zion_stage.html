@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zion Stage — Manual para Community Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --teal: #00d2d3;
+            --gold: #f1c40f;
+            --purple: #9b59b6;
+            --green: #10b981;
+            --red: #ef4444;
+            --dark-1: #020617;
+            --dark-2: #0f172a;
+            --dark-3: #1e293b;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --dim: #64748b;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        @page {
+            margin: 0;
+            size: A4;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--dark-1);
+            color: var(--text);
+            line-height: 1.7;
+            font-size: 11pt;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        /* ═══════════════ COVER PAGE ═══════════════ */
+        .cover {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: var(--dark-1);
+            position: relative;
+            overflow: hidden;
+            padding: 60px 40px;
+            page-break-after: always;
+        }
+        .cover::before {
+            content: '';
+            position: absolute;
+            top: -200px;
+            left: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0,210,211,0.12), transparent);
+            border-radius: 50%;
+        }
+        .cover::after {
+            content: '';
+            position: absolute;
+            bottom: -250px;
+            right: -200px;
+            width: 700px;
+            height: 700px;
+            background: radial-gradient(circle, rgba(155,89,182,0.08), transparent);
+            border-radius: 50%;
+        }
+        .cover-logo {
+            font-size: 3.2rem;
+            font-weight: 900;
+            letter-spacing: -2px;
+            background: linear-gradient(135deg, var(--teal), #00ffff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        .cover-badge {
+            display: inline-block;
+            background: rgba(0,210,211,0.1);
+            border: 1px solid rgba(0,210,211,0.3);
+            color: var(--teal);
+            padding: 6px 20px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+            position: relative;
+            z-index: 1;
+        }
+        .cover-title {
+            font-size: 2.4rem;
+            font-weight: 900;
+            line-height: 1.15;
+            max-width: 600px;
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 1;
+        }
+        .cover-subtitle {
+            font-size: 1.1rem;
+            color: var(--muted);
+            max-width: 500px;
+            margin-bottom: 60px;
+            position: relative;
+            z-index: 1;
+        }
+        .cover-meta {
+            color: var(--dim);
+            font-size: 0.85rem;
+            position: relative;
+            z-index: 1;
+        }
+        .cover-meta span {
+            color: var(--teal);
+            font-weight: 700;
+        }
+        .cover-divider {
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(to right, var(--teal), var(--purple));
+            border-radius: 2px;
+            margin: 30px auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══════════════ CONTENT PAGES ═══════════════ */
+        .page {
+            padding: 60px 55px;
+            min-height: 100vh;
+            page-break-after: always;
+            position: relative;
+        }
+        .page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(to right, var(--teal), var(--purple), var(--gold));
+        }
+
+        /* ═══════════════ TYPOGRAPHY ═══════════════ */
+        .section-number {
+            font-size: 0.7rem;
+            font-weight: 800;
+            color: var(--teal);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        h1 {
+            font-size: 1.9rem;
+            font-weight: 900;
+            margin-bottom: 24px;
+            line-height: 1.2;
+        }
+        h2 {
+            font-size: 1.3rem;
+            font-weight: 800;
+            margin: 32px 0 14px;
+            color: white;
+        }
+        h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin: 20px 0 10px;
+            color: var(--teal);
+        }
+        p {
+            margin-bottom: 14px;
+            color: var(--muted);
+        }
+        .highlight {
+            color: var(--teal);
+            font-weight: 700;
+        }
+
+        /* ═══════════════ CARDS ═══════════════ */
+        .card {
+            background: var(--dark-3);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 16px;
+        }
+        .card-teal {
+            border-left: 3px solid var(--teal);
+        }
+        .card-gold {
+            border-left: 3px solid var(--gold);
+        }
+        .card-purple {
+            border-left: 3px solid var(--purple);
+        }
+        .card-green {
+            border-left: 3px solid var(--green);
+        }
+
+        /* ═══════════════ QUOTE ═══════════════ */
+        .quote {
+            background: rgba(0,210,211,0.06);
+            border: 1px solid rgba(0,210,211,0.15);
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin: 20px 0;
+            font-style: italic;
+            color: var(--text);
+            font-size: 1rem;
+            position: relative;
+        }
+        .quote::before {
+            content: '"';
+            position: absolute;
+            top: -5px;
+            left: 16px;
+            font-size: 3rem;
+            color: var(--teal);
+            opacity: 0.3;
+            font-style: normal;
+        }
+
+        /* ═══════════════ TABLES ═══════════════ */
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin: 16px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.06);
+        }
+        th {
+            background: var(--dark-3);
+            color: var(--teal);
+            font-weight: 700;
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            padding: 14px 16px;
+            text-align: left;
+        }
+        td {
+            padding: 12px 16px;
+            border-top: 1px solid rgba(255,255,255,0.04);
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        tr:nth-child(even) td {
+            background: rgba(255,255,255,0.02);
+        }
+
+        /* ═══════════════ GRID ═══════════════ */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px;
+        }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* ═══════════════ BADGES ═══════════════ */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+        }
+        .badge-teal {
+            background: rgba(0,210,211,0.1);
+            color: var(--teal);
+            border: 1px solid rgba(0,210,211,0.2);
+        }
+        .badge-gold {
+            background: rgba(241,196,15,0.1);
+            color: var(--gold);
+            border: 1px solid rgba(241,196,15,0.2);
+        }
+        .badge-purple {
+            background: rgba(155,89,182,0.1);
+            color: var(--purple);
+            border: 1px solid rgba(155,89,182,0.2);
+        }
+        .badge-green {
+            background: rgba(16,185,129,0.1);
+            color: var(--green);
+            border: 1px solid rgba(16,185,129,0.2);
+        }
+
+        /* ═══════════════ FEATURE LIST ═══════════════ */
+        .feature-item {
+            display: flex;
+            gap: 14px;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .feature-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .feature-icon-teal {
+            background: rgba(0,210,211,0.1);
+            border: 1px solid rgba(0,210,211,0.2);
+        }
+        .feature-icon-gold {
+            background: rgba(241,196,15,0.1);
+            border: 1px solid rgba(241,196,15,0.2);
+        }
+
+        /* ═══════════════ TAGS ═══════════════ */
+        .tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 12px 0;
+        }
+        .tag {
+            background: var(--dark-3);
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--muted);
+            font-family: 'Outfit', monospace;
+        }
+
+        /* ═══════════════ TONE BOXES ═══════════════ */
+        .tone-yes {
+            background: rgba(16,185,129,0.06);
+            border: 1px solid rgba(16,185,129,0.15);
+            border-radius: 12px;
+            padding: 18px 22px;
+        }
+        .tone-no {
+            background: rgba(239,68,68,0.06);
+            border: 1px solid rgba(239,68,68,0.15);
+            border-radius: 12px;
+            padding: 18px 22px;
+        }
+        .tone-yes h3 { color: var(--green); }
+        .tone-no h3 { color: var(--red); }
+
+        .list-clean {
+            list-style: none;
+            padding: 0;
+        }
+        .list-clean li {
+            padding: 6px 0;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .list-clean li::before {
+            margin-right: 8px;
+            font-weight: 700;
+        }
+
+        /* ═══════════════ CALENDAR ═══════════════ */
+        .cal-row {
+            display: grid;
+            grid-template-columns: 100px 1fr 120px;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            align-items: center;
+        }
+        .cal-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
+        .cal-day {
+            font-weight: 800;
+            font-size: 0.85rem;
+            color: white;
+        }
+        .cal-content {
+            color: var(--muted);
+            font-size: 0.85rem;
+        }
+        .cal-platform {
+            font-size: 0.75rem;
+            color: var(--dim);
+            text-align: right;
+        }
+
+        /* ═══════════════ COLORS PALETTE ═══════════════ */
+        .color-swatch {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 10px;
+        }
+        .swatch {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 2px solid rgba(255,255,255,0.1);
+        }
+        .swatch-label {
+            font-size: 0.85rem;
+        }
+        .swatch-label span {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--dim);
+            font-family: monospace;
+        }
+
+        /* ═══════════════ FOOTER ═══════════════ */
+        .page-footer {
+            position: absolute;
+            bottom: 30px;
+            left: 55px;
+            right: 55px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--dim);
+            border-top: 1px solid rgba(255,255,255,0.04);
+            padding-top: 12px;
+        }
+
+        /* ═══════════════ PRINT BUTTON ═══════════════ */
+        .print-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: var(--teal);
+            color: black;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 14px;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(0,210,211,0.4);
+            z-index: 9999;
+            font-family: 'Outfit', sans-serif;
+            transition: transform 0.2s;
+        }
+        .print-btn:hover { transform: scale(1.05); }
+        @media print {
+            .print-btn { display: none; }
+        }
+
+        /* ═══════════════ USP BOXES ═══════════════ */
+        .usp-box {
+            background: var(--dark-2);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 14px;
+            padding: 20px;
+            text-align: center;
+        }
+        .usp-box .number {
+            font-size: 2rem;
+            font-weight: 900;
+            color: var(--teal);
+            line-height: 1;
+        }
+        .usp-box .label {
+            font-size: 0.75rem;
+            color: var(--dim);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 4px;
+        }
+
+        .pilar-pct {
+            font-size: 2rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PORTADA -->
+<!-- ═══════════════════════════════════════ -->
+<div class="cover">
+    <div class="cover-badge">Documento Confidencial · 2026</div>
+    <div class="cover-logo">ZION STAGE</div>
+    <div class="cover-divider"></div>
+    <div class="cover-title">Manual Estratégico para Community Manager</div>
+    <p class="cover-subtitle">Todo lo que necesitas saber sobre el producto, la audiencia y la estrategia de contenido para posicionar Zion Stage como la plataforma #1 de multitracks para músicos cristianos.</p>
+    <div class="cover-meta">
+        Preparado por: <span>Freedom Labs</span> &nbsp;·&nbsp; Abril 2026
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 1: ¿QUÉ ES ZION STAGE? -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 01</div>
+    <h1>¿Qué es Zion Stage?</h1>
+
+    <p><strong style="color:white">Zion Stage</strong> es una plataforma todo-en-uno diseñada específicamente para <span class="highlight">líderes de alabanza, músicos de iglesia y equipos de adoración</span>. Permite gestionar, mezclar y reproducir multitracks (pistas separadas de audio) en tiempo real desde cualquier dispositivo.</p>
+
+    <div class="quote">
+        Zion Stage es la plataforma definitiva para líderes de alabanza. Multitracks de alta calidad, sincroniza con tu equipo y lleva tu sonido al siguiente nivel con nuestro motor de audio nativo.
+    </div>
+
+    <h2>La empresa: Freedom Labs</h2>
+    <div class="card card-teal">
+        <p style="margin:0;color:var(--text)">Equipo de <strong>músicos y desarrolladores</strong> con sede en New Jersey, USA. Nació de la frustración real de un director de alabanza que necesitaba una solución profesional para manejar pistas en vivo. Todo comenzó en una iglesia pequeña donde la laptop fallaba justo antes del servicio.</p>
+    </div>
+
+    <h2>Funcionalidades Clave</h2>
+    <table>
+        <tr><th style="width:50px">🎛️</th><th>Función</th><th>Descripción</th></tr>
+        <tr><td>🎛️</td><td style="color:white;font-weight:700">Mixer Multitrack</td><td>Mezcla pistas individuales con volumen, mute, solo y paneo en tiempo real</td></tr>
+        <tr><td>☁️</td><td style="color:white;font-weight:700">Nube Personal</td><td>Sube tus WAVs/MP3s a la nube. Organiza por canciones y setlists</td></tr>
+        <tr><td>📱</td><td style="color:white;font-weight:700">App Android Nativa</td><td>Motor de audio de alto rendimiento con baja latencia. Funciona offline</td></tr>
+        <tr><td>🌐</td><td style="color:white;font-weight:700">Web App</td><td>Acceso completo desde el navegador — edita en PC, ensaya en móvil</td></tr>
+        <tr><td>🎵</td><td style="color:white;font-weight:700">Marketplace</td><td>Compra y vende pistas multitrack directamente en la plataforma</td></tr>
+        <tr><td>📖</td><td style="color:white;font-weight:700">Letras y Cifrados</td><td>Visualiza letras y acordes sincronizados mientras mezclas</td></tr>
+        <tr><td>🔗</td><td style="color:white;font-weight:700">Biblioteca Global</td><td>Acceso a cifrados de miles de canciones de adoración</td></tr>
+        <tr><td>💰</td><td style="color:white;font-weight:700">Programa Vendedores</td><td>Los músicos venden sus creaciones originales a la comunidad</td></tr>
+    </table>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 1</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 2: PÚBLICO OBJETIVO -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 02</div>
+    <h1>Público Objetivo</h1>
+
+    <div class="grid-2">
+        <div>
+            <h2>Perfil Primario</h2>
+            <div class="card card-teal">
+                <div class="feature-item">
+                    <div class="feature-icon feature-icon-teal">🎤</div>
+                    <div>
+                        <strong style="color:white">Líderes de alabanza</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">De todas las denominaciones cristianas</span>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon feature-icon-teal">🥁</div>
+                    <div>
+                        <strong style="color:white">Músicos de iglesia</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">Bateristas, bajistas, tecladistas, guitarristas</span>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon feature-icon-teal">⛪</div>
+                    <div>
+                        <strong style="color:white">Iglesias pequeñas-medianas</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">Que quieren sonar profesional sin banda completa</span>
+                    </div>
+                </div>
+                <div class="feature-item" style="margin-bottom:0">
+                    <div class="feature-icon feature-icon-teal">🎹</div>
+                    <div>
+                        <strong style="color:white">Directores de adoración</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">Que coordinan equipos musicales</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div>
+            <h2>Perfil Secundario</h2>
+            <div class="card card-purple">
+                <div class="feature-item">
+                    <div class="feature-icon" style="background:rgba(155,89,182,0.1);border:1px solid rgba(155,89,182,0.2)">🎧</div>
+                    <div>
+                        <strong style="color:white">Productores musicales cristianos</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">Que venden sus multitracks</span>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon" style="background:rgba(155,89,182,0.1);border:1px solid rgba(155,89,182,0.2)">📚</div>
+                    <div>
+                        <strong style="color:white">Escuelas de música cristiana</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">Academias de adoración</span>
+                    </div>
+                </div>
+                <div class="feature-item" style="margin-bottom:0">
+                    <div class="feature-icon" style="background:rgba(155,89,182,0.1);border:1px solid rgba(155,89,182,0.2)">🌎</div>
+                    <div>
+                        <strong style="color:white">Ministerios itinerantes</strong><br>
+                        <span style="color:var(--muted);font-size:0.85rem">De adoración y conferencias</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2>Demografía</h2>
+    <div class="grid-4">
+        <div class="usp-box">
+            <div class="number">18-45</div>
+            <div class="label">Rango de Edad</div>
+        </div>
+        <div class="usp-box">
+            <div class="number">LATAM</div>
+            <div class="label">Foco Principal</div>
+        </div>
+        <div class="usp-box">
+            <div class="number">ES</div>
+            <div class="label">Idioma</div>
+        </div>
+        <div class="usp-box">
+            <div class="number">M/F</div>
+            <div class="label">Género Mixto</div>
+        </div>
+    </div>
+
+    <h2>Propuesta de Valor Única — ¿Por qué Zion?</h2>
+    <div class="grid-2">
+        <div class="card" style="border-top:3px solid var(--teal)">
+            <span class="badge badge-teal" style="margin-bottom:8px">Diferenciador 1</span>
+            <h3 style="margin-top:8px">100% en Español</h3>
+            <p style="margin:0;font-size:0.85rem">Interfaz, soporte y comunicación. No es una traducción forzada.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--gold)">
+            <span class="badge badge-gold" style="margin-bottom:8px">Diferenciador 2</span>
+            <h3 style="margin-top:8px;color:var(--gold)">Motor de Audio Nativo</h3>
+            <p style="margin:0;font-size:0.85rem">Rendimiento profesional con cero latencia en dispositivos reales.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--purple)">
+            <span class="badge badge-purple" style="margin-bottom:8px">Diferenciador 3</span>
+            <h3 style="margin-top:8px;color:var(--purple)">Sube tu Propia Biblioteca</h3>
+            <p style="margin:0;font-size:0.85rem">No estás limitado a un catálogo. Tus propios WAVs en la nube.</p>
+        </div>
+        <div class="card" style="border-top:3px solid var(--green)">
+            <span class="badge badge-green" style="margin-bottom:8px">Diferenciador 4</span>
+            <h3 style="margin-top:8px;color:var(--green)">Marketplace Comunitario</h3>
+            <p style="margin:0;font-size:0.85rem">Compra Y vende pistas directamente entre músicos de la comunidad.</p>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 2</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 3: PLANES Y PRECIOS -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 03</div>
+    <h1>Planes y Precios</h1>
+
+    <div class="grid-2" style="margin-bottom: 24px;">
+        <div class="card" style="border: 1px solid rgba(0,210,211,0.2);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <span style="font-size:1.5rem">🌐</span>
+                <h3 style="margin:0;font-size:1.2rem">Planes Estándar</h3>
+            </div>
+            <p style="font-size:0.85rem">Almacenamiento seguro en la nube para pistas personales</p>
+            <table>
+                <tr><th>Plan</th><th>Storage</th><th>Mensual</th><th>Anual</th></tr>
+                <tr><td style="color:white;font-weight:700">Básico</td><td>2 GB</td><td style="color:var(--teal);font-weight:800">$4.99</td><td>$41.92</td></tr>
+                <tr><td style="color:white;font-weight:700">Estándar</td><td>5 GB</td><td style="color:var(--teal);font-weight:800">$6.99</td><td>$58.72</td></tr>
+                <tr><td style="color:white;font-weight:700">Plus</td><td>10 GB</td><td style="color:var(--teal);font-weight:800">$9.99</td><td>$83.92</td></tr>
+            </table>
+        </div>
+
+        <div class="card" style="border: 1px solid rgba(241,196,15,0.25); position:relative;">
+            <div style="position:absolute;top:-12px;right:20px;background:var(--gold);color:black;padding:4px 14px;border-radius:20px;font-size:0.65rem;font-weight:800;letter-spacing:1px">MÁS POPULAR</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+                <span style="font-size:1.5rem">🔑</span>
+                <h3 style="margin:0;font-size:1.2rem;color:var(--gold)">Planes Premium VIP</h3>
+            </div>
+            <p style="font-size:0.85rem">Todo Estándar + <strong style="color:var(--gold)">biblioteca global completa</strong></p>
+            <table>
+                <tr><th>Plan</th><th>Storage</th><th>Mensual</th><th>Anual</th></tr>
+                <tr><td style="color:var(--gold);font-weight:700">Básico VIP</td><td>2 GB</td><td style="color:var(--gold);font-weight:800">$7.99</td><td>$67.12</td></tr>
+                <tr><td style="color:var(--gold);font-weight:700">Estándar VIP</td><td>5 GB</td><td style="color:var(--gold);font-weight:800">$9.99</td><td>$83.92</td></tr>
+                <tr><td style="color:var(--gold);font-weight:700">Plus VIP</td><td>10 GB</td><td style="color:var(--gold);font-weight:800">$12.99</td><td>$109.12</td></tr>
+            </table>
+        </div>
+    </div>
+
+    <div class="card card-green">
+        <h3 style="color:var(--green);margin-top:0">💡 Nota para CM</h3>
+        <p style="margin:0;font-size:0.9rem">Los planes VIP dan acceso a la <strong style="color:white">biblioteca global completa</strong> de canciones de la comunidad. Este es el upgrade más atractivo para promocionar. El plan anual ofrece un <strong style="color:var(--gold)">30% de descuento</strong>. Las pistas del Marketplace se venden individualmente (~$9.90 USD).</p>
+    </div>
+
+    <h2>Assets de Marca</h2>
+    <div class="grid-2">
+        <div>
+            <h3 style="font-size:0.9rem">Paleta de Colores</h3>
+            <div class="color-swatch">
+                <div class="swatch" style="background:#00d2d3"></div>
+                <div class="swatch-label"><strong style="color:white">Cian / Teal</strong><span>#00d2d3</span></div>
+            </div>
+            <div class="color-swatch">
+                <div class="swatch" style="background:#f1c40f"></div>
+                <div class="swatch-label"><strong style="color:white">Dorado (VIP)</strong><span>#f1c40f</span></div>
+            </div>
+            <div class="color-swatch">
+                <div class="swatch" style="background:#9b59b6"></div>
+                <div class="swatch-label"><strong style="color:white">Púrpura</strong><span>#9b59b6</span></div>
+            </div>
+            <div class="color-swatch">
+                <div class="swatch" style="background:#020617;border-color:rgba(255,255,255,0.2)"></div>
+                <div class="swatch-label"><strong style="color:white">Fondo Oscuro</strong><span>#020617</span></div>
+            </div>
+        </div>
+        <div>
+            <h3 style="font-size:0.9rem">Tipografía y Logo</h3>
+            <div class="card" style="text-align:center;padding:30px">
+                <div style="font-size:2rem;font-weight:900;background:linear-gradient(135deg,#00d2d3,#00ffff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px">ZION STAGE</div>
+                <div style="color:var(--dim);font-size:0.8rem;margin-bottom:16px">Logo: /logo2blanco.png</div>
+                <div style="font-weight:300;font-size:0.9rem;color:var(--muted)">Tipografía: <strong style="color:white">Outfit</strong> (Google Fonts)</div>
+                <div style="font-weight:900;font-size:1.2rem;margin-top:8px;color:white">Aa Bb Cc 123</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 3</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 4: PILARES DE CONTENIDO -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 04</div>
+    <h1>Pilares de Contenido</h1>
+
+    <div class="grid-2" style="margin-bottom:16px">
+        <div class="card" style="border-top:3px solid var(--teal)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                    <span class="badge badge-teal">Pilar 1</span>
+                    <h3 style="margin-top:10px">🎓 Educación</h3>
+                </div>
+                <div class="pilar-pct" style="color:var(--teal)">40%</div>
+            </div>
+            <p style="font-size:0.85rem;margin-bottom:8px"><strong style="color:white">Objetivo:</strong> Posicionarse como expertos</p>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>• ¿Qué son multitracks y cómo usarlos?</li>
+                <li>• 5 errores con el sonido en iglesia</li>
+                <li>• Cómo mezclar sin ser ingeniero</li>
+                <li>• Tutoriales de la plataforma</li>
+                <li>• Tips de audio para iglesias</li>
+            </ul>
+        </div>
+
+        <div class="card" style="border-top:3px solid var(--purple)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                    <span class="badge badge-purple">Pilar 2</span>
+                    <h3 style="margin-top:10px;color:var(--purple)">🙏 Inspiración</h3>
+                </div>
+                <div class="pilar-pct" style="color:var(--purple)">25%</div>
+            </div>
+            <p style="font-size:0.85rem;margin-bottom:8px"><strong style="color:white">Objetivo:</strong> Conectar emocionalmente</p>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>• Testimonios de iglesias</li>
+                <li>• Detrás del escenario (Freedom Labs)</li>
+                <li>• Devocionales para músicos</li>
+                <li>• Frases motivacionales con branding</li>
+                <li>• Historias de líderes de alabanza</li>
+            </ul>
+        </div>
+
+        <div class="card" style="border-top:3px solid var(--gold)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                    <span class="badge badge-gold">Pilar 3</span>
+                    <h3 style="margin-top:10px;color:var(--gold)">🎵 Producto</h3>
+                </div>
+                <div class="pilar-pct" style="color:var(--gold)">25%</div>
+            </div>
+            <p style="font-size:0.85rem;margin-bottom:8px"><strong style="color:white">Objetivo:</strong> Mostrar el producto en acción</p>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>• Videos del mixer en tiempo real</li>
+                <li>• Before/After de sonido</li>
+                <li>• Nuevas canciones del Marketplace</li>
+                <li>• Feature highlights</li>
+                <li>• Capturas del Dashboard</li>
+            </ul>
+        </div>
+
+        <div class="card" style="border-top:3px solid var(--green)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+                <div>
+                    <span class="badge badge-green">Pilar 4</span>
+                    <h3 style="margin-top:10px;color:var(--green)">💰 Conversión</h3>
+                </div>
+                <div class="pilar-pct" style="color:var(--green)">10%</div>
+            </div>
+            <p style="font-size:0.85rem;margin-bottom:8px"><strong style="color:white">Objetivo:</strong> Generar registros y ventas</p>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>• Ofertas planes anuales</li>
+                <li>• Cupones especiales</li>
+                <li>• CTA: "Regístrate gratis"</li>
+                <li>• Comparativas de planes</li>
+                <li>• Reels de prueba rápida</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2>Estrategia por Plataforma</h2>
+    <table>
+        <tr><th>Plataforma</th><th>Formato Principal</th><th>Frecuencia</th><th>Prioridad</th></tr>
+        <tr>
+            <td style="color:white;font-weight:700">📸 Instagram</td>
+            <td>Reels 70% · Carruseles 20% · Stories 10%</td>
+            <td>4-5 posts/sem + Stories diarias</td>
+            <td><span class="badge badge-teal">PRINCIPAL</span></td>
+        </tr>
+        <tr>
+            <td style="color:white;font-weight:700">🎬 YouTube</td>
+            <td>Tutoriales largos + Shorts</td>
+            <td>1 largo/sem + 2-3 Shorts</td>
+            <td><span class="badge badge-gold">ALTA</span></td>
+        </tr>
+        <tr>
+            <td style="color:white;font-weight:700">📱 TikTok</td>
+            <td>Videos cortos 15-60s</td>
+            <td>3-5/semana</td>
+            <td><span class="badge badge-purple">MEDIA</span></td>
+        </tr>
+        <tr>
+            <td style="color:white;font-weight:700">👥 Facebook</td>
+            <td>Posts en grupos + página</td>
+            <td>3/semana</td>
+            <td><span class="badge badge-green">SOPORTE</span></td>
+        </tr>
+    </table>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 4</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 5: CALENDARIO + TONO + HASHTAGS -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 05</div>
+    <h1>Calendario, Tono y Hashtags</h1>
+
+    <h2>Calendario Editorial Semanal</h2>
+    <div style="border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;margin-bottom:24px">
+        <div class="cal-row" style="background:var(--dark-3)">
+            <div class="cal-day" style="color:var(--teal);font-size:0.7rem;letter-spacing:1px">DÍA</div>
+            <div class="cal-content" style="color:var(--teal);font-weight:700;font-size:0.7rem;letter-spacing:1px">CONTENIDO</div>
+            <div class="cal-platform" style="color:var(--teal);font-weight:700;font-size:0.7rem;letter-spacing:1px">PLATAFORMA</div>
+        </div>
+        <div class="cal-row"><div class="cal-day">Lunes</div><div class="cal-content">🎓 Tip educativo (carrusel o reel)</div><div class="cal-platform">IG, FB</div></div>
+        <div class="cal-row"><div class="cal-day">Martes</div><div class="cal-content">🎵 Demo de nueva canción del Marketplace</div><div class="cal-platform">IG Reel, TikTok</div></div>
+        <div class="cal-row"><div class="cal-day">Miércoles</div><div class="cal-content">🙏 Post inspiracional / devocional</div><div class="cal-platform">IG, FB</div></div>
+        <div class="cal-row"><div class="cal-day">Jueves</div><div class="cal-content">🎓 Tutorial / How-to de una función</div><div class="cal-platform">YouTube + IG</div></div>
+        <div class="cal-row"><div class="cal-day">Viernes</div><div class="cal-content">🎵 "Canción de la semana" — preview</div><div class="cal-platform">IG, TikTok</div></div>
+        <div class="cal-row"><div class="cal-day">Sábado</div><div class="cal-content">💪 "¿Listo para el domingo?" — CTA</div><div class="cal-platform">IG Stories</div></div>
+        <div class="cal-row"><div class="cal-day">Domingo</div><div class="cal-content">🎥 Repost de usuarios usando Zion (UGC)</div><div class="cal-platform">IG Stories</div></div>
+    </div>
+
+    <h2>Tono de Marca</h2>
+    <div class="grid-2">
+        <div class="tone-yes">
+            <h3 style="margin-top:0">✅ SÍ — Cómo hablar</h3>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>✅ Profesional pero accesible</li>
+                <li>✅ Apasionado por la excelencia</li>
+                <li>✅ Técnico, pero siempre simple</li>
+                <li>✅ Empático con el líder de alabanza</li>
+                <li>✅ "Somos músicos + developers"</li>
+                <li>✅ Emojis con moderación</li>
+            </ul>
+        </div>
+        <div class="tone-no">
+            <h3 style="margin-top:0">❌ NO — Evitar</h3>
+            <ul class="list-clean" style="font-size:0.82rem">
+                <li>❌ Vendedores agresivos</li>
+                <li>❌ Condescendientes ni super-religiosos</li>
+                <li>❌ Hablar mal de la competencia</li>
+                <li>❌ Jerga técnica sin explicar</li>
+                <li>❌ Prometer lo que no existe</li>
+                <li>❌ Tono corporativo frío</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="quote" style="margin-top:20px">
+        Sabemos lo que es estar 5 minutos antes del servicio y que la laptop no encienda. Por eso creamos Zion Stage — para que lo único que te preocupe el domingo sea adorar.
+    </div>
+
+    <h2>Hashtags Recomendados</h2>
+    <h3 style="font-size:0.85rem;margin-bottom:4px">Principales (usar siempre)</h3>
+    <div class="tags">
+        <span class="tag" style="color:var(--teal);border-color:rgba(0,210,211,0.2)">#ZionStage</span>
+        <span class="tag" style="color:var(--teal);border-color:rgba(0,210,211,0.2)">#MultitracksEnEspañol</span>
+        <span class="tag" style="color:var(--teal);border-color:rgba(0,210,211,0.2)">#FreedomLabs</span>
+        <span class="tag" style="color:var(--teal);border-color:rgba(0,210,211,0.2)">#AdoraciónConExcelencia</span>
+        <span class="tag" style="color:var(--teal);border-color:rgba(0,210,211,0.2)">#MúsicaCristiana</span>
+    </div>
+
+    <h3 style="font-size:0.85rem;margin-bottom:4px">Secundarios (rotar)</h3>
+    <div class="tags">
+        <span class="tag">#LíderDeAlabanza</span>
+        <span class="tag">#EquipoDeAdoración</span>
+        <span class="tag">#WorshipLeader</span>
+        <span class="tag">#PistasMultitrack</span>
+        <span class="tag">#SonidoProfesional</span>
+        <span class="tag">#MixerEnVivo</span>
+        <span class="tag">#AudioParaIglesias</span>
+        <span class="tag">#IglesiaCristiana</span>
+    </div>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 5</span>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- PÁGINA 6: MÉTRICAS + ACCIONES -->
+<!-- ═══════════════════════════════════════ -->
+<div class="page">
+    <div class="section-number">Sección 06</div>
+    <h1>Métricas y Acciones Inmediatas</h1>
+
+    <h2>KPIs a Monitorear</h2>
+    <table>
+        <tr><th>Métrica</th><th>Objetivo</th><th>Prioridad</th></tr>
+        <tr><td style="color:white;font-weight:700">Registros nuevos (gratuitos)</td><td>Principal KPI de awareness — medir crecimiento semanal</td><td><span class="badge badge-teal">CRÍTICO</span></td></tr>
+        <tr><td style="color:white;font-weight:700">Conversión Free → Pagado</td><td>KPI de revenue — el número que más importa</td><td><span class="badge badge-teal">CRÍTICO</span></td></tr>
+        <tr><td style="color:white;font-weight:700">Engagement Rate (IG)</td><td>>3% es bueno para nicho religioso/musical</td><td><span class="badge badge-gold">ALTO</span></td></tr>
+        <tr><td style="color:white;font-weight:700">Views en Reels/TikTok</td><td>Alcance orgánico — viralidad del contenido</td><td><span class="badge badge-gold">ALTO</span></td></tr>
+        <tr><td style="color:white;font-weight:700">Descargas App Android</td><td>Adopción de la plataforma móvil</td><td><span class="badge badge-purple">MEDIO</span></td></tr>
+        <tr><td style="color:white;font-weight:700">Canciones vendidas (Marketplace)</td><td>Salud del ecosistema de vendedores</td><td><span class="badge badge-purple">MEDIO</span></td></tr>
+    </table>
+
+    <h2>6 Acciones Inmediatas</h2>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px">
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(0,210,211,0.1);border:2px solid var(--teal);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--teal);font-size:1.1rem;flex-shrink:0">1</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Crear contenido de lanzamiento</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">Serie de 3-5 reels con el tema "¿Qué es Zion Stage?" explicando cada función principal.</p>
+            </div>
+        </div>
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(241,196,15,0.1);border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--gold);font-size:1.1rem;flex-shrink:0">2</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Activar UGC (User Generated Content)</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">Contactar a 5-10 líderes de alabanza para que prueben gratis y compartan su experiencia en redes.</p>
+            </div>
+        </div>
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(155,89,182,0.1);border:2px solid var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--purple);font-size:1.1rem;flex-shrink:0">3</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Infiltrarse en comunidades Facebook</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">Unirse a grupos de músicos cristianos en LATAM y España. Aportar valor antes de vender.</p>
+            </div>
+        </div>
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(16,185,129,0.1);border:2px solid var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--green);font-size:1.1rem;flex-shrink:0">4</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Crear cuenta de TikTok</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">Demos rápidos del mixer, memes de músicos de iglesia, transformaciones de sonido.</p>
+            </div>
+        </div>
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(0,210,211,0.1);border:2px solid var(--teal);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--teal);font-size:1.1rem;flex-shrink:0">5</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Preparar fechas clave</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">Campañas especiales: Semana Santa, temporada navideña, conferencias cristianas regionales.</p>
+            </div>
+        </div>
+        <div class="card" style="display:flex;gap:18px;align-items:center;padding:18px 22px">
+            <div style="width:42px;height:42px;background:rgba(241,196,15,0.1);border:2px solid var(--gold);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--gold);font-size:1.1rem;flex-shrink:0">6</div>
+            <div>
+                <strong style="color:white;font-size:0.95rem">Video estrella: Before/After</strong>
+                <p style="margin:4px 0 0;font-size:0.82rem">"Así suena tu iglesia con Zion Stage" — comparativo dramático con el mixer en acción.</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-top:36px;text-align:center;padding:30px;background:rgba(0,210,211,0.04);border:1px solid rgba(0,210,211,0.12);border-radius:16px">
+        <div style="font-size:0.7rem;color:var(--teal);font-weight:800;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Contacto del Equipo Técnico</div>
+        <p style="margin:0;color:var(--text);font-size:0.95rem">Para dudas, acceso de prueba o material gráfico:</p>
+        <p style="margin:6px 0 0;color:var(--teal);font-weight:800;font-size:1.1rem">ueservicesllc1@gmail.com</p>
+    </div>
+
+    <div class="page-footer">
+        <span>Zion Stage — Manual para Community Manager</span>
+        <span>Freedom Labs · Página 6</span>
+    </div>
+</div>
+
+<button class="print-btn" onclick="window.print()">
+    📄 EXPORTAR A PDF
+</button>
+
+</body>
+</html>

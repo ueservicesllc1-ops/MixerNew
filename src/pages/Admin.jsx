@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
-import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight } from 'lucide-react';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search } from 'lucide-react';
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -11,7 +11,8 @@ export default function Admin() {
     const [masterArtists, setMasterArtists] = useState([]);
     const [newArtistName, setNewArtistName] = useState('');
     const [contacts, setContacts] = useState([]);
-    const [libraryChords, setLibraryChords] = useState([]); // Nuevo: Cifrados importados
+    const [libraryChords, setLibraryChords] = useState([]); 
+    const [libraryLyrics, setLibraryLyrics] = useState([]); 
     const [sellerApps, setSellerApps] = useState([]); // Nuevo: Solicitudes de vendedores
     const [activeTab, setActiveTab] = useState('pending');
     const [isBulkImporting, setIsBulkImporting] = useState(false);
@@ -46,6 +47,22 @@ export default function Admin() {
     const [bannerFile, setBannerFile] = useState(null);
     const [bannerTitle, setBannerTitle] = useState('');
     const [bannerSubtitle, setBannerSubtitle] = useState('');
+
+    // ── Letras Editor ─────────────────────────────────────────────────────
+    const [lyricsSearch, setLyricsSearch] = useState('');
+    const [editingLyric, setEditingLyric] = useState(null); // { id, songId, text }
+    const [editingLyricText, setEditingLyricText] = useState('');
+    const [savingLyric, setSavingLyric] = useState(false);
+
+    // ── Vincular MT con Letra/Cifrado ───────────────────────────────────────
+    const [linkingSong, setLinkingSong] = useState(null);
+    const [linkChordId, setLinkChordId] = useState('');
+    const [linkLyricId, setLinkLyricId] = useState('');
+    const [isSavingLink, setIsSavingLink] = useState(false);
+    const [lcSearchResults, setLcSearchResults] = useState([]);   // LaCuerda search hits
+    const [lcSearching, setLcSearching] = useState(false);        // loading state
+    const [lcImporting, setLcImporting] = useState(null);         // slug being imported
+
 
     useEffect(() => {
         const checkAdmin = auth.onAuthStateChanged((user) => {
@@ -91,6 +108,12 @@ export default function Admin() {
             const c = [];
             snap.forEach(doc => c.push({ id: doc.id, ...doc.data() }));
             setLibraryChords(c);
+        });
+
+        onSnapshot(collection(db, 'lyrics'), (snap) => {
+            const l = [];
+            snap.forEach(doc => l.push({ id: doc.id, ...doc.data() }));
+            setLibraryLyrics(l);
         });
 
         onSnapshot(collection(db, 'seller_applications'), (snap) => {
@@ -236,7 +259,174 @@ export default function Admin() {
         }
     };
 
+    const cleanLyrics = (text) => {
+        let txt = text.replace(/\[.*?\]/g, '');
+        const lines = txt.split('\n');
+        const out = [];
+        
+        for (const l of lines) {
+            const trimmed = l.trim();
+            if (!trimmed) {
+                out.push('');
+                continue;
+            }
+            if (trimmed.toLowerCase().startsWith('intro')) continue;
+            
+            const tokens = trimmed.split(/[\s-]+/);
+            let chordCount = 0;
+            let wordCount = 0;
+            for (const t of tokens) {
+                if (!t) continue;
+                wordCount++;
+                if (/^[A-G][#b]?(m|maj|min|dim|aug|sus|seus|add|\d+)?(\/[A-G][#b]?)?$/i.test(t.replace(/[()]/g, ''))) {
+                    chordCount++;
+                }
+            }
+            
+            if (chordCount > 0 && chordCount >= wordCount * 0.6) {
+                continue;
+            }
+            
+            out.push(l);
+        }
+        
+        return out.join('\n').replace(/\n\s*\n\s*\n/g, '\n\n').trim(); // clean excessive newlines
+    };
+
+    const generateMissingLyrics = async () => {
+        if (!window.confirm(`Se regenerarán TODAS las letras aplicando el nuevo filtro inteligente (eliminará acordes de las vistas de letras). ¿Continuar?`)) return;
+
+        setIsSyncing(true);
+        try {
+            let count = 0;
+            let currentBatch = writeBatch(db);
+            let operations = 0;
+
+            for (const chordDoc of libraryChords) {
+                const chordText = chordDoc.content || chordDoc.text || '';
+                if (!chordText) continue;
+
+                const lyricsText = cleanLyrics(chordText);
+                if (lyricsText) {
+                    const existingLyric = libraryLyrics.find(l => l.songId === chordDoc.songId);
+                    if (existingLyric) {
+                        currentBatch.update(doc(db, 'lyrics', existingLyric.id), {
+                            text: lyricsText,
+                            updatedAt: serverTimestamp()
+                        });
+                    } else {
+                        const newRef = doc(collection(db, 'lyrics'));
+                        currentBatch.set(newRef, {
+                            songId: chordDoc.songId,
+                            text: lyricsText,
+                            createdAt: serverTimestamp()
+                        });
+                    }
+                    operations++;
+                    count++;
+
+                    if (operations >= 400) {
+                        await currentBatch.commit();
+                        currentBatch = writeBatch(db);
+                        operations = 0;
+                        await new Promise(r => setTimeout(r, 500)); // Respirar para no saturar la red
+                    }
+                }
+            }
+            
+            if (operations > 0) {
+                await currentBatch.commit();
+            }
+
+            alert(`✅ ¡Proceso completado! Se regeneraron letras limpias para ${count} canciones.`);
+        } catch (e) {
+            console.error(e);
+            alert("Error: " + e.message);
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
+    // ── Fuzzy matching helpers ────────────────────────────────────────────────
+    // Strip accents, punctuation, collapse whitespace → lowercase
+    const normStr = (s) => (s || '')
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    // Score: ratio of shared words between two strings (0–1)
+    const matchScore = (a, b) => {
+        const wa = new Set(normStr(a).split(' ').filter(Boolean));
+        const wb = new Set(normStr(b).split(' ').filter(Boolean));
+        if (!wa.size || !wb.size) return 0;
+        let shared = 0;
+        wa.forEach(w => { if (wb.has(w)) shared++; });
+        return shared / Math.max(wa.size, wb.size);
+    };
+
+    // For a given MT song, find the best-matching chord and lyric docs
+    const autoDetectLinks = (song) => {
+        const THRESHOLD = 0.45;
+        const name = song.name || '';
+        const artist = song.artist || '';
+
+        let bestChord = null, bestChordScore = 0;
+        for (const c of libraryChords) {
+            const cSong = songs.find(s => s.id === c.songId);
+            if (!cSong) continue;
+            const score = matchScore(name, cSong.name) + matchScore(artist, cSong.artist) * 0.4;
+            if (score > bestChordScore) { bestChordScore = score; bestChord = c; }
+        }
+
+        let bestLyric = null, bestLyricScore = 0;
+        for (const l of libraryLyrics) {
+            const lSong = songs.find(s => s.id === l.songId);
+            if (!lSong) continue;
+            const score = matchScore(name, lSong.name) + matchScore(artist, lSong.artist) * 0.4;
+            if (score > bestLyricScore) { bestLyricScore = score; bestLyric = l; }
+        }
+
+        return {
+            chord: bestChordScore >= THRESHOLD ? bestChord : null,
+            lyric: bestLyricScore >= THRESHOLD ? bestLyric : null,
+        };
+    };
+
+    // Persist the selected chord/lyric → songId links to Firestore
+    const saveLink = async () => {
+        if (!linkingSong) return;
+        setIsSavingLink(true);
+        try {
+            const batch = writeBatch(db);
+            if (linkChordId) {
+                batch.update(doc(db, 'chords', linkChordId), {
+                    songId: linkingSong.id,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            if (linkLyricId) {
+                batch.update(doc(db, 'lyrics', linkLyricId), {
+                    songId: linkingSong.id,
+                    updatedAt: serverTimestamp()
+                });
+            }
+            await batch.commit();
+            alert(`✅ Vinculado correctamente:\n- Cifrado: ${linkChordId ? 'Sí' : 'No'}\n- Letra: ${linkLyricId ? 'Sí' : 'No'}`);
+            setLinkingSong(null);
+            setLinkChordId('');
+            setLinkLyricId('');
+        } catch (e) {
+            console.error(e);
+            alert('Error al vincular: ' + e.message);
+        } finally {
+            setIsSavingLink(false);
+        }
+    };
+
     const addMasterArtist = async () => {
+
         if (!newArtistName.trim()) return;
         try {
             await addDoc(collection(db, 'master_artists'), {
@@ -371,6 +561,16 @@ export default function Admin() {
                     content: data.content,
                     createdAt: serverTimestamp()
                 });
+
+                // Extraer letra de forma inteligente (quitar acordes sueltos)
+                const lyricsText = cleanLyrics(data.content);
+                if (lyricsText) {
+                    await addDoc(collection(db, 'lyrics'), {
+                        songId: docRef.id,
+                        text: lyricsText,
+                        createdAt: serverTimestamp()
+                    });
+                }
 
                 if (!silent) alert(`✅ ¡IMPORTACIÓN EXITOSA!\n\n"${song.name}" de ${targetArtist.name} ya está en tu biblioteca.`);
                 return true;
@@ -664,6 +864,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({filteredSongs.length})</button>
                 <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({appHistory.length})</button>
                 <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({banners.length})</button>
+                <button onClick={() => setActiveTab('letras')} style={{ background: activeTab === 'letras' ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: activeTab === 'letras' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>✏️ Letras ({libraryLyrics.length})</button>
                 <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length})</button>
             </div>
 
@@ -785,11 +986,18 @@ export default function Admin() {
 
             {activeTab === 'library' && (
                 <div className="fade-in">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h2>Biblioteca de Cifrados Importados</h2>
-                        <span style={{ background: 'rgba(255,255,255,0.1)', padding: '5px 15px', borderRadius: '20px', fontSize: '0.8rem' }}>
-                            {songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length} canciones totales
-                        </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                        <div>
+                            <h2 style={{ margin: 0 }}>Biblioteca de Cifrados ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</h2>
+                            <p style={{ color: '#94a3b8', margin: '5px 0 0 0' }}>Gestiona los acordes y letras importados de LaCuerda.</p>
+                        </div>
+                        <button
+                            onClick={generateMissingLyrics}
+                            disabled={isSyncing}
+                            style={{ background: 'rgba(241,196,15,0.1)', border: '1px solid #f1c40f', color: '#f1c40f', padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            {isSyncing ? "PROCESANDO..." : "✨ GENERAR LETRAS FALTANTES"}
+                        </button>
                     </div>
 
                     <div style={{ background: '#1e293b', borderRadius: '20px', padding: '30px', display: 'flex', flexDirection: 'column', gap: '30px' }}>
@@ -844,13 +1052,21 @@ export default function Admin() {
                                                                     <span style={{ fontSize: '0.65rem', padding: '2px 8px', borderRadius: '10px', background: hasChords ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: hasChords ? '#10b981' : '#ef4444' }}>
                                                                         {hasChords ? '✓ CON CIFRADO' : '✗ SIN CIFRADO'}
                                                                     </span>
-                                                                    <div style={{ display: 'flex', gap: '8px' }}>
-                                                                        {hasChords && (
+                                                                    <div style={{ display: 'flex', gap: '5px' }}>
+                                                                        {libraryChords.some(c => c.songId === s.id) && (
                                                                             <button 
-                                                                                onClick={() => setViewingChord(libraryChords.find(c => c.songId === s.id))} 
+                                                                                onClick={() => setViewingChord({ content: libraryChords.find(c => c.songId === s.id).content, title: 'Cifrado' })} 
                                                                                 style={{ background: '#00d2d3', border: 'none', color: 'black', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}
                                                                             >
-                                                                                VER
+                                                                                CIF
+                                                                            </button>
+                                                                        )}
+                                                                        {libraryLyrics.some(l => l.songId === s.id) && (
+                                                                            <button 
+                                                                                onClick={() => setViewingChord({ content: libraryLyrics.find(l => l.songId === s.id).text, title: 'Letra (Teleprompter)' })} 
+                                                                                style={{ background: '#f1c40f', border: 'none', color: 'black', padding: '4px 8px', borderRadius: '4px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 'bold' }}
+                                                                            >
+                                                                                LY
                                                                             </button>
                                                                         )}
                                                                         <button 
@@ -873,17 +1089,6 @@ export default function Admin() {
                         })}
                     </div>
 
-                    {viewingChord && (
-                        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
-                            <div style={{ background: '#1e293b', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '30px', padding: '40px', overflowY: 'auto', position: 'relative', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <button onClick={() => setViewingChord(null)} style={{ position: 'absolute', top: '20px', right: '20px', background: '#f43f5e', border: 'none', color: 'white', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>CERRAR</button>
-                                <h2 style={{ marginBottom: '30px', color: '#00d2d3' }}>Previsualización del Cifrado</h2>
-                                <pre style={{ background: '#0f172a', padding: '30px', borderRadius: '15px', color: '#10b981', fontFamily: 'monospace', fontSize: '1rem', whiteSpace: 'pre-wrap', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                    {viewingChord.content}
-                                </pre>
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
 
@@ -903,7 +1108,47 @@ export default function Admin() {
                         {filteredSongs.map(s => (
                             <div key={s.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 30px', display: 'grid', gridTemplateColumns: '2fr 2fr 1.5fr 80px', alignItems: 'center' }}>
                                 <div>
-                                    <div style={{ fontWeight: '800' }}>{s.name}</div>
+                                    <div style={{ fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {s.name}
+                                        {(() => {
+                                            const hasLyric = libraryLyrics.find(l => l.songId === s.id);
+                                            return (
+                                                <span
+                                                    onClick={() => { if (hasLyric) setViewingChord({ title: `${s.name} — Letra`, content: hasLyric.text || '(vacío)' }); }}
+                                                    style={{
+                                                        fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', letterSpacing: '0.5px',
+                                                        cursor: hasLyric ? 'pointer' : 'default',
+                                                        background: hasLyric ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.06)',
+                                                        color: hasLyric ? '#10b981' : '#475569',
+                                                        border: `1px solid ${hasLyric ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                                                        transition: 'transform 0.15s',
+                                                    }}
+                                                    onMouseEnter={e => { if (hasLyric) e.target.style.transform = 'scale(1.15)'; }}
+                                                    onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                                                    title={hasLyric ? 'Ver letra' : 'Sin letra vinculada'}
+                                                >L</span>
+                                            );
+                                        })()}
+                                        {(() => {
+                                            const hasChord = libraryChords.find(c => c.songId === s.id);
+                                            return (
+                                                <span
+                                                    onClick={() => { if (hasChord) setViewingChord({ title: `${s.name} — Cifrado`, content: hasChord.content || hasChord.text || '(vacío)' }); }}
+                                                    style={{
+                                                        fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px', letterSpacing: '0.5px',
+                                                        cursor: hasChord ? 'pointer' : 'default',
+                                                        background: hasChord ? 'rgba(0,210,211,0.15)' : 'rgba(255,255,255,0.06)',
+                                                        color: hasChord ? '#00d2d3' : '#475569',
+                                                        border: `1px solid ${hasChord ? 'rgba(0,210,211,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                                                        transition: 'transform 0.15s',
+                                                    }}
+                                                    onMouseEnter={e => { if (hasChord) e.target.style.transform = 'scale(1.15)'; }}
+                                                    onMouseLeave={e => e.target.style.transform = 'scale(1)'}
+                                                    title={hasChord ? 'Ver cifrado' : 'Sin cifrado vinculado'}
+                                                >C</span>
+                                            );
+                                        })()}
+                                    </div>
                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Original: {s.artist || '—'}</div>
                                 </div>
                                 <div style={{ paddingRight: '20px' }}>
@@ -952,6 +1197,18 @@ export default function Admin() {
                                     >
                                         EDITAR TRACKS
                                     </button>
+                                    <button
+                                        onClick={() => {
+                                            const detected = autoDetectLinks(s);
+                                            setLinkingSong(s);
+                                            setLinkChordId(detected.chord?.id || '');
+                                            setLinkLyricId(detected.lyric?.id || '');
+                                        }}
+                                        title="Vincular con Letra y Cifrado"
+                                        style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', border: '1px solid rgba(167,139,250,0.3)', padding: '8px 12px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '800', cursor: 'pointer' }}
+                                    >
+                                        🔗 VINCULAR
+                                    </button>
                                     <button onClick={() => deleteSong(s.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}><Trash2 size={20} /></button>
                                 </div>
                             </div>
@@ -986,6 +1243,187 @@ export default function Admin() {
                             </div>
                         </div>
                     )}
+
+                    {/* — Linking Modal — */}
+                    {linkingSong && (() => {
+                        const chordSong = songs.find(s => s.id === libraryChords.find(c => c.id === linkChordId)?.songId);
+                        const lyricSong = songs.find(s => s.id === libraryLyrics.find(l => l.id === linkLyricId)?.songId);
+                        const alreadyLinkedChord = libraryChords.find(c => c.songId === linkingSong.id);
+                        const alreadyLinkedLyric = libraryLyrics.find(l => l.songId === linkingSong.id);
+                        const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                            ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+
+                        const searchLaCuerda = async () => {
+                            setLcSearchResults([]);
+                            setLcSearching(true);
+                            try {
+                                const url = `${devProxy}/api/search-lacuerda?artist=${encodeURIComponent(linkingSong.artist || '')}&song=${encodeURIComponent(linkingSong.name || '')}`;
+                                const resp = await fetch(url);
+                                const data = await resp.json();
+                                setLcSearchResults(data.results || []);
+                            } catch (e) {
+                                alert('Error buscando en LaCuerda: ' + e.message);
+                            } finally {
+                                setLcSearching(false);
+                            }
+                        };
+
+                        const importFromLaCuerda = async (result) => {
+                            setLcImporting(result.songSlug);
+                            try {
+                                const resp = await fetch(`${devProxy}/api/scrape-full-song?artistSlug=${result.artistSlug}&songSlug=${result.songSlug}`);
+                                if (!resp.ok) throw new Error(`Error ${resp.status}`);
+                                const data = await resp.json();
+                                if (!data.content) throw new Error('No se extrajo contenido');
+
+                                // Save chords doc
+                                const chordRef = await addDoc(collection(db, 'chords'), {
+                                    songId: linkingSong.id,
+                                    content: data.content,
+                                    source: result.url,
+                                    createdAt: serverTimestamp()
+                                });
+                                // Save lyrics doc (auto-cleaned)
+                                const { extractLyricsOnly } = await import('../utils/lyricsExtractor');
+                                const lyricsText = extractLyricsOnly(data.content);
+                                const lyricRef = await addDoc(collection(db, 'lyrics'), {
+                                    songId: linkingSong.id,
+                                    text: lyricsText,
+                                    createdAt: serverTimestamp()
+                                });
+
+                                alert(`✅ ¡Importado y vinculado!\nCifrado y letra de "${linkingSong.name}" ya están en la biblioteca.`);
+                                setLinkingSong(null);
+                                setLcSearchResults([]);
+                                setLinkChordId('');
+                                setLinkLyricId('');
+                            } catch (e) {
+                                console.error(e);
+                                alert('Error importando: ' + e.message);
+                            } finally {
+                                setLcImporting(null);
+                            }
+                        };
+
+                        return (
+                            <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.92)', zIndex: 3000, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '20px', overflowY: 'auto' }}>
+                                <div style={{ background: '#1e293b', width: '100%', maxWidth: '720px', borderRadius: '28px', padding: '36px', border: '1px solid rgba(167,139,250,0.3)', boxShadow: '0 40px 80px rgba(0,0,0,0.6)', margin: 'auto' }}>
+
+                                    {/* Header */}
+                                    <div style={{ marginBottom: '24px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '6px' }}>
+                                            <span style={{ background: 'rgba(167,139,250,0.15)', color: '#a78bfa', padding: '4px 12px', borderRadius: '8px', fontSize: '0.7rem', fontWeight: '900', letterSpacing: '1px' }}>VINCULAR MT</span>
+                                        </div>
+                                        <h2 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '900' }}>{linkingSong.name}</h2>
+                                        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.9rem' }}>{linkingSong.artist || 'Artista desconocido'}</p>
+                                    </div>
+
+                                    {/* Current links badge */}
+                                    {(alreadyLinkedChord || alreadyLinkedLyric) && (
+                                        <div style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', borderRadius: '12px', padding: '12px 16px', marginBottom: '20px', fontSize: '0.85rem', color: '#10b981' }}>
+                                            ✅ Links actuales — Cifrado: {alreadyLinkedChord ? 'Sí' : 'No'} · Letra: {alreadyLinkedLyric ? 'Sí' : 'No'}
+                                        </div>
+                                    )}
+
+                                    {/* ── LaCuerda Search Section ── */}
+                                    <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '16px', padding: '20px', marginBottom: '24px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                                            <div>
+                                                <span style={{ fontWeight: '800', fontSize: '0.9rem', color: '#f1c40f' }}>🌐 Buscar en LaCuerda.net</span>
+                                                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                                                    {!alreadyLinkedChord && !alreadyLinkedLyric ? '⚠ Sin cifrado/letra en base de datos. Búscalo e impórtalo directamente.' : 'Puedes re-importar si algo falló.'}
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={searchLaCuerda}
+                                                disabled={lcSearching}
+                                                style={{ background: '#f1c40f', color: '#000', border: 'none', padding: '10px 22px', borderRadius: '10px', cursor: 'pointer', fontWeight: '900', fontSize: '0.85rem', opacity: lcSearching ? 0.6 : 1, whiteSpace: 'nowrap' }}
+                                            >
+                                                {lcSearching ? '🔍 Buscando...' : '🔍 Buscar'}
+                                            </button>
+                                        </div>
+
+                                        {/* Results list */}
+                                        {lcSearchResults.length > 0 && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '260px', overflowY: 'auto' }}>
+                                                {lcSearchResults.map((r, i) => (
+                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '10px 14px', gap: '10px' }}>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <div style={{ fontSize: '0.88rem', fontWeight: '700', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.displayName}</div>
+                                                            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>{r.artistSlug} / {r.songSlug}</div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => importFromLaCuerda(r)}
+                                                            disabled={!!lcImporting}
+                                                            style={{ background: lcImporting === r.songSlug ? '#10b981' : '#a78bfa', color: 'white', border: 'none', padding: '7px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.78rem', flexShrink: 0, opacity: lcImporting && lcImporting !== r.songSlug ? 0.4 : 1 }}
+                                                        >
+                                                            {lcImporting === r.songSlug ? '⏳ Importando...' : '⬇ Importar'}
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {lcSearchResults.length === 0 && !lcSearching && (
+                                            <div style={{ fontSize: '0.8rem', color: '#475569', textAlign: 'center', padding: '8px 0' }}>
+                                                Presiona "Buscar" para encontrar esta canción en LaCuerda.net
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* ── Manual link selectors ── */}
+                                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px', marginBottom: '20px' }}>
+                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '14px' }}>
+                                            O vincula manualmente con docs existentes
+                                        </div>
+
+                                        <div style={{ marginBottom: '14px' }}>
+                                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#00d2d3', marginBottom: '6px', textTransform: 'uppercase' }}>Cifrado</label>
+                                            {linkChordId && chordSong && (
+                                                <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginBottom: '4px' }}>🧠 Auto-match: "{chordSong.name}" — {chordSong.artist}</div>
+                                            )}
+                                            <select value={linkChordId} onChange={e => setLinkChordId(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', background: 'white', color: 'black', border: '1px solid #cbd5e1' }}>
+                                                <option value="">-- Sin vincular --</option>
+                                                {libraryChords.map(c => {
+                                                    const cSong = songs.find(s => s.id === c.songId);
+                                                    return <option key={c.id} value={c.id}>{cSong ? `${cSong.name} — ${cSong.artist || '—'}` : c.id}</option>;
+                                                })}
+                                            </select>
+                                        </div>
+
+                                        <div>
+                                            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: '800', color: '#a78bfa', marginBottom: '6px', textTransform: 'uppercase' }}>Letra</label>
+                                            {linkLyricId && lyricSong && (
+                                                <div style={{ fontSize: '0.75rem', color: '#a78bfa', marginBottom: '4px' }}>🧠 Auto-match: "{lyricSong.name}" — {lyricSong.artist}</div>
+                                            )}
+                                            <select value={linkLyricId} onChange={e => setLinkLyricId(e.target.value)} style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', background: 'white', color: 'black', border: '1px solid #cbd5e1' }}>
+                                                <option value="">-- Sin vincular --</option>
+                                                {libraryLyrics.map(l => {
+                                                    const lSong = songs.find(s => s.id === l.songId);
+                                                    return <option key={l.id} value={l.id}>{lSong ? `${lSong.name} — ${lSong.artist || '—'}` : l.id}</option>;
+                                                })}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Actions */}
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                        <button
+                                            onClick={() => { setLinkingSong(null); setLinkChordId(''); setLinkLyricId(''); setLcSearchResults([]); }}
+                                            style={{ flex: 1, padding: '14px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', fontWeight: '800' }}
+                                        >Cancelar</button>
+                                        <button
+                                            onClick={saveLink}
+                                            disabled={isSavingLink || (!linkChordId && !linkLyricId)}
+                                            style={{ flex: 2, padding: '14px', borderRadius: '12px', background: linkChordId || linkLyricId ? '#a78bfa' : 'rgba(167,139,250,0.2)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '900', fontSize: '1rem', opacity: isSavingLink ? 0.6 : 1 }}
+                                        >
+                                            <Save size={16} style={{ display: 'inline', marginRight: '8px', verticalAlign: 'middle' }} />
+                                            {isSavingLink ? 'Guardando...' : 'Guardar Vínculos'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -1384,6 +1822,191 @@ export default function Admin() {
                             <p style={{ color: '#94a3b8', marginTop: '10px' }}>{c.mensaje}</p>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {activeTab === 'letras' && (
+                <div className="fade-in">
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                        <div>
+                            <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <FileText size={24} color="#a78bfa" /> Editor de Letras
+                            </h2>
+                            <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: '0.9rem' }}>
+                                {libraryLyrics.length} letras en la base de datos · Edita y guarda manualmente para limpiar acordes residuales.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '10px 16px', minWidth: '280px' }}>
+                            <Search size={16} color="#64748b" />
+                            <input
+                                value={lyricsSearch}
+                                onChange={e => setLyricsSearch(e.target.value)}
+                                placeholder="Buscar canción o artista..."
+                                style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '0.95rem', flex: 1, outline: 'none', fontFamily: '"Outfit", sans-serif' }}
+                            />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: editingLyric ? '1fr 1.5fr' : '1fr', gap: '24px', alignItems: 'start' }}>
+
+                        {/* Song list */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '75vh', overflowY: 'auto', paddingRight: '4px' }}>
+                            {libraryLyrics
+                                .filter(l => {
+                                    const song = songs.find(s => s.id === l.songId);
+                                    const q = lyricsSearch.toLowerCase();
+                                    if (!q) return true;
+                                    return (
+                                        song?.name?.toLowerCase().includes(q) ||
+                                        song?.artist?.toLowerCase().includes(q)
+                                    );
+                                })
+                                .map(lyric => {
+                                    const song = songs.find(s => s.id === lyric.songId);
+                                    const isSelected = editingLyric?.id === lyric.id;
+                                    const hasChords = /(^|\n)[ \t]*[A-G][#b]?(m|maj|min|aug|dim|sus|add)?\d*(\/[A-G][#b]?)?[ \t]*($|\n)/m.test(lyric.text || '');
+                                    return (
+                                        <div
+                                            key={lyric.id}
+                                            onClick={() => {
+                                                if (editingLyric?.id === lyric.id) return;
+                                                setEditingLyric(lyric);
+                                                setEditingLyricText(lyric.text || '');
+                                            }}
+                                            style={{
+                                                background: isSelected ? 'rgba(167,139,250,0.15)' : '#1e293b',
+                                                border: `1px solid ${isSelected ? '#a78bfa' : 'rgba(255,255,255,0.05)'}`,
+                                                borderRadius: '12px',
+                                                padding: '14px 18px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                display: 'flex',
+                                                justifyContent: 'space-between',
+                                                alignItems: 'center',
+                                                gap: '12px'
+                                            }}
+                                        >
+                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                <div style={{ fontWeight: '800', fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {song?.name || lyric.songId}
+                                                </div>
+                                                <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '2px' }}>
+                                                    {song?.artist || '—'}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                {hasChords && (
+                                                    <span title="Contiene acordes residuales" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: '0.7rem', fontWeight: '800', padding: '2px 8px', borderRadius: '6px' }}>
+                                                        ⚠ CIFRADO
+                                                    </span>
+                                                )}
+                                                <ChevronRight size={16} color={isSelected ? '#a78bfa' : '#334155'} />
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            }
+                            {libraryLyrics.length === 0 && (
+                                <p style={{ color: '#64748b', textAlign: 'center', padding: '40px 0' }}>No hay letras en la base de datos.</p>
+                            )}
+                        </div>
+
+                        {/* Editor panel */}
+                        {editingLyric && (() => {
+                            const song = songs.find(s => s.id === editingLyric.songId);
+                            return (
+                                <div style={{ background: '#1e293b', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '20px', overflow: 'hidden', position: 'sticky', top: '20px' }}>
+                                    {/* Editor header */}
+                                    <div style={{ padding: '16px 24px', background: 'rgba(167,139,250,0.08)', borderBottom: '1px solid rgba(167,139,250,0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ background: 'rgba(167,139,250,0.2)', color: '#a78bfa', fontSize: '0.7rem', fontWeight: '900', padding: '3px 10px', borderRadius: '6px', letterSpacing: '1px' }}>LETRA</span>
+                                                <span style={{ fontWeight: '900', fontSize: '1rem' }}>{song?.name || '—'}</span>
+                                            </div>
+                                            <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px' }}>{song?.artist || '—'}</div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                            <button
+                                                onClick={() => { setEditingLyric(null); setEditingLyricText(''); }}
+                                                style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#94a3b8', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem' }}
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    setSavingLyric(true);
+                                                    try {
+                                                        await updateDoc(doc(db, 'lyrics', editingLyric.id), {
+                                                            text: editingLyricText,
+                                                            updatedAt: serverTimestamp()
+                                                        });
+                                                        // Update local state so badge refreshes
+                                                        setLibraryLyrics(prev => prev.map(l =>
+                                                            l.id === editingLyric.id ? { ...l, text: editingLyricText } : l
+                                                        ));
+                                                        setEditingLyric(prev => ({ ...prev, text: editingLyricText }));
+                                                        alert('✅ Letra guardada correctamente.');
+                                                    } catch (e) {
+                                                        console.error(e);
+                                                        alert('Error al guardar: ' + e.message);
+                                                    } finally {
+                                                        setSavingLyric(false);
+                                                    }
+                                                }}
+                                                disabled={savingLyric}
+                                                style={{ background: '#a78bfa', border: 'none', color: '#fff', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', opacity: savingLyric ? 0.6 : 1 }}
+                                            >
+                                                <Save size={16} />
+                                                {savingLyric ? 'Guardando...' : 'Guardar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {/* Textarea */}
+                                    <div style={{ padding: '20px 24px' }}>
+                                        <p style={{ color: '#64748b', fontSize: '0.8rem', marginBottom: '10px', marginTop: 0 }}>
+                                            Edita el texto directamente. Elimina líneas de acordes, tablaturas o encabezados sobrantes.
+                                        </p>
+                                        <textarea
+                                            value={editingLyricText}
+                                            onChange={e => setEditingLyricText(e.target.value)}
+                                            rows={28}
+                                            style={{
+                                                width: '100%',
+                                                background: '#020617',
+                                                color: '#e2e8f0',
+                                                border: '1px solid rgba(255,255,255,0.08)',
+                                                borderRadius: '12px',
+                                                padding: '16px',
+                                                fontFamily: '"JetBrains Mono", "Roboto Mono", monospace',
+                                                fontSize: '0.9rem',
+                                                lineHeight: '1.7',
+                                                resize: 'vertical',
+                                                outline: 'none',
+                                                boxSizing: 'border-box'
+                                            }}
+                                        />
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.75rem', color: '#475569' }}>
+                                            <span>{editingLyricText.split('\n').length} líneas</span>
+                                            <span>{editingLyricText.length} caracteres</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
+            {/* ── Global Preview Modal (L / C badges) ── */}
+            {viewingChord && (
+                <div onClick={() => setViewingChord(null)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.92)', zIndex: 5000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: '#1e293b', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '30px', padding: '40px', overflowY: 'auto', position: 'relative', border: '1px solid rgba(255,255,255,0.1)' }}>
+                        <button onClick={() => setViewingChord(null)} style={{ position: 'absolute', top: '20px', right: '20px', background: '#f43f5e', border: 'none', color: 'white', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: 'bold' }}>CERRAR</button>
+                        <h2 style={{ marginBottom: '30px', color: '#00d2d3' }}>Previsualización: {viewingChord.title}</h2>
+                        <pre style={{ background: '#0f172a', padding: '30px', borderRadius: '15px', color: '#10b981', fontFamily: 'monospace', fontSize: '1rem', whiteSpace: 'pre-wrap', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            {viewingChord.content}
+                        </pre>
+                    </div>
                 </div>
             )}
         </div>

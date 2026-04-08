@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
     Search,
     ArrowLeft,
@@ -14,9 +14,13 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
 import Footer from '../components/Footer';
 import ChordViewer from '../components/ChordViewer';
+import { extractLyricsOnly } from '../utils/lyricsExtractor';
 
 export default function Library() {
     const navigate = useNavigate();
+    const location = useLocation();
+    const queryParams = new URLSearchParams(location.search);
+    const viewType = queryParams.get('type') || 'chords'; // 'lyrics' or 'chords'
     const [search, setSearch] = useState('');
 
     const [artists, setArtists] = useState([]);
@@ -53,28 +57,33 @@ export default function Library() {
         return () => unsub();
     }, []);
 
-    const fetchAndShowChords = async (song) => {
+    const fetchAndShowResource = async (song) => {
         setIsLoadingChords(true);
         try {
-            const q = query(collection(db, 'chords'), where('songId', '==', song.id));
+            const collectionName = viewType === 'lyrics' ? 'lyrics' : 'chords';
+            const q = query(collection(db, collectionName), where('songId', '==', song.id));
             const snap = await getDocs(q);
             if (!snap.empty) {
+                const data = snap.docs[0].data();
+                const rawText = viewType === 'lyrics' ? (data.text || data.content || '') : (data.content || data.text || '');
+                const displayText = viewType === 'lyrics' ? extractLyricsOnly(rawText) : rawText;
                 setViewingChords({
-                    text: snap.docs[0].data().text,
+                    text: displayText,
                     title: song.name,
-                    artist: song.artist
+                    artist: song.artist,
+                    mode: viewType  // 'lyrics' | 'chords'
                 });
             } else {
                 setChordNotice({
                     title: "Próximamente disponible",
-                    message: "este MT aun no tiene cifrado subido, muy pronto estara disponible Bro"
+                    message: `Este MT aún no tiene ${viewType === 'lyrics' ? 'letra' : 'cifrado'} subido. Muy pronto estará disponible.`
                 });
             }
         } catch (e) {
             console.error(e);
             setChordNotice({
                 title: "No disponible",
-                message: "este MT aun no tiene cifrado subido, muy pronto estara disponible Bro"
+                message: `Hubo un error cargando la ${viewType === 'lyrics' ? 'letra' : 'cifrado'}. Intenta nuevamente.`
             });
         } finally {
             setIsLoadingChords(false);
@@ -174,6 +183,7 @@ export default function Library() {
                             initialText={viewingChords.text}
                             title={viewingChords.title}
                             artist={viewingChords.artist}
+                            mode={viewingChords.mode}
                         />
                     </div>
                 </div>
@@ -185,9 +195,9 @@ export default function Library() {
                 </button>
                 <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00d2d3', fontSize: '0.95rem', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    <Music2 size={18} /> Base de Letras y Cifrados
+                    <Music2 size={18} /> Base de {viewType === 'lyrics' ? 'Letras' : 'Cifrados'}
                 </div>
-                {isLoadingChords && <div style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#00d2d3' }}>Cargando cifrado...</div>}
+                {isLoadingChords && <div style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#00d2d3' }}>Cargando...</div>}
             </nav>
 
             {/* Sub-Header with Stats and Search */}
@@ -242,10 +252,10 @@ export default function Library() {
                                         </div>
                                     </div>
                                     <button
-                                        onClick={() => fetchAndShowChords(song)}
+                                        onClick={() => fetchAndShowResource(song)}
                                         style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '8px 16px', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer' }}
                                     >
-                                        Ver Cifrado
+                                        Ver {viewType === 'lyrics' ? 'Letra' : 'Cifrado'}
                                     </button>
                                 </div>
                             ))}
