@@ -27,6 +27,9 @@ export default function Admin() {
     const [apkFile, setApkFile] = useState(null);
     const [apkVersionName, setApkVersionName] = useState('');
 
+    const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
+    const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
+
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [artistSongs, setArtistSongs] = useState([]);
     const [isFetchingSongs, setIsFetchingSongs] = useState(false);
@@ -1020,27 +1023,61 @@ export default function Admin() {
 
             {activeTab === 'users' && (
                 <div className="fade-in">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h2>Gestión de Usuarios</h2>
-                        <input
-                            type="text"
-                            placeholder="Buscar por email o nombre..."
-                            value={searchUser}
-                            onChange={e => setSearchUser(e.target.value)}
-                            style={{ padding: '10px 15px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black', width: '300px' }}
-                        />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+                        <h2>Gestión de Usuarios ({users.length})</h2>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <select 
+                                value={userSortField} 
+                                onChange={(e) => setUserSortField(e.target.value)}
+                                style={{ padding: '10px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black' }}
+                            >
+                                <option value="createdAt">Ordenar por Fecha Registro</option>
+                                <option value="songsCount">Ordenar por MTs Subidos</option>
+                            </select>
+                            <button 
+                                onClick={() => setUserSortOrder(userSortOrder === 'asc' ? 'desc' : 'asc')}
+                                style={{ padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
+                            >
+                                {userSortOrder === 'asc' ? '⬆️ ASC' : '⬇️ DESC'}
+                            </button>
+                            <input
+                                type="text"
+                                placeholder="Buscar por email o nombre..."
+                                value={searchUser}
+                                onChange={e => setSearchUser(e.target.value)}
+                                style={{ padding: '10px 15px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black', width: '250px' }}
+                            />
+                        </div>
                     </div>
                     <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px' }}>
-                        {users.filter(u =>
-                            u.email?.toLowerCase().includes(searchUser.toLowerCase()) ||
-                            u.displayName?.toLowerCase().includes(searchUser.toLowerCase())
-                        ).map(u => (
+                        {users
+                            .map(u => ({ ...u, songsCount: songs.filter(s => s.userId === u.id).length }))
+                            .filter(u =>
+                                u.email?.toLowerCase().includes(searchUser.toLowerCase()) ||
+                                u.displayName?.toLowerCase().includes(searchUser.toLowerCase())
+                            )
+                            .sort((a, b) => {
+                                let valA, valB;
+                                if (userSortField === 'createdAt') {
+                                    valA = a.createdAt?.toMillis() || 0;
+                                    valB = b.createdAt?.toMillis() || 0;
+                                } else {
+                                    valA = a.songsCount;
+                                    valB = b.songsCount;
+                                }
+                                return userSortOrder === 'asc' ? valA - valB : valB - valA;
+                            })
+                            .map(u => (
                             <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ flex: 1 }}>
-                                    <div style={{ fontWeight: '800' }}>{u.displayName || u.email}</div>
-                                    <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                                        Plan: <span style={{ color: '#00d2d3' }}>{u.planId || 'free'}</span> | 
-                                        Vendedor: <span style={{ color: u.isSeller ? '#10b981' : '#ef4444' }}>{u.isSeller ? 'SÍ' : 'NO'}</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ fontWeight: '800' }}>{u.displayName || u.email}</div>
+                                        {u.isSeller && <span style={{ background: '#10b981', color: 'black', fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px' }}>SELLER</span>}
+                                    </div>
+                                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
+                                        Plan: <span style={{ color: '#00d2d3', fontWeight: '700' }}>{u.planId || 'free'}</span> | 
+                                        MTs: <span style={{ color: '#f1c40f', fontWeight: '800' }}>{u.songsCount}</span> |
+                                        Registro: <span style={{ color: '#94a3b8' }}>{u.createdAt ? u.createdAt.toDate().toLocaleDateString() : '—'}</span>
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email}</div>
                                 </div>
@@ -1059,7 +1096,8 @@ export default function Admin() {
                                             borderRadius: '8px', 
                                             fontSize: '0.75rem', 
                                             fontWeight: '800', 
-                                            cursor: 'pointer' 
+                                            cursor: 'pointer',
+                                            minWidth: '130px'
                                         }}
                                     >
                                         {u.isSeller ? 'QUITAR VENDEDOR' : 'HACER VENDEDOR'}
