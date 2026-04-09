@@ -644,8 +644,18 @@ export default function Landing() {
                                     </div>
                                 </div>
                             )) : (
-                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444' }}>
-                                    <Camera size={48} opacity={0.2} />
+                                <div style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    display: 'flex', 
+                                    flexDirection: 'column',
+                                    alignItems: 'center', 
+                                    justifyContent: 'center', 
+                                    background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.8))',
+                                    gap: '15px'
+                                }}>
+                                    <img src="/logo2blanco.png" alt="Loading" style={{ height: '30px', opacity: 0.2, filter: 'grayscale(1)' }} />
+                                    <div className="skeleton-pulse" style={{ width: '40px', height: '4px', background: 'rgba(0,210,211,0.2)', borderRadius: '2px' }}></div>
                                 </div>
                             )}
 
