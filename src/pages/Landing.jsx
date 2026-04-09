@@ -38,18 +38,7 @@ export default function Landing() {
     const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
     const [latestApp, setLatestApp] = useState(null);
 
-    const [heroSlides, setHeroSlides] = useState([
-        {
-            image: '/hero_banner_studio.png',
-            title: 'Multitracks con Excelencia',
-            subtitle: 'La herramienta definitiva para el músico de hoy.'
-        },
-        {
-            image: '/hero_mockup_mixer_1772898901088.png',
-            title: 'Mezclador Pro Integrado',
-            subtitle: 'Control total de tu sonido desde cualquier dispositivo.'
-        }
-    ]);
+    const [heroSlides, setHeroSlides] = useState([]);
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -619,7 +608,7 @@ export default function Landing() {
                             aspectRatio: '16/9',
                             position: 'relative'
                         }}>
-                            {heroSlides.map((slide, idx) => (
+                            {heroSlides.length > 0 ? heroSlides.map((slide, idx) => (
                                 <div
                                     key={idx}
                                     style={{
@@ -654,7 +643,11 @@ export default function Landing() {
                                         <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: '0.9rem' }}>{slide.subtitle}</p>
                                     </div>
                                 </div>
-                            ))}
+                            )) : (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444' }}>
+                                    <Camera size={48} opacity={0.2} />
+                                </div>
+                            )}
 
                             {/* Slide Indicators */}
                             <div style={{ position: 'absolute', bottom: '20px', right: '30px', display: 'flex', gap: '8px', zIndex: 10 }}>
@@ -675,19 +668,22 @@ export default function Landing() {
                             </div>
                         </div>
 
-                        {/* Navigation Arrows */}
-                        <button
-                            onClick={() => setCurrentHeroSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
-                            style={{ position: 'absolute', left: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-                        <button
-                            onClick={() => setCurrentHeroSlide(prev => (prev + 1) % heroSlides.length)}
-                            style={{ position: 'absolute', right: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
-                        >
-                            <ChevronRight size={24} />
-                        </button>
+                        {heroSlides.length > 1 && (
+                            <>
+                                <button
+                                    onClick={() => setCurrentHeroSlide(prev => (prev - 1 + heroSlides.length) % heroSlides.length)}
+                                    style={{ position: 'absolute', left: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
+                                >
+                                    <ChevronLeft size={24} />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentHeroSlide(prev => (prev + 1) % heroSlides.length)}
+                                    style={{ position: 'absolute', right: '-25px', top: '50%', transform: 'translateY(-50%)', width: '50px', height: '50px', borderRadius: '50%', background: 'rgba(2,6,23,0.8)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, backdropFilter: 'blur(10px)' }}
+                                >
+                                    <ChevronRight size={24} />
+                                </button>
+                            </>
+                        )}
 
                         {/* Decorative accents */}
                         <div style={{ position: 'absolute', top: '-40px', left: '-40px', width: '200px', height: '200px', background: 'rgba(0,210,211,0.2)', filter: 'blur(80px)', zIndex: -1 }}></div>
