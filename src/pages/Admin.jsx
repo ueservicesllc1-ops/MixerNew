@@ -862,7 +862,7 @@ export default function Admin() {
                                 downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775782309423.apk`, 
                                 createdAt: serverTimestamp()
                             });
-                            alert("¡Éxito! Versión 1.6.1 publicada. Ya pueden descargarla en la tablet.");
+                            alert("¡Éxito! Versión 1.6.2 (Deep Sync) publicada correctamente.");
                             window.location.reload();
                         } catch(e) { alert("Error: " + e.message); }
                     }}
