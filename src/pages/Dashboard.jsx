@@ -326,11 +326,14 @@ function Dashboard() {
                     setUserPlan(STORAGE_PLANS[0]);
                 });
 
-                // Solo canciones subidas por este usuario (no globales, no de otros)
-                const q = query(collection(db, 'songs'), where('userId', '==', user.uid), where('isGlobal', '!=', true));
+                // Solo canciones subidas por este usuario (excluye globales en JS para no perder docs sin el campo)
+                const q = query(collection(db, 'songs'), where('userId', '==', user.uid));
                 unsubSongs = onSnapshot(q, (snap) => {
                     const songs = [];
-                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
+                    snap.forEach(doc => {
+                        const s = { id: doc.id, ...doc.data() };
+                        if (!s.isGlobal) songs.push(s);
+                    });
                     songs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
                     setUserSongs(songs);
                 }, (error) => {
