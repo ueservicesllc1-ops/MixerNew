@@ -93,7 +93,7 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
-    const CURRENT_VERSION = "1.6.2";
+    const CURRENT_VERSION = "1.6.3";
     const [updateAvailable, setUpdateAvailable] = useState(null);
 
     useEffect(() => {
@@ -1159,7 +1159,7 @@ export default function Multitrack() {
         }
     }, [tracks, audioReady]);
 
-    const totalDuration = dynamicDuration > 0 ? dynamicDuration : (activeSong?.duration > 0 && activeSong.duration !== 180 ? activeSong.duration : 180);
+    const totalDuration = dynamicDuration > 0 ? dynamicDuration : (activeSong?.duration > 0 ? activeSong.duration : 600); // Increased fallback to 10m to prevent abrupt cuts
 
     // AUTO-STOP when song finishes
     useEffect(() => {
@@ -1563,7 +1563,7 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar">
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.2 - ZION STAGE (DEEP SYNC)</div>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.3 - ZION STAGE (DEEP SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>

@@ -121,6 +121,10 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
         offscreenRef.current = { dark: dark.c, bright: bright.c, W, H };
     }, [peaks, statusInfo.color]);
 
+    // Update local duration ref for stable RAF
+    const durationRef = useRef(actualDuration);
+    useEffect(() => { durationRef.current = actualDuration; }, [actualDuration]);
+
     // ── HIGH PERFORMANCE RENDER LOOP (60 FPS) ────────────────────────
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -138,8 +142,9 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
 
             // Interpolated Progress - IF dragging, use global dragTime
             const currentT = audioEngine.isDragging ? audioEngine.dragTime : audioEngine.getCurrentTime();
+            const activeDur = durationRef.current || 1;
 
-            const playheadX = Math.max(0, Math.min(W, (currentT / actualDuration) * W));
+            const playheadX = Math.max(0, Math.min(W, (currentT / activeDur) * W));
             const { dark, bright } = offscreenRef.current;
 
             if (dark && bright) {
@@ -163,7 +168,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
 
         rafId = requestAnimationFrame(render);
         return () => cancelAnimationFrame(rafId);
-    }, [actualDuration]);
+    }, []); // Run ONCE on mount, use Refs for data
 
     const handleInteraction = (clientX) => {
         if (!actualDuration || !canvasRef.current) return 0;

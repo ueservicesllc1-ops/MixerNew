@@ -278,10 +278,12 @@ class AudioEngine {
         if (IS_NATIVE) {
             const m = this._trackMeta.get(id);
             if (!m || m.muted) return 0;
-            // More organic "living" meter behavior using sine waves
-            const time = performance.now() / 150;
-            const variance = Math.sin(time + (parseInt(id.slice(-1)) || 0)) * 0.2 + 0.8;
-            return (0.4 * variance) * (m.volume || 1);
+            // More organic "living" meter behavior
+            const seed = (typeof id === 'string' ? id.length : id) % 10;
+            const time = performance.now() / 120;
+            const base = 0.35 + Math.sin(time + seed) * 0.15;
+            const twitch = Math.random() * 0.2;
+            return (base + twitch) * (m.volume || 1);
         } else {
             const t = this.tracks.get(id);
             if (!t || !t.analyser) return 0;
