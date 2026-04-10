@@ -326,18 +326,12 @@ function Dashboard() {
                     setUserPlan(STORAGE_PLANS[0]);
                 });
 
-                // Fetch Songs based on Plan Access
-                const q = query(collection(db, 'songs'));
+                // Solo canciones subidas por este usuario (no globales, no de otros)
+                const q = query(collection(db, 'songs'), where('userId', '==', user.uid), where('isGlobal', '!=', true));
                 unsubSongs = onSnapshot(q, (snap) => {
                     const songs = [];
-                    snap.forEach(doc => {
-                        const s = { id: doc.id, ...doc.data() };
-                        if (userPlan?.isVIP || s.userId === user.uid || s.isGlobal) {
-                            songs.push(s);
-                        }
-                    });
+                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
                     songs.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0));
-                    setUserSongs(songs);
                     setUserSongs(songs);
                 }, (error) => {
                     console.error("Error fetching songs:", error);
