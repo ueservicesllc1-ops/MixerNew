@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
-import { ProgressBar } from '../components/ProgressBar'
 import WaveformCanvas from '../components/WaveformCanvas'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
@@ -15,7 +14,7 @@ import {
     DndContext,
     closestCenter,
     TouchSensor,
-    MouseSensor,
+    PointerSensor,
     useSensor,
     useSensors,
 } from '@dnd-kit/core';
@@ -34,8 +33,7 @@ export default function Multitrack() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
-    // ── PROGRESS: useRef instead of useState — ZERO re-renders on tick ──
-    const progressRef = useRef(0);
+    const [progress, setProgress] = useState(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [proxyUrl, setProxyUrl] = useState(() => {
@@ -130,11 +128,11 @@ export default function Multitrack() {
 
     // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const sensors = useSensors(
-        useSensor(MouseSensor, {
-            activationConstraint: { distance: 10 }
+        useSensor(PointerSensor, {
+            activationConstraint: { distance: 8 }
         }),
         useSensor(TouchSensor, {
-            activationConstraint: { delay: 250, tolerance: 5 }
+            activationConstraint: { delay: 300, tolerance: 8 }
         })
     );
 
@@ -414,16 +412,11 @@ export default function Multitrack() {
                     setLibrarySongs(songs);
                 });
 
-                // Global/VIP tab - solo canciones que tienen multitrack
+                // Global/VIP tab ΓÇö todas las canciones (sin filtro de due├▒o, solo lectura de metadata)
                 const qGlobal = query(collection(db, 'songs'));
                 const unsubGlobal = onSnapshot(qGlobal, (snap) => {
                     const songs = [];
-                    snap.forEach(doc => {
-                        const data = doc.data();
-                        if (Array.isArray(data.tracks) && data.tracks.length > 0) {
-                            songs.push({ id: doc.id, ...data });
-                        }
-                    });
+                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
                     setGlobalSongs(songs);
                 });
 
@@ -468,20 +461,10 @@ export default function Multitrack() {
                 { id: '4', name: 'Canal 3' },
             ];
             setTracks(emptyTracks);
-
-            // ── Wire progress to ref ONLY — no setState, no re-render ──
-            audioEngine.onProgress = (t) => { progressRef.current = t; };
+            audioEngine.onProgress = (t) => setProgress(t);
             setLoading(false);
         };
         initCore();
-
-        // ── Auto-next: when song finishes, engine triggers this directly ──
-        const checkAutoNext = (t) => {
-            const dur = audioEngine._durationHint || 0;
-            if (dur > 0 && t >= dur) {
-                // We'll check via the ref instead to avoid state dependency
-            }
-        };
 
         return () => {
             unsubAuth();
@@ -666,7 +649,7 @@ export default function Multitrack() {
                         await audioEngine.stop();
                         audioEngine.clear();
                         setIsPlaying(false);
-                        progressRef.current = 0;
+                        setProgress(0);
                         setActiveSongId(null);
                         setTracks([]);
                     }
@@ -787,7 +770,7 @@ export default function Multitrack() {
         setViewedSongId(song.id); // Ensure lyrics/chords follow the loaded song
         setTracks([]); // Limpiar mixer mientras carga (evita confusi├│n)
         setIsPlaying(false);
-        progressRef.current = 0;
+        setProgress(0);
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         await audioEngine.stop();
@@ -1033,13 +1016,13 @@ export default function Multitrack() {
     const handleStop = async () => {
         await audioEngine.stop();
         setIsPlaying(false);
-        progressRef.current = 0;
+        setProgress(0);
     };
 
     const handleRewind = async () => {
         await audioEngine.stop();
         setIsPlaying(false);
-        progressRef.current = 0;
+        setProgress(0);
     };
 
     const handleSkipForward = () => {
@@ -1052,10 +1035,10 @@ export default function Multitrack() {
     };
 
     const handleSkipBack = async () => {
-        if (progressRef.current > 3) {
+        if (progress > 3) {
             await audioEngine.stop();
             setIsPlaying(false);
-            progressRef.current = 0;
+            setProgress(0);
         } else if (activeSetlist?.songs?.length && activeSongId) {
             const songs = activeSetlist.songs;
             const currentIdx = songs.findIndex(s => s.id === activeSongId);
@@ -1064,7 +1047,7 @@ export default function Multitrack() {
             } else {
                 await audioEngine.stop();
                 setIsPlaying(false);
-                progressRef.current = 0;
+                setProgress(0);
             }
         } else {
             handleRewind();
@@ -1131,19 +1114,13 @@ export default function Multitrack() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tracks, activeSong, audioReady]); // Recalculate when tracks or audioReady change
 
-    // ── AUTO-STOP/NEXT: Uses a registered listener — not React state ──
+    // AUTO-STOP when song finishes
     useEffect(() => {
-        if (!totalDuration || totalDuration <= 0) return;
-        const listener = (t) => {
-            if (isPlaying && t >= totalDuration) {
-                console.log('[AUTO-STOP] Song finished at', t);
-                handleStop();
-            }
-        };
-        audioEngine.addProgressListener(listener);
-        return () => audioEngine.removeProgressListener(listener);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [totalDuration, isPlaying]);
+        if (isPlaying && totalDuration > 0 && progress >= totalDuration) {
+            console.log("[AUTO-STOP] Song finished.");
+            handleStop();
+        }
+    }, [progress, totalDuration, isPlaying]);
 
     // Teleprompter and Chords states
     const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -1263,36 +1240,38 @@ export default function Multitrack() {
     const lastAutoScrollTop = useRef(0);
     const isProgrammaticScroll = useRef(false);
 
-    // ── AUTO-SCROLL: Direct RAF loop reading progressRef — no React re-renders ──
-    const autoScrollRAFRef = useRef(null);
     useEffect(() => {
-        const run = () => {
-            if (!isAutoScroll || totalDuration <= 0) {
-                autoScrollRAFRef.current = requestAnimationFrame(run);
-                return;
-            }
-            const container = activeTab === 'lyrics' ? lyricsScrollRef.current
-                : activeTab === 'chords' ? chordsScrollRef.current : null;
+        if (isAutoScroll && totalDuration > 0) {
+            // Apply scroll to whatever the active scroll ref is
+            const container = activeTab === 'lyrics' ? lyricsScrollRef.current :
+                activeTab === 'chords' ? chordsScrollRef.current : null;
 
-            if (container) {
-                const scrollHeight = container.scrollHeight - container.clientHeight;
-                const t = progressRef.current;
-                const baseScroll = ((t * autoScrollSpeed) / totalDuration) * scrollHeight;
-                const targetScroll = Math.max(0, Math.min(baseScroll + manualScrollOffset, scrollHeight));
+            if (!container) return;
+            const scrollHeight = container.scrollHeight - container.clientHeight;
 
-                if (Math.abs(container.scrollTop - targetScroll) > 2) {
-                    isProgrammaticScroll.current = true;
-                    lastAutoScrollTop.current = targetScroll;
-                    container.scrollTo({ top: targetScroll, behavior: 'smooth' });
-                    setTimeout(() => { isProgrammaticScroll.current = false; }, 100);
-                }
-            }
-            autoScrollRAFRef.current = requestAnimationFrame(run);
-        };
-        autoScrollRAFRef.current = requestAnimationFrame(run);
-        return () => cancelAnimationFrame(autoScrollRAFRef.current);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAutoScroll, totalDuration, autoScrollSpeed, manualScrollOffset, activeTab]);
+            // Calculate base scroll position based on progress and speed
+            const baseScroll = ((progress * autoScrollSpeed) / totalDuration) * scrollHeight;
+
+            // Add user's manual offset
+            const targetScroll = baseScroll + manualScrollOffset;
+
+            // Prevent going out of bounds
+            const finalScroll = Math.max(0, Math.min(targetScroll, scrollHeight));
+
+            isProgrammaticScroll.current = true;
+            lastAutoScrollTop.current = finalScroll;
+
+            container.scrollTo({
+                top: finalScroll,
+                behavior: 'smooth'
+            });
+
+            // Allow time for the smooth scroll to start processing before reacting to scroll events
+            setTimeout(() => {
+                isProgrammaticScroll.current = false;
+            }, 100);
+        }
+    }, [progress, totalDuration, isAutoScroll, autoScrollSpeed, manualScrollOffset, activeTab]);
 
     const handleTextScroll = (e) => {
         if (!isAutoScroll) return;
@@ -1515,6 +1494,7 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar">
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.1 - ZION STAGE (STABLE SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
@@ -1567,8 +1547,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="audio-info">
-                    {/* ── ISOLATED: updates its own DOM, no parent re-render ── */}
-                    <ProgressBar duration={totalDuration} onSeek={(s) => audioEngine.seek(s)} />
+                    <span>{formatTime(progress)} / {totalDuration ? formatTime(totalDuration) : '--:--'}</span>
 
                     {/* TEMPO CONTROL with ┬▒ buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1641,7 +1620,7 @@ export default function Multitrack() {
                 <WaveformCanvas
                     songId={activeSong?.id}
                     tracks={tracks}
-                    progress={audioEngine.progress}
+                    progress={progress}
                     isPlaying={isPlaying}
                     duration={totalDuration}
                     hasPreview={activeSong?.tracks?.some(t => t.name === '__PreviewMix')}
@@ -2515,7 +2494,7 @@ export default function Multitrack() {
                             onClick={() => setLibraryTab('global')}
                             style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                         >
-                            🌐 Global ({globalSongs.length})
+                            🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
                         </button>
                     </div>
 
@@ -2556,7 +2535,7 @@ export default function Multitrack() {
                                 Debes iniciar sesión para ver la librería.
                             </div>
                         ) : (() => {
-                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs;
+                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs.filter(s =>  Array.isArray(s.tracks) && s.tracks.length > 0);
                             const songs = baseSongs.filter(song => {
                                 if (!searchQuery) return true;
                                 const q = searchQuery.toLowerCase();
@@ -2694,6 +2673,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         transition,
         opacity: isDragging ? 0.6 : (pStatus === 'loading' && !isActive ? 0.7 : 1),
         zIndex: isDragging ? 100 : 1,
+        touchAction: 'none',
         position: 'relative',
         transformOrigin: '0 0'
     };
@@ -2707,7 +2687,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5, touchAction: 'none', padding: '10px 5px', marginLeft: '-5px' }} onClick={(e) => e.stopPropagation()}>
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
                     <span className="song-index-badge">{idx + 1}</span>

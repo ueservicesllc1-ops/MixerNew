@@ -23,78 +23,77 @@ export const Mixer = ({ tracks }) => {
     );
 };
 
-// ─── Canvas VU Meter ─────────────────────────────────────────────
-const VUMeter = React.memo(({ trackId, muted }) => {
+// ─── LED VU Meter ────────────────────────────────────────────────
+const LED_COUNT = 32;
+
+function VUMeter({ trackId, muted }) {
     const canvasRef = useRef(null);
-    const isDarkRef = useRef(document.body.classList.contains('dark-mode'));
+    const rafRef = useRef(null);
+    const levelRef = useRef(0);
 
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext('2d', { alpha: false });
-        let rafId;
-
-        const LED_COUNT = 32;
-        const draw = () => {
-            const isDark = document.body.classList.contains('dark-mode');
-            const w = canvas.width;
-            const h = canvas.height;
+        const poll = () => {
+            const raw = audioEngine.getTrackLevel(trackId);
+            levelRef.current = Math.min(1, raw * 6.5); // Exact same boost
             
-            // Background
-            ctx.fillStyle = isDark ? '#020617' : '#94a3b8';
-            ctx.fillRect(0, 0, w, h);
-
-            if (!muted) {
-                const rawLevel = audioEngine.getTrackLevel(trackId);
-                const level = Math.min(1, rawLevel * 6.5);
-                const activeLeds = Math.round(level * LED_COUNT);
-
-                const ledH = (h / LED_COUNT);
-
-                for (let i = 0; i < LED_COUNT; i++) {
-                    const y = h - (i + 1) * ledH;
-                    
-                    if (i < activeLeds) {
-                        // Color logic
-                        let color;
-                        if (isDark) {
-                            if (i >= LED_COUNT - 4) color = '#ff3b3b';
-                            else if (i >= LED_COUNT - 10) color = '#ff9f0a';
-                            else color = '#00e5ff';
-                        } else {
-                            if (i >= LED_COUNT - 4) color = '#ff1f1f';
-                            else if (i >= LED_COUNT - 10) color = '#ffb142';
-                            else color = '#00e676';
-                        }
-                        ctx.fillStyle = color;
-                        ctx.shadowBlur = 4;
-                        ctx.shadowColor = color;
-                    } else {
-                        ctx.fillStyle = isDark ? '#1e293b' : '#cbd5e0';
-                        ctx.shadowBlur = 0;
-                    }
-                    ctx.fillRect(1, y + 0.5, w - 2, ledH - 1);
-                }
-            }
-            rafId = requestAnimationFrame(draw);
+            draw();
+            rafRef.current = requestAnimationFrame(poll);
         };
 
-        rafId = requestAnimationFrame(draw);
-        return () => cancelAnimationFrame(rafId);
+        const draw = () => {
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            const isDark = document.body.classList.contains('dark-mode');
+
+            ctx.clearRect(0, 0, w, h);
+
+            const activeLeds = muted ? 0 : Math.round(levelRef.current * LED_COUNT);
+            const ledHeight = (h / LED_COUNT) - 1; // 1px gap
+
+            for (let i = 0; i < LED_COUNT; i++) {
+                const isLit = i < activeLeds;
+                let color;
+
+                if (isLit) {
+                    if (isDark) {
+                        if (i >= LED_COUNT - 4) color = '#ff3b3b';
+                        else if (i >= LED_COUNT - 10) color = '#ff9f0a';
+                        else color = '#00e5ff';
+                    } else {
+                        if (i >= LED_COUNT - 4) color = '#ff1f1f';
+                        else if (i >= LED_COUNT - 10) color = '#ffb142';
+                        else color = '#00e676';
+                    }
+                } else {
+                    color = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+                }
+
+                ctx.fillStyle = color;
+                // Draw from bottom up
+                const y = h - ((i + 1) * (h / LED_COUNT));
+                ctx.fillRect(0, y, w, ledHeight);
+            }
+        };
+
+        rafRef.current = requestAnimationFrame(poll);
+        return () => cancelAnimationFrame(rafRef.current);
     }, [trackId, muted]);
 
     return (
         <canvas 
             ref={canvasRef} 
-            width={20} 
+            width={10} 
             height={200} 
             style={{ width: '100%', height: '100%', display: 'block' }} 
         />
     );
-});
+}
 
 // ─── Channel Strip ────────────────────────────────────────────────
-const ChannelStrip = React.memo(({ id, name, isPlaceholder }) => {
+const ChannelStrip = ({ id, name, isPlaceholder }) => {
     const [volume, setVolume] = useState(0.8);
     const [muted, setMuted] = useState(false);
     const [solo, setSolo] = useState(false);
@@ -287,4 +286,4 @@ const ChannelStrip = React.memo(({ id, name, isPlaceholder }) => {
             </div>
         </div>
     );
-});
+};

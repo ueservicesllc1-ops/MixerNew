@@ -24,9 +24,18 @@ class AudioEngine {
         this.progress = 0;
         this._updater = null;
         this._progressListeners = new Set();
+        
+        // High-res timing for 60fps interpolation
+        this.lastFetchPos = 0;
+        this.lastFetchTime = 0; 
+        
+        // Drag Synchronization
+        this.isDragging = false;
+        this.dragTime = 0;
+
         // Frame limiter: notify at max ~15 FPS to reduce JS bridge pressure
         this._lastNotifyTime = 0;
-        this._NOTIFY_INTERVAL = 66; // ms
+        this._NOTIFY_INTERVAL = 66; // ms (approx 15 Hz)
 
         this.workletLoaded = false;
         this.masterSoundTouchNode = null;
@@ -70,6 +79,7 @@ class AudioEngine {
      * NATIVE MODE / WEB BATCH: Loads multiple tracks at once for maximum speed.
      */
     async addTracksBatch(tracksArray) {
+        this.resetTiming(); // Total reset BEFORE loading new song
         if (IS_NATIVE) {
             const batch = [];
             for (const t of tracksArray) {
@@ -266,10 +276,12 @@ class AudioEngine {
     getTrackLevel(id) {
         if (!this.isPlaying) return 0;
         if (IS_NATIVE) {
-            // Fake level for native since no native meter implemented yet
             const m = this._trackMeta.get(id);
             if (!m || m.muted) return 0;
-            return (Math.random() * 0.4 + 0.3) * (m.volume || 1);
+            // More organic "living" meter behavior using sine waves
+            const time = performance.now() / 150;
+            const variance = Math.sin(time + (parseInt(id.slice(-1)) || 0)) * 0.2 + 0.8;
+            return (0.4 * variance) * (m.volume || 1);
         } else {
             const t = this.tracks.get(id);
             if (!t || !t.analyser) return 0;
@@ -356,8 +368,10 @@ class AudioEngine {
             const native = await getNative();
             if (this.pausePosition > 0) await native.seek(this.pausePosition);
             await native.play();
-            this._playStartWall = performance.now();
-            this._playStartPos = this.pausePosition;
+            
+            this.lastFetchPos = this.pausePosition;
+            this.lastFetchTime = performance.now();
+            this.progress = this.pausePosition;
             this.isPlaying = true;
             this._startRAF();
             return;
@@ -365,6 +379,9 @@ class AudioEngine {
 
         // Web Audio Play...
         this._playStartTime = this.ctx.currentTime;
+        this.lastFetchPos = this.pausePosition;
+        this.lastFetchTime = performance.now();
+        this.progress = this.pausePosition;
         this.isPlaying = true;
         this._startRAF();
 
@@ -419,30 +436,41 @@ class AudioEngine {
     }
 
     async seek(seconds) {
-        if (IS_NATIVE) {
-            const native = await getNative();
-            await native.seek(seconds);
-            this._playStartWall = performance.now();
-            this._playStartPos = seconds;
-            this.pausePosition = seconds;
-            this.progress = seconds;
-            return;
-        }
-
-        // Web Audio logic
-        const wasPlaying = this.isPlaying;
-        if (wasPlaying) {
-            // No podemos usar this.pause() porque sumaria tiempo extra
-            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
-        }
         this.pausePosition = seconds;
         this.progress = seconds;
-        if (wasPlaying) {
-            this.isPlaying = false; // Forzar reinicio en play()
-            await this.play();
+        this.lastFetchPos = seconds;
+        this.lastFetchTime = performance.now();
+        this.isDragging = false;
+
+        if (IS_NATIVE) {
+            const n = await getNative();
+            await n.seek(seconds);
         } else {
-            if (this.onProgress) this.onProgress(this.progress);
+            const wasPlaying = this.isPlaying;
+            if (wasPlaying) {
+                for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+                this.isPlaying = false;
+                await this.play();
+            }
         }
+        this._notifyProgress();
+    }
+
+    // ── DRAG SYNC METHODS ──────────────────────────────────────────
+    startDrag(time) {
+        this.isDragging = true;
+        this.dragTime = time;
+        this._notifyProgress(); 
+    }
+
+    updateDrag(time) {
+        this.dragTime = time;
+        this._notifyProgress(); 
+    }
+
+    endDrag(time) {
+        this.isDragging = false;
+        this.seek(time);
     }
 
     async stop() {
@@ -450,12 +478,28 @@ class AudioEngine {
             const native = await getNative();
             await native.stop();
         } else {
-            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+            for (const [, t] of this.tracks.entries()) { 
+                if (t.source) {
+                    try {
+                        // Anti-pop fade out
+                        const stopTime = this.ctx.currentTime + 0.05;
+                        t.gainNode.gain.linearRampToValueAtTime(0, stopTime);
+                        t.source.stop(stopTime);
+                    } catch(e) {}
+                } 
+            }
         }
-        this.pausePosition = 0;
+        this.resetTiming();
         this.isPlaying = false;
-        this.progress = 0;
         if (this._updater) cancelAnimationFrame(this._updater);
+    }
+
+    resetTiming() {
+        this.progress = 0;
+        this.pausePosition = 0;
+        this.lastFetchPos = 0;
+        this.lastFetchTime = performance.now();
+        this._playStartTime = 0;
     }
 
     /** Subscribe to progress updates. Callback receives (timeInSeconds). */
@@ -470,26 +514,58 @@ class AudioEngine {
 
     _notifyProgress() {
         const now = performance.now();
-        if (now - this._lastNotifyTime < this._NOTIFY_INTERVAL) return;
+        // If dragging, we notify at much higher rate for visual fluidity
+        const minInterval = this.isDragging ? 16 : this._NOTIFY_INTERVAL;
+        if (now - this._lastNotifyTime < minInterval) return;
         this._lastNotifyTime = now;
-        // Legacy single-callback support
-        if (this.onProgress) this.onProgress(this.progress);
-        // New multi-subscriber pattern
-        for (const fn of this._progressListeners) fn(this.progress);
+        
+        const current = this.getCurrentTime();
+        if (this.onProgress) this.onProgress(current);
+        for (const fn of this._progressListeners) fn(current);
+    }
+
+    getCurrentTime() {
+        if (this.isDragging) return this.dragTime;
+        if (!this.isPlaying) return this.progress;
+        
+        const now = performance.now();
+        const delta = (now - this.lastFetchTime) / 1000;
+        const safeDelta = Math.max(0, Math.min(0.5, delta));
+        const interp = this.lastFetchPos + (safeDelta * (this.tempoRatio || 1));
+        return Math.max(0, Math.min(this._durationHint || 9999, interp));
     }
 
     _startRAF() {
         const update = async () => {
             if (!this.isPlaying) return;
-            if (IS_NATIVE) {
-                const n = await getNative();
-                this.progress = await n.getPosition();
-            } else {
-                const elapsed = this.ctx.currentTime - this._playStartTime;
-                this.progress = this.pausePosition + (elapsed * this.tempoRatio);
+            
+            try {
+                let currentPos = 0;
+                if (IS_NATIVE) {
+                    const n = await getNative();
+                    currentPos = await n.getPosition();
+                } else {
+                    const elapsed = this.ctx.currentTime - this._playStartTime;
+                    currentPos = this.pausePosition + (elapsed * this.tempoRatio);
+                }
+                
+                // If we detected a jump (e.g. new song or native seek finished)
+                // or if it's been more than 100ms since last fetch, sync the interpolation base.
+                if (Math.abs(currentPos - this.lastFetchPos) > 0.1 || (performance.now() - this.lastFetchTime > 100)) {
+                    this.lastFetchPos = currentPos;
+                    this.lastFetchTime = performance.now();
+                }
+
+                this.progress = currentPos;
+                this._notifyProgress();
+                
+                if (this.isPlaying) {
+                    this._updater = requestAnimationFrame(update);
+                }
+            } catch (e) {
+                console.error("RAF Update Error:", e);
+                if (this.isPlaying) this._updater = requestAnimationFrame(update);
             }
-            this._notifyProgress();
-            this._updater = requestAnimationFrame(update);
         };
         this._updater = requestAnimationFrame(update);
     }

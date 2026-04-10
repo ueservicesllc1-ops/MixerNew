@@ -1800,7 +1800,7 @@ function Dashboard() {
             {showUploadHelp && (
                 <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
                     <div style={{ background: '#1e293b', width: '100%', maxWidth: '700px', borderRadius: '32px', padding: '40px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', position: 'relative' }}>
-                        <button onClick={() => setShowUploadHelp(false)} style={{ position: 'absolute', top: '25px', right: '25px', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', border: 'none', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}><X size={24} /></button>
+                        <button onClick={() => setShowUploadHelp(false)} style={{ position: 'absolute', top: '25px', right: '25px', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}><X size={24} /></button>
                         
                         <div style={{ textAlign: 'center', marginBottom: '30px' }}>
                             <div style={{ width: '70px', height: '70px', background: 'rgba(0,210,211,0.1)', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3', margin: '0 auto 20px' }}><HelpCircle size={40} /></div>
