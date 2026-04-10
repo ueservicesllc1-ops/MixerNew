@@ -859,7 +859,7 @@ export default function Admin() {
                         try {
                             await addDoc(collection(db, 'app_versions'), {
                                 versionName: "1.6.6",
-                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775831333586.apk`, 
+                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775831586232.apk`, 
                                 createdAt: serverTimestamp()
                             });
                             alert("¡Éxito! Versión 1.6.6 (Build Limpio) publicada. NOTA: Desinstala la app vieja antes de instalar esta.");
