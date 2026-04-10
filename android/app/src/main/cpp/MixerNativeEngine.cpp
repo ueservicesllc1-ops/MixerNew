@@ -304,16 +304,28 @@ public:
     }
 
     void seekAll(double seconds) {
-        // Signal audio thread to flush SoundTouch BEFORE we move the tracks.
-        // The audio thread will output silence for one buffer while tracks settle.
-        if (stNodeReady) {
-            stNode.needsFlush.store(true, std::memory_order_release);
-        }
         std::lock_guard<std::mutex> lk(mtx);
+
+        // 1. Stop every sound so the audio thread stops pulling frames from them.
+        //    This prevents the race where some tracks are read at old position
+        //    while others are already at the new position.
+        for (auto& t : tracks) if (t.soundReady) ma_sound_stop(&t.sound);
+
+        // 2. Seek all tracks to the new position (now safe — nothing is reading them)
         playbackTimeStart = seconds;
         engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         ma_uint64 frame = (ma_uint64)(seconds * kSampleRate);
         for (auto& t : tracks) if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, frame);
+
+        // 3. Flush SoundTouch so it doesn't play old buffered audio
+        if (stNodeReady) {
+            stNode.needsFlush.store(true, std::memory_order_release);
+        }
+
+        // 4. Restart all sounds from the new position (if we were playing)
+        if (playing) {
+            for (auto& t : tracks) if (t.soundReady) ma_sound_start(&t.sound);
+        }
     }
 
     double getPositionInternal() {
