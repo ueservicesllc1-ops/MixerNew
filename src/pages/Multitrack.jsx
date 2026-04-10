@@ -55,12 +55,142 @@ function pickNewerMeta(a, b) {
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
+// ─── LIBRARY DRAWER ──────────────────────────────────────────────────────────
+// Memoized to prevent re-renders when unrelated Multitrack state changes.
+const LibraryDrawer = React.memo(function LibraryDrawer({
+    isOpen, onClose,
+    librarySongs, globalSongs,
+    libraryTab, onTabChange,
+    searchQuery, onSearchChange,
+    currentUser, isAppNative,
+    downloadProgress, onDownloadAdd,
+}) {
+    const baseSongs = React.useMemo(() => {
+        const base = libraryTab === 'mine'
+            ? librarySongs
+            : globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0);
+        if (!searchQuery) return base;
+        const q = searchQuery.toLowerCase();
+        return base.filter(s =>
+            s.name?.toLowerCase().includes(q) ||
+            s.artist?.toLowerCase().includes(q) ||
+            s.uploadedBy?.toLowerCase().includes(q)
+        );
+    }, [libraryTab, librarySongs, globalSongs, searchQuery]);
+
+    return (
+        <div className={`library-drawer ${isOpen ? 'open' : ''}`}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2>Pistas en la Nube</h2>
+                <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                {/* TABS */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: '#f0f0f0', padding: '4px', borderRadius: '8px' }}>
+                    <button
+                        onClick={() => onTabChange('mine')}
+                        style={{ flex: 1, padding: '9px', background: libraryTab === 'mine' ? '#00d2d3' : 'transparent', color: libraryTab === 'mine' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
+                    >
+                        🎵 Mi Librería ({librarySongs.length})
+                    </button>
+                    <button
+                        onClick={() => onTabChange('global')}
+                        style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
+                    >
+                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
+                    </button>
+                </div>
+
+                {/* Buscador */}
+                <div style={{ marginBottom: '12px', position: 'relative' }}>
+                    <input
+                        type="text"
+                        placeholder={libraryTab === 'mine' ? "Buscar en mi librería..." : "Buscar pistas Global (VIP)..."}
+                        value={searchQuery}
+                        onChange={e => onSearchChange(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#333', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => onSearchChange('')}
+                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                        >
+                            <X size={16} />
+                        </button>
+                    )}
+                </div>
+
+                <div style={{ flex: 1, backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #ccc', padding: '10px', overflowY: 'auto' }}>
+                    {!currentUser ? (
+                        <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
+                            Debes iniciar sesión para ver la librería.
+                        </div>
+                    ) : baseSongs.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#666', marginTop: '30px', padding: '0 20px' }}>
+                            {searchQuery ? (
+                                <div style={{ fontSize: '0.9rem' }}>No se encontraron coincidencias para "{searchQuery}".</div>
+                            ) : libraryTab === 'mine' ? (
+                                <>
+                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
+                                    {!isAppNative && (
+                                        <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                            Para subir tus propias canciones, ingresa desde tu computadora a:<br />
+                                            <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
+                            )}
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {baseSongs.map(song => {
+                                const isDownloading = downloadProgress.songId === song.id;
+                                const isOtherUser = song.userId !== currentUser?.uid;
+                                return (
+                                    <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
+                                        <div>
+                                            <h4 style={{ margin: '0 0 3px 0', color: '#333' }}>{song.name}</h4>
+                                            <div style={{ fontSize: '0.75rem', color: '#888' }}>
+                                                {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
+                                                {song.artist && `${song.artist} • `}
+                                                {song.key && `${song.key} • `}
+                                                {song.tempo && `${song.tempo} BPM`}
+                                            </div>
+                                            {isDownloading && (
+                                                <div style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                                    {downloadProgress.text}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            style={{ background: isDownloading ? '#f39c12' : (downloadProgress.songId ? '#ccc' : '#2ecc71'), color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px', cursor: (isDownloading || downloadProgress.songId) ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                            title="Añadir a Setlist y Guardar Local"
+                                            onClick={() => !downloadProgress.songId && onDownloadAdd(song)}
+                                            disabled={!!downloadProgress.songId}
+                                        >
+                                            {isDownloading ? '⏳ Bajando...' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function Multitrack() {
     const navigate = useNavigate();
     const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
-    const [progress, setProgress] = useState(0);
+    const progressRef = useRef(0); // Replaces progress state — avoids 60fps re-renders of the full component
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [proxyUrl, setProxyUrl] = useState(() => {
@@ -602,7 +732,7 @@ export default function Multitrack() {
                 { id: '4', name: 'Canal 3' },
             ];
             setTracks(emptyTracks);
-            audioEngine.onProgress = (t) => setProgress(t);
+            audioEngine.onProgress = (t) => { progressRef.current = t; };
             setLoading(false);
         };
         initCore();
@@ -796,7 +926,7 @@ export default function Multitrack() {
                         await audioEngine.stop();
                         audioEngine.clear();
                         setIsPlaying(false);
-                        setProgress(0);
+                        progressRef.current = 0;
                         setActiveSongId(null);
                         setTracks([]);
                     }
@@ -918,9 +1048,9 @@ export default function Multitrack() {
         // Visual feedback inmediato antes de cualquier await bloqueante
         setActiveSongId(song.id);
         setViewedSongId(song.id); // Ensure lyrics/chords follow the loaded song
-        setTracks([]); // Limpiar mixer mientras carga (evita confusi├│n)
+        setTracks([]); // Limpiar mixer mientras carga (evita confusión)
         setIsPlaying(false);
-        setProgress(0);
+        progressRef.current = 0;
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         await audioEngine.stop();
@@ -1225,13 +1355,13 @@ export default function Multitrack() {
     const handleStop = async () => {
         await audioEngine.stop();
         setIsPlaying(false);
-        setProgress(0);
+        progressRef.current = 0;
     };
 
     const handleRewind = async () => {
         await audioEngine.stop();
         setIsPlaying(false);
-        setProgress(0);
+        progressRef.current = 0;
     };
 
     const handleSkipForward = () => {
@@ -1244,10 +1374,10 @@ export default function Multitrack() {
     };
 
     const handleSkipBack = async () => {
-        if (progress > 3) {
+        if (progressRef.current > 3) {
             await audioEngine.stop();
             setIsPlaying(false);
-            setProgress(0);
+            progressRef.current = 0;
         } else if (activeSetlist?.songs?.length && activeSongId) {
             const songs = activeSetlist.songs;
             const currentIdx = songs.findIndex(s => s.id === activeSongId);
@@ -1256,7 +1386,7 @@ export default function Multitrack() {
             } else {
                 await audioEngine.stop();
                 setIsPlaying(false);
-                setProgress(0);
+                progressRef.current = 0;
             }
         } else {
             handleRewind();
@@ -1350,32 +1480,51 @@ export default function Multitrack() {
     }, [tracks, activeSong, audioReady]); // Recalculate when tracks or audioReady change
 
     const nativeAutoStopFiredRef = useRef(false);
-    // AUTO-STOP when song finishes
+
+    // Time display span — updated directly via RAF (no setState, no re-render)
+    const timeDisplayRef = useRef(null);
+    useEffect(() => {
+        let rafId;
+        const tick = () => {
+            if (timeDisplayRef.current) {
+                const t = audioEngine.getCurrentTime();
+                progressRef.current = t;
+                timeDisplayRef.current.textContent =
+                    `${formatTime(t)} / ${totalDuration ? formatTime(totalDuration) : '--:--'}`;
+            }
+            rafId = requestAnimationFrame(tick);
+        };
+        rafId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafId);
+    }, [totalDuration]);
+    // AUTO-STOP when song finishes — interval-based so it doesn't depend on progress state (avoids 60fps re-renders)
     useEffect(() => {
         const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
-        if (isNative) {
-            if (!isPlaying || totalDuration <= 0) {
-                nativeAutoStopFiredRef.current = false;
-                return;
-            }
-            if (progress >= (totalDuration - 0.05)) {
-                if (nativeAutoStopFiredRef.current) return;
-                nativeAutoStopFiredRef.current = true;
-                console.log("[AUTO-STOP][NATIVE] Song finished.");
-                handleStop();
-                return;
-            }
-            if (progress < (totalDuration - 1)) {
-                nativeAutoStopFiredRef.current = false;
-            }
+        if (!isPlaying || totalDuration <= 0) {
+            nativeAutoStopFiredRef.current = false;
             return;
         }
-
-        if (isPlaying && totalDuration > 0 && progress >= totalDuration) {
-            console.log("[AUTO-STOP] Song finished.");
-            handleStop();
-        }
-    }, [progress, totalDuration, isPlaying]);
+        const id = setInterval(() => {
+            const t = progressRef.current;
+            if (isNative) {
+                if (t >= totalDuration - 0.05) {
+                    if (!nativeAutoStopFiredRef.current) {
+                        nativeAutoStopFiredRef.current = true;
+                        console.log("[AUTO-STOP][NATIVE] Song finished.");
+                        handleStop();
+                    }
+                } else if (t < totalDuration - 1) {
+                    nativeAutoStopFiredRef.current = false;
+                }
+            } else {
+                if (t >= totalDuration) {
+                    console.log("[AUTO-STOP] Song finished.");
+                    handleStop();
+                }
+            }
+        }, 200);
+        return () => clearInterval(id);
+    }, [isPlaying, totalDuration]);
 
     // Teleprompter and Chords states
     const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -1495,38 +1644,23 @@ export default function Multitrack() {
     const lastAutoScrollTop = useRef(0);
     const isProgrammaticScroll = useRef(false);
 
+    // Lyric auto-scroll — interval-based so it doesn't depend on progress state (avoids 60fps re-renders)
     useEffect(() => {
-        if (isAutoScroll && totalDuration > 0) {
-            // Apply scroll to whatever the active scroll ref is
+        if (!isAutoScroll || totalDuration <= 0) return;
+        const id = setInterval(() => {
             const container = activeTab === 'lyrics' ? lyricsScrollRef.current :
                 activeTab === 'chords' ? chordsScrollRef.current : null;
-
             if (!container) return;
             const scrollHeight = container.scrollHeight - container.clientHeight;
-
-            // Calculate base scroll position based on progress and speed
-            const baseScroll = ((progress * autoScrollSpeed) / totalDuration) * scrollHeight;
-
-            // Add user's manual offset
-            const targetScroll = baseScroll + manualScrollOffset;
-
-            // Prevent going out of bounds
-            const finalScroll = Math.max(0, Math.min(targetScroll, scrollHeight));
-
+            const baseScroll = ((progressRef.current * autoScrollSpeed) / totalDuration) * scrollHeight;
+            const finalScroll = Math.max(0, Math.min(baseScroll + manualScrollOffset, scrollHeight));
             isProgrammaticScroll.current = true;
             lastAutoScrollTop.current = finalScroll;
-
-            container.scrollTo({
-                top: finalScroll,
-                behavior: 'smooth'
-            });
-
-            // Allow time for the smooth scroll to start processing before reacting to scroll events
-            setTimeout(() => {
-                isProgrammaticScroll.current = false;
-            }, 100);
-        }
-    }, [progress, totalDuration, isAutoScroll, autoScrollSpeed, manualScrollOffset, activeTab]);
+            container.scrollTo({ top: finalScroll, behavior: 'smooth' });
+            setTimeout(() => { isProgrammaticScroll.current = false; }, 100);
+        }, 500);
+        return () => clearInterval(id);
+    }, [isAutoScroll, totalDuration, autoScrollSpeed, manualScrollOffset, activeTab]);
 
     const handleTextScroll = (e) => {
         if (!isAutoScroll) return;
@@ -1861,7 +1995,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="audio-info">
-                    <span>{formatTime(progress)} / {totalDuration ? formatTime(totalDuration) : '--:--'}</span>
+                    <span ref={timeDisplayRef} />
 
                     {/* TEMPO CONTROL with ┬▒ buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1934,7 +2068,6 @@ export default function Multitrack() {
                 <WaveformCanvas
                     songId={activeSong?.id}
                     tracks={tracks}
-                    progress={progress}
                     isPlaying={isPlaying}
                     duration={totalDuration}
                     hasPreview={activeSong?.tracks?.some(t => t.name === '__PreviewMix')}
@@ -2790,145 +2923,21 @@ export default function Multitrack() {
                 </div>
             </div>
 
-            {/* 2. LIBRARY DRAWER (Separated from Setlists) */}
-            <div className={`library-drawer ${isLibraryMenuOpen ? 'open' : ''}`}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h2>Pistas en la Nube</h2>
-                    <button onClick={() => setIsLibraryMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                    {/* TABS */}
-                    <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: '#f0f0f0', padding: '4px', borderRadius: '8px' }}>
-                        <button
-                            onClick={() => setLibraryTab('mine')}
-                            style={{ flex: 1, padding: '9px', background: libraryTab === 'mine' ? '#00d2d3' : 'transparent', color: libraryTab === 'mine' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                        >
-                            🎵 Mi Librería ({librarySongs.length})
-                        </button>
-                        <button
-                            onClick={() => setLibraryTab('global')}
-                            style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                        >
-                            🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
-                        </button>
-                    </div>
-
-                    {/* Buscador de Pistas */}
-                    <div style={{ marginBottom: '12px', position: 'relative' }}>
-                        <input
-                            type="text"
-                            placeholder={libraryTab === 'mine' ? "Buscar en mi librería..." : "Buscar pistas Global (VIP)..."}
-                            value={searchQuery}
-                            onChange={e => setSearchQuery(e.target.value)}
-                            style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                borderRadius: '10px',
-                                border: '1px solid #e2e8f0',
-                                background: '#fff',
-                                color: '#333',
-                                fontSize: '0.9rem',
-                                outline: 'none',
-                                boxSizing: 'border-box',
-                                transition: 'all 0.2s',
-                                boxShadow: '0 2px 4px rgba(0,0,0,0.02)'
-                            }}
-                        />
-                        {searchQuery && (
-                            <button
-                                onClick={() => setSearchQuery('')}
-                                style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                            >
-                                <X size={16} />
-                            </button>
-                        )}
-                    </div>
-
-                    <div style={{ flex: 1, backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #ccc', padding: '10px', overflowY: 'auto' }}>
-                        {!currentUser ? (
-                            <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
-                                Debes iniciar sesión para ver la librería.
-                            </div>
-                        ) : (() => {
-                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs.filter(s =>  Array.isArray(s.tracks) && s.tracks.length > 0);
-                            const songs = baseSongs.filter(song => {
-                                if (!searchQuery) return true;
-                                const q = searchQuery.toLowerCase();
-                                return (
-                                    song.name?.toLowerCase().includes(q) ||
-                                    song.artist?.toLowerCase().includes(q) ||
-                                    song.uploadedBy?.toLowerCase().includes(q)
-                                );
-                            });
-                            if (songs.length === 0) return (
-                                <div style={{ textAlign: 'center', color: '#666', marginTop: '30px', padding: '0 20px' }}>
-                                    {searchQuery ? (
-                                        <div style={{ fontSize: '0.9rem' }}>No se encontraron coincidencias para "{searchQuery}".</div>
-                                    ) : (
-                                        libraryTab === 'mine' ? (
-                                        <>
-                                            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
-                                            {!isAppNative && (
-                                                <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
-                                                    Para subir tus propias canciones, ingresa desde tu computadora a:<br />
-                                                    <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
-                                                </div>
-                                            )}
-                                        </>
-                                    ) : (
-                                        <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
-                                    )
-                                    )}
-                                </div>
-                            );
-                            return (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    {songs.map(song => {
-                                        const isDownloading = downloadProgress.songId === song.id;
-                                        const isOtherUser = song.userId !== currentUser?.uid;
-                                        return (
-                                            <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
-                                                <div>
-                                                    <h4 style={{ margin: '0 0 3px 0', color: '#333' }}>{song.name}</h4>
-                                                    <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                                                        {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
-                                                        {song.artist && `${song.artist} • `}
-                                                        {song.key && `${song.key} • `}
-                                                        {song.tempo && `${song.tempo} BPM`}
-                                                    </div>
-                                                    {isDownloading && (
-                                                        <div style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                                            {downloadProgress.text}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    style={{
-                                                        background: isDownloading ? '#f39c12' : (downloadProgress.songId ? '#ccc' : '#2ecc71'),
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        padding: '8px 10px',
-                                                        borderRadius: '4px',
-                                                        cursor: (isDownloading || downloadProgress.songId) ? 'not-allowed' : 'pointer',
-                                                        fontSize: '0.8rem',
-                                                        fontWeight: 'bold'
-                                                    }}
-                                                    title="Añadir a Setlist y Guardar Local"
-                                                    onClick={() => !downloadProgress.songId && handleDownloadAndAdd(song)}
-                                                    disabled={!!downloadProgress.songId}
-                                                >
-                                                    {isDownloading ? '⏳ Bajando...' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            );
-                        })()}
-                    </div>
-                </div>
-            </div>
+            {/* 2. LIBRARY DRAWER (memoized — no re-renders from unrelated state) */}
+            <LibraryDrawer
+                isOpen={isLibraryMenuOpen}
+                onClose={() => setIsLibraryMenuOpen(false)}
+                librarySongs={librarySongs}
+                globalSongs={globalSongs}
+                libraryTab={libraryTab}
+                onTabChange={setLibraryTab}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                currentUser={currentUser}
+                isAppNative={isAppNative}
+                downloadProgress={downloadProgress}
+                onDownloadAdd={handleDownloadAndAdd}
+            />
             {/* PARTITURA FULLSCREEN OVERLAY */}
             {pvFullscreen && selectedPartitura && (
                 <div style={{
@@ -2974,7 +2983,7 @@ export default function Multitrack() {
         );
     }
 
-function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect, onRemove }) {
+const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect, onRemove }) {
     const {
         attributes,
         listeners,
@@ -3074,4 +3083,4 @@ function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect
             )}
         </div>
     );
-}
+});

@@ -9,7 +9,7 @@ function formatTime(s) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export default function WaveformCanvas({ songId, tracks, duration, hasPreview, progress }) {
+export default function WaveformCanvas({ songId, tracks, duration, hasPreview }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const lastDragSecRef = useRef(0);
@@ -22,7 +22,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, p
     const actualDuration = isNative
         ? ((duration && duration > 0)
             ? duration
-            : (peakDuration > 0 ? peakDuration : Math.max(progress || 0, 1)))
+            : (peakDuration > 0 ? peakDuration : Math.max(audioEngine.getCurrentTime() || 0, 1)))
         : (duration || 180);
 
     actualDurationRef.current = actualDuration;
