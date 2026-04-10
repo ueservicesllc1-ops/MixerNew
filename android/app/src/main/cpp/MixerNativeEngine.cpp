@@ -28,6 +28,7 @@ struct SoundTouchNodeData {
     SoundTouch          st;
     std::atomic<float>  pendingPitch{0.0f}; // Written by Java thread
     float               activePitch  = 0.0f; // Only touched by audio thread
+    std::atomic<bool>   needsFlush{false};   // Set by Java thread on seek/clear; consumed by audio thread
 };
 
 static void stNodeProcess(
@@ -36,32 +37,41 @@ static void stNodeProcess(
 {
     auto* d = (SoundTouchNodeData*)pNode;
 
-    // Check if pitch changed (lock-free; SoundTouch is owned by the audio thread)
+    // 1. Handle flush request (seek/clear happened on Java thread).
+    //    Must run on audio thread to avoid race with putSamples/receiveSamples.
+    bool doFlush = d->needsFlush.exchange(false, std::memory_order_acq_rel);
+
+    // 2. Handle pitch change
     float newPitch = d->pendingPitch.load(std::memory_order_relaxed);
     if (newPitch != d->activePitch) {
         d->activePitch = newPitch;
-        d->st.clear();
         d->st.setPitchSemiTones(newPitch);
+        doFlush = true;
     }
 
+    if (doFlush) {
+        d->st.clear();
+        // Output silence for this one buffer (~5ms) so tracks fully settle
+        // at the new seek position before we start feeding SoundTouch again.
+        memset(ppFramesOut[0], 0, *pFrameCountOut * 2 * sizeof(float));
+        return;
+    }
+
+    // 3. Bypass when no pitch shift active
     if (d->activePitch == 0.0f) {
-        // Bypass: direct copy, zero latency
         ma_uint32 cnt = (*pFrameCountIn < *pFrameCountOut) ? *pFrameCountIn : *pFrameCountOut;
         if (cnt > 0) memcpy(ppFramesOut[0], ppFramesIn[0], cnt * 2 * sizeof(float));
         *pFrameCountOut = cnt;
         return;
     }
 
-    // Feed interleaved stereo frames into SoundTouch
+    // 4. Normal pitch-shifted processing
     d->st.putSamples(ppFramesIn[0], *pFrameCountIn);
-    // Drain available output frames
     ma_uint32 received = (ma_uint32)d->st.receiveSamples(ppFramesOut[0], *pFrameCountOut);
     if (received < *pFrameCountOut) {
-        // Fill remainder with silence while SoundTouch is warming up
         memset(ppFramesOut[0] + received * 2, 0,
                (*pFrameCountOut - received) * 2 * sizeof(float));
     }
-    *pFrameCountOut = *pFrameCountOut; // keep requested count for smooth playback
 }
 
 static ma_uint32 stBusChannels[1] = { 2 };  // 1 bus, stereo
@@ -264,10 +274,7 @@ public:
             if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, 0);
         }
 
-        // Flush SoundTouch buffer so previous song's audio doesn't bleed into new song
-        if (stNodeReady) {
-            stNode.st.clear();
-        }
+        if (stNodeReady) stNode.needsFlush.store(true, std::memory_order_release);
 
         LOGD("swapToPending OK: %zu tracks activos", tracks.size());
         return true;
@@ -297,15 +304,16 @@ public:
     }
 
     void seekAll(double seconds) {
+        // Signal audio thread to flush SoundTouch BEFORE we move the tracks.
+        // The audio thread will output silence for one buffer while tracks settle.
+        if (stNodeReady) {
+            stNode.needsFlush.store(true, std::memory_order_release);
+        }
         std::lock_guard<std::mutex> lk(mtx);
         playbackTimeStart = seconds;
         engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         ma_uint64 frame = (ma_uint64)(seconds * kSampleRate);
         for (auto& t : tracks) if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, frame);
-        // Flush SoundTouch internal buffer so old audio doesn't bleed into new position
-        if (stNodeReady) {
-            stNode.st.clear();
-        }
     }
 
     double getPositionInternal() {
@@ -316,12 +324,12 @@ public:
     }
 
     void clearTracks() {
+        if (stNodeReady) stNode.needsFlush.store(true, std::memory_order_release);
         std::lock_guard<std::mutex> lk(mtx);
         for (auto& t : tracks) t.release();
         tracks.clear();
         playbackTimeStart = 0;
         playing = false;
-        if (stNodeReady) stNode.st.clear();
     }
 
     void clearPending() {
