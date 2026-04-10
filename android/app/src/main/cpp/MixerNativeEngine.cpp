@@ -264,6 +264,21 @@ public:
         }
     }
     int getTrackCount() { std::lock_guard<std::mutex> lk(mtx); return (int)tracks.size(); }
+
+    // Retorna la duración máxima entre todos los tracks cargados (segundos).
+    // ma_sound_get_length_in_seconds lee los headers del archivo incluso en STREAM mode.
+    double getDurationInternal() {
+        std::lock_guard<std::mutex> lk(mtx);
+        double maxDur = 0.0;
+        for (auto& t : tracks) {
+            if (!t.soundReady) continue;
+            float dur = 0.0f;
+            if (ma_sound_get_length_in_seconds(&t.sound, &dur) == MA_SUCCESS && dur > maxDur) {
+                maxDur = (double)dur;
+            }
+        }
+        return maxDur;
+    }
 };
 
 static MultitrackEngine* gEngine = nullptr;
@@ -292,6 +307,7 @@ extern "C" {
     }
     JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetPosition(JNIEnv*, jobject) { return gEngine ? gEngine->getPositionInternal() : 0.0; }
     JNIEXPORT jint JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackCount(JNIEnv*, jobject) { return gEngine ? gEngine->getTrackCount() : 0; }
+    JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetDuration(JNIEnv*, jobject) { return gEngine ? gEngine->getDurationInternal() : 0.0; }
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetSpeed(JNIEnv*, jobject, jfloat speed) { if (gEngine) gEngine->setSpeed(speed); }
 
     // ── PRE-LOAD ──────────────────────────────────────────────────────────────

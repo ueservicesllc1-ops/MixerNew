@@ -234,4 +234,16 @@ export const NativeEngine = {
             return 0;
         }
     },
+
+    // Duración real del audio cargado en el motor C++ (segundos).
+    // Usa ma_sound_get_length_in_seconds — funciona incluso con MA_SOUND_FLAG_STREAM.
+    getDuration: async () => {
+        try {
+            const { duration } = await MultitrackPlugin.getDuration();
+            return duration || 0;
+        } catch (err) {
+            console.warn('[NativeEngine] getDuration error', err);
+            return 0;
+        }
+    },
 };

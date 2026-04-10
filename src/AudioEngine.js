@@ -107,13 +107,22 @@ class AudioEngine {
                 const swapped = await n.swapToPending(songId);
                 if (swapped) {
                     console.log(`[AudioEngine] ⚡ Swap instantáneo: ${songId}`);
-                    return; // ¡No hay decode! La canción ya estaba en memoria
+                    try {
+                        const dur = await n.getDuration();
+                        if (dur > 1) this._durationHint = dur;
+                    } catch { /* ignorar */ }
+                    return;
                 }
             }
 
             // ── SLOW PATH: carga normal (clearTracks + loadTracks) ────────────
             if (batch.length > 0) {
                 await n.loadTracks(batch);
+                // Pedir duración real al motor C++ y guardar como hint para la UI
+                try {
+                    const dur = await n.getDuration();
+                    if (dur > 1) this._durationHint = dur;
+                } catch { /* ignorar */ }
             }
             return;
         }
@@ -578,6 +587,7 @@ class AudioEngine {
         this._playStartTime = 0;
         this._playStartWall = 0;
         this._playStartPos = 0;
+        this._durationHint = 0;
     }
 
     /** Subscribe to progress updates. Callback receives (timeInSeconds). */

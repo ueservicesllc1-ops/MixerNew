@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.3";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -688,35 +688,24 @@ export default function Multitrack() {
                             const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
 
                             if (alreadyHasFile) {
+                                // Filesystem es fuente de verdad — no tocar localforage
                                 finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                                 if (tr.name === '__PreviewMix') {
-                                    blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                                    if (!blob) {
-                                        // Filesystem tiene el archivo pero localforage fue limpiado → recuperar
-                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
-                                        if (blob) await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
-                                    }
+                                    blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 }
                             } else {
-                                // Intentar localforage legacy, luego descarga directa de B2
-                                let legacyRawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                                if (legacyRawBuf) {
-                                    finalPath = await NativeEngine.saveTrackBlob(legacyRawBuf, `${song.id}_${tr.name}.mp3`);
-                                    blob = legacyRawBuf;
-                                } else {
-                                    // Directo de B2 (sin proxy) → mucho más rápido en nativo
-                                    try {
-                                        const r = await fetch(tr.url, { cache: 'no-store' });
-                                        if (r.ok) { blob = await r.blob(); if (blob.size < 500) blob = null; }
-                                    } catch { /* fall through */ }
-                                    if (!blob) {
-                                        const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                        if (!res.ok) return;
-                                        blob = await res.blob();
-                                    }
-                                    if (!blob) return;
-                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                // Descarga directa de B2, guarda solo en filesystem
+                                try {
+                                    const r = await fetch(tr.url, { cache: 'no-store' });
+                                    if (r.ok) { blob = await r.blob(); if (blob.size < 500) blob = null; }
+                                } catch { /* fall through */ }
+                                if (!blob) {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (!res.ok) return;
+                                    blob = await res.blob();
                                 }
+                                if (!blob) return;
+                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
                             }
 
                             if (tr.name === '__PreviewMix' && blob) {
@@ -860,7 +849,7 @@ export default function Multitrack() {
                     if (!alreadyHasFile) {
                         const blobData = await downloadBlob();
                         await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
-                        await LocalFileManager.saveTrackLocal(song.id, tr.name, blobData);
+                        // filesystem es fuente de verdad en nativo — no escribir en localforage
                     }
                 } else {
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
@@ -1028,22 +1017,17 @@ export default function Multitrack() {
                         try {
                             const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
                             if (alreadyHasFile) {
-                                // Archivo ya en disco → ruta directa, sin descarga
+                                // Archivo ya en disco → ruta directa, filesystem es fuente de verdad
                                 finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                                 if (tr.name === '__PreviewMix') {
-                                    // Intentar localforage; si Android lo limpió, leer del filesystem
-                                    blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
-                                    if (!blob) {
-                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
-                                        if (blob) await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
-                                    }
+                                    // Leer directo del filesystem (no localforage)
+                                    blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 }
                             } else {
-                                // Primera vez: descarga directa de B2, sin pasar por Railway
+                                // Primera vez: descarga directa de B2, guarda solo en filesystem
                                 blob = await fetchBlobNative(tr.url);
                                 if (blob) {
                                     finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
-                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
                                 }
                             }
                         } catch (e) { console.error("Error loading track file native:", tr.name, e); }
@@ -1054,7 +1038,7 @@ export default function Multitrack() {
                                 const ab = await blob.arrayBuffer();
                                 audioBuf = await audioEngine.ctx.decodeAudioData(ab);
                             } catch {
-                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                console.warn("[native] __PreviewMix decode failed, waveform will regenerate");
                             }
                         }
                         trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
@@ -1112,6 +1096,15 @@ export default function Multitrack() {
             }
 
             await audioEngine.addTracksBatch(batchMove);
+            // _durationHint es asignado por AudioEngine.addTracksBatch vía n.getDuration() (C++)
+            // Fallback JS: si el engine no pudo (canción muy nueva o error), usar datos de Firestore
+            if (!(audioEngine._durationHint > 1)) {
+                const previewEntry = trackBuffers.get('__PreviewMix');
+                const bufDur = previewEntry?.audioBuf?.duration;
+                if (bufDur > 1) audioEngine._durationHint = bufDur;
+                else if (song.duration > 1) audioEngine._durationHint = song.duration;
+            }
+
             setTracks(newTracksList);
             setAudioReady(prev => prev + 1);
 

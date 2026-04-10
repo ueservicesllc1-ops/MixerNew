@@ -31,6 +31,7 @@ public class MultitrackPlugin extends Plugin {
     public native double  nativeGetPosition();
     public native int     nativeGetTrackCount();
     public native void    nativeSetSpeed(float speed);
+    public native double  nativeGetDuration();
     // Pre-load (siguiente canción en background)
     public native void    nativePreloadTrack(String songId, String trackId, String path);
     public native boolean nativeSwapToPending(String songId);
@@ -158,6 +159,14 @@ public class MultitrackPlugin extends Plugin {
         int count = nativeLibLoaded ? nativeGetTrackCount() : 0;
         JSObject ret = new JSObject();
         ret.put("count", count);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void getDuration(PluginCall call) {
+        double dur = nativeLibLoaded ? nativeGetDuration() : 0.0;
+        JSObject ret = new JSObject();
+        ret.put("duration", dur);
         call.resolve(ret);
     }
 

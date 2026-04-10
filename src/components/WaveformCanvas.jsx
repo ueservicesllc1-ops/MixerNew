@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { audioEngine } from '../AudioEngine';
-import { LocalFileManager } from '../LocalFileManager';
+import { NativeEngine } from '../NativeEngine';
 
 function formatTime(s) {
     if (!s || isNaN(s) || s < 0) return '0:00';
@@ -98,10 +98,10 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, p
         const updateWaveform = async () => {
             let bufferToUse = pickBufferFromEngine();
 
-            // Native: a veces el mix no está en _trackMeta pero sí en almacenamiento local (pista ya descargada).
+            // Native: leer __PreviewMix directo del filesystem (fuente de verdad)
             if (!bufferToUse && isNative && audioEngine.ctx) {
                 try {
-                    const raw = await LocalFileManager.getTrackLocal(songId, '__PreviewMix');
+                    const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
                     if (raw) {
                         const ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
                         bufferToUse = await audioEngine.ctx.decodeAudioData(ab);
