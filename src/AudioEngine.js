@@ -281,7 +281,7 @@ class AudioEngine {
             // More organic "living" meter behavior
             const seed = (typeof id === 'string' ? id.length : id) % 10;
             const time = performance.now() / 120;
-            const base = 0.35 + Math.sin(time + seed) * 0.15;
+            const base = 0.5 + Math.sin(time + seed) * 0.15;
             const twitch = Math.random() * 0.2;
             return (base + twitch) * (m.volume || 1);
         } else {

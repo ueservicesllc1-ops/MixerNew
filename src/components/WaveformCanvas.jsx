@@ -12,7 +12,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
     const canvasRef = useRef(null);
     const [peaks, setPeaks] = useState(null);
     const [statusInfo, setStatusInfo] = useState({ isReal: false, source: 'Analizando...', color: '#64748b' });
-    const actualDuration = duration || 180;
+    const actualDuration = duration > 0 ? duration : 3600; // 1 hour fallback instead of 3 mins to prevent early visual clamping
 
     // Load peaks from cache
     useEffect(() => {

@@ -93,7 +93,7 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
-    const CURRENT_VERSION = "1.6.3";
+    const CURRENT_VERSION = "1.6.4";
     const [updateAvailable, setUpdateAvailable] = useState(null);
 
     useEffect(() => {
@@ -1127,47 +1127,47 @@ export default function Multitrack() {
 
     // Compute true duration directly from track source when buffers aren't available (Native Mode)
     useEffect(() => {
-        if (!tracks || tracks.length === 0) {
+        if (!activeSong || !activeSong.tracks || activeSong.tracks.length === 0) {
             setDynamicDuration(0);
             return;
         }
         
-        let foundBuffer = false;
+        // Strategy 1: check audioEngine buffers (if any)
         if (audioEngine.tracks && audioEngine.tracks.size > 0) {
             for (const [, track] of audioEngine.tracks.entries()) {
                 if (track.buffer && track.buffer.duration > 0) {
                     setDynamicDuration(track.buffer.duration);
-                    foundBuffer = true;
                     return;
                 }
             }
         }
 
-        if (!foundBuffer) {
-            const firstTrack = tracks[0];
-            const srcUrl = firstTrack.url || firstTrack.originalUrl;
+        // Strategy 2: Probe file metadata (limit to first 3 tracks to avoid overhead)
+        const tracksToProbe = activeSong.tracks.slice(0, 3);
+        tracksToProbe.forEach(track => {
+            const srcUrl = track.url || track.originalUrl;
             if (srcUrl) {
-                // Read exact duration from file blob/url metadata without decoding full audio
                 const tempAudio = new Audio(srcUrl.startsWith('file://') ? window.Capacitor.convertFileSrc(srcUrl) : srcUrl);
                 tempAudio.addEventListener('loadedmetadata', () => {
-                    if (tempAudio.duration && tempAudio.duration > 0 && tempAudio.duration !== Infinity) {
-                        setDynamicDuration(tempAudio.duration);
-                        audioEngine._durationHint = tempAudio.duration; // Help AudioEngine clamp correctly
+                    if (tempAudio.duration && tempAudio.duration > 1 && tempAudio.duration !== Infinity) {
+                        setDynamicDuration(prev => Math.max(prev, tempAudio.duration));
+                        audioEngine._durationHint = Math.max(audioEngine._durationHint || 0, tempAudio.duration);
                     }
                 });
             }
-        }
-    }, [tracks, audioReady]);
+        });
+    }, [activeSong, audioReady]);
 
-    const totalDuration = dynamicDuration > 0 ? dynamicDuration : (activeSong?.duration > 0 ? activeSong.duration : 600); // Increased fallback to 10m to prevent abrupt cuts
+    const totalDuration = dynamicDuration > 0 ? dynamicDuration : (activeSong?.duration > 0 ? activeSong.duration : 0);
+    const displayDuration = totalDuration || 0;
 
-    // AUTO-STOP when song finishes
+    // AUTO-STOP only if we have a REAL verified duration
     useEffect(() => {
-        if (isPlaying && totalDuration > 0 && progress >= totalDuration) {
-            console.log("[AUTO-STOP] Song finished.");
+        if (isPlaying && dynamicDuration > 0 && progress >= (dynamicDuration - 0.5)) {
+            console.log("[AUTO-STOP] Song actually finished.");
             handleStop();
         }
-    }, [progress, totalDuration, isPlaying]);
+    }, [progress, dynamicDuration, isPlaying]);
 
     // Teleprompter and Chords states
     const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -1563,7 +1563,7 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar">
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.3 - ZION STAGE (DEEP SYNC)</div>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.4 - ZION STAGE (DEEP SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
@@ -1616,7 +1616,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="audio-info">
-                    <span>{formatTime(progress)} / {totalDuration ? formatTime(totalDuration) : '--:--'}</span>
+                    <span>{formatTime(progress)} / {displayDuration > 0 ? formatTime(displayDuration) : '--:--'}</span>
 
                     {/* TEMPO CONTROL with ┬▒ buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
