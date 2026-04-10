@@ -34,6 +34,9 @@ const PageLoader = () => (
   </div>
 )
 
+import { KeepAwake } from '@capacitor-community/keep-awake';
+import { useEffect } from 'react';
+
 // Detecta si corre dentro de Capacitor (Android/iOS) o en el navegador web
 const isNativeApp = () => {
   return typeof window !== 'undefined' &&
@@ -42,6 +45,12 @@ const isNativeApp = () => {
 
 function App() {
   const native = isNativeApp()
+
+  useEffect(() => {
+    if (native) {
+      KeepAwake.keepAwake().catch(console.error);
+    }
+  }, [native]);
 
   return (
     <Router>

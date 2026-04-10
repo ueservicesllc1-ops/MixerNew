@@ -444,28 +444,38 @@ class AudioEngine {
 
         if (IS_NATIVE) {
             const n = await getNative();
+            // Anti-pop protection (hardware buffer wipe)
+            n.setVolume(0);
             await n.seek(seconds);
+            setTimeout(() => n.setVolume(1), 30);
         } else {
             const wasPlaying = this.isPlaying;
             if (wasPlaying) {
-                for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+                const stopTime = this.ctx.currentTime + 0.03;
+                for (const [, t] of this.tracks.entries()) { 
+                    if (t.source && t.gainNode) {
+                         try {
+                             t.gainNode.gain.linearRampToValueAtTime(0, stopTime);
+                             t.source.stop(stopTime);
+                         } catch(e){}
+                    } 
+                }
                 this.isPlaying = false;
-                await this.play();
+                setTimeout(() => { if (this.pausePosition === seconds) this.play(); }, 35);
             }
         }
         this._notifyProgress();
     }
 
     // ── DRAG SYNC METHODS ──────────────────────────────────────────
+    // Visual decoupling: update state but DO NOT trigger global React state
     startDrag(time) {
         this.isDragging = true;
         this.dragTime = time;
-        this._notifyProgress(); 
     }
 
     updateDrag(time) {
         this.dragTime = time;
-        this._notifyProgress(); 
     }
 
     endDrag(time) {

@@ -43,6 +43,20 @@ function VUMeter({ trackId, muted }) {
         const draw = () => {
             const canvas = canvasRef.current;
             if (!canvas) return;
+            const parent = canvas.parentElement;
+            if (!parent) return;
+
+            // Correct DPI scaling for APK
+            const dpr = window.devicePixelRatio || 1;
+            const rect = parent.getBoundingClientRect();
+            
+            if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
+                canvas.width = Math.floor(rect.width * dpr);
+                canvas.height = Math.floor(rect.height * dpr);
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
+            }
+
             const ctx = canvas.getContext('2d');
             const w = canvas.width;
             const h = canvas.height;
@@ -51,7 +65,7 @@ function VUMeter({ trackId, muted }) {
             ctx.clearRect(0, 0, w, h);
 
             const activeLeds = muted ? 0 : Math.round(levelRef.current * LED_COUNT);
-            const ledHeight = (h / LED_COUNT) - 1; // 1px gap
+            const ledHeight = (h / LED_COUNT) - (1 * dpr); // 1px gap scaled
 
             for (let i = 0; i < LED_COUNT; i++) {
                 const isLit = i < activeLeds;
@@ -85,8 +99,6 @@ function VUMeter({ trackId, muted }) {
     return (
         <canvas 
             ref={canvasRef} 
-            width={10} 
-            height={200} 
             style={{ width: '100%', height: '100%', display: 'block' }} 
         />
     );

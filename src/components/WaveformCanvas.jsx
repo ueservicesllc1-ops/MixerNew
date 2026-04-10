@@ -87,6 +87,39 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
     }, [songId, tracks, peaks]);
 
     const isDraggingRef = useRef(false);
+    const offscreenRef = useRef({ dark: null, bright: null, W: 0, H: 0 });
+
+    // ── O(1) PRE-RENDER ──────────────────────────────────────────────
+    useEffect(() => {
+        if (!peaks || !canvasRef.current) return;
+        const W = canvasRef.current.offsetWidth || 800;
+        const H = canvasRef.current.offsetHeight || 100;
+
+        const makeCanvas = () => {
+            const c = document.createElement('canvas');
+            c.width = W; c.height = H;
+            return { c, ctx: c.getContext('2d') };
+        };
+
+        const dark = makeCanvas();
+        dark.ctx.fillStyle = '#1e293b';
+        dark.ctx.fillRect(0, 0, W, H);
+        dark.ctx.fillStyle = '#475569';
+
+        const bright = makeCanvas();
+        bright.ctx.fillStyle = statusInfo.color;
+
+        const stepW = Math.ceil(W / peaks.length);
+        for (let x = 0; x < peaks.length; x++) {
+            const h = Math.max(2, peaks[x] * (H * 0.8));
+            const rectX = (x / peaks.length) * W;
+            const rectY = H/2 - h/2;
+            dark.ctx.fillRect(rectX, rectY, stepW, h);
+            bright.ctx.fillRect(rectX, rectY, stepW, h);
+        }
+
+        offscreenRef.current = { dark: dark.c, bright: bright.c, W, H };
+    }, [peaks, statusInfo.color]);
 
     // ── HIGH PERFORMANCE RENDER LOOP (60 FPS) ────────────────────────
     useEffect(() => {
@@ -106,35 +139,31 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
             // Interpolated Progress - IF dragging, use global dragTime
             const currentT = audioEngine.isDragging ? audioEngine.dragTime : audioEngine.getCurrentTime();
 
-            // Background
-            ctx.fillStyle = '#1e293b'; 
-            ctx.fillRect(0, 0, W, H);
+            const playheadX = Math.max(0, Math.min(W, (currentT / actualDuration) * W));
+            const { dark, bright } = offscreenRef.current;
 
-            if (peaks) {
-                const playheadX = (currentT / actualDuration) * W;
-                const centerY = H / 2;
-                
-                for (let x = 0; x < peaks.length; x++) {
-                    const canvasX = (x / peaks.length) * W;
-                    const val = peaks[x];
-                    const h = Math.max(2, val * (H * 0.8));
-                    const played = canvasX < playheadX;
-                    
-                    ctx.fillStyle = played ? statusInfo.color : '#475569';
-                    ctx.fillRect(canvasX, centerY - h / 2, Math.ceil(W/peaks.length), h);
+            if (dark && bright) {
+                // 1. Draw base dark layer entirely
+                ctx.drawImage(dark, 0, 0, W, H);
+                // 2. Draw bright layer clipped to playhead
+                if (playheadX > 0) {
+                    ctx.drawImage(bright, 0, 0, playheadX, H, 0, 0, playheadX, H);
                 }
-
-                // Playhead
-                ctx.fillStyle = '#ef4444'; // Red
-                ctx.fillRect(playheadX - 1, 0, 2, H);
+            } else {
+                 ctx.fillStyle = '#1e293b'; 
+                 ctx.fillRect(0, 0, W, H);
             }
+
+            // 3. Playhead Cursor
+            ctx.fillStyle = '#ef4444'; // Red
+            ctx.fillRect(playheadX - 1, 0, 2, H);
 
             rafId = requestAnimationFrame(render);
         };
 
         rafId = requestAnimationFrame(render);
         return () => cancelAnimationFrame(rafId);
-    }, [peaks, statusInfo, actualDuration]);
+    }, [actualDuration]);
 
     const handleInteraction = (clientX) => {
         if (!actualDuration || !canvasRef.current) return 0;
