@@ -167,8 +167,11 @@ public:
         }
 
         // MA_SOUND_FLAG_STREAM: abre el archivo sin decodificar → carga instantánea desde disco.
-        // (vs DECODE que cargaba todo en RAM y tardaba 4 segundos por canción)
-        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
+        // MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT: sin esto, cada ma_sound va al endpoint Y al nodo SoundTouch
+        // a la vez → doble mezcla con latencias distintas = pistas desfasadas al hacer seek/scrub.
+        ma_uint32 sflags = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION;
+        if (stNodeReady) sflags |= MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), sflags, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
             double currentPos = getPositionInternal();
@@ -212,7 +215,9 @@ public:
             tPtr->release();
         }
 
-        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
+        ma_uint32 pflags = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION;
+        if (stNodeReady) pflags |= MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), pflags, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
             ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);

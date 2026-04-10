@@ -671,13 +671,13 @@ export default function Admin() {
         setIsActivatingPending(true);
         try {
             await addDoc(collection(db, 'app_versions'), {
-                versionName: "1.8.10",
-                versionCode: 57,
-                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.10-1775864079523.apk",
+                versionName: "1.8.11",
+                versionCode: 58,
+                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.11-1775864460159.apk",
                 createdAt: serverTimestamp(),
-                releaseNotes: "Versión 1.8.10 - Fix desincronización de pistas al hacer seek con pitch activo"
+                releaseNotes: "Versión 1.8.11 - Fix desfase: pistas solo por nodo SoundTouch (sin doble salida al speaker)"
             });
-            alert("¡LISTO! Versión 1.8.10 publicada. Los usuarios recibirán notificación de actualización.");
+            alert("¡LISTO! Versión 1.8.11 publicada. Los usuarios recibirán notificación de actualización.");
             window.location.reload();
         } catch (e) { alert("Error: " + e.message); }
         finally { setIsActivatingPending(false); }
@@ -890,7 +890,7 @@ export default function Admin() {
                         opacity: isActivatingPending ? 0.7 : 1
                     }}
                 >
-                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.8.10'}
+                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.8.11'}
                 </button>
             </div>
 
