@@ -93,7 +93,7 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
-    const CURRENT_VERSION = "1.6.4";
+    const CURRENT_VERSION = "1.6.5";
     const [updateAvailable, setUpdateAvailable] = useState(null);
 
     useEffect(() => {
@@ -152,7 +152,7 @@ export default function Multitrack() {
             activationConstraint: { distance: 8 }
         }),
         useSensor(TouchSensor, {
-            activationConstraint: { delay: 300, tolerance: 8 }
+            activationConstraint: { delay: 150, tolerance: 15 } // Reduced delay to make it feel more responsive, increased tolerance for shaky fingers
         })
     );
 
@@ -1563,7 +1563,7 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar">
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.4 - ZION STAGE (DEEP SYNC)</div>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.5 - ZION STAGE (DEEP SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
@@ -2108,7 +2108,7 @@ export default function Multitrack() {
                                 </button>
                             </div>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                        <div style={{ flex: 1, overflowY: 'auto', touchAction: 'pan-y' }}>
                             {!activeSetlist ? (
                                 <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
                                     <p>No hay un setlist activo.</p>
@@ -2438,7 +2438,7 @@ export default function Multitrack() {
                     <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>
+                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', touchAction: 'pan-y' }}>
                     {!activeSetlist ? (
                         <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>
                             No hay un setlist activo.
@@ -2494,7 +2494,7 @@ export default function Multitrack() {
                     <button onClick={() => setIsSetlistMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto' }}>
+                <div style={{ flex: 1, overflowY: 'auto', touchAction: 'pan-y' }}>
                     <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '20px' }}>
                         Crea y organiza tus listas. Estas se guardan en vivo en Firestore.
                     </p>

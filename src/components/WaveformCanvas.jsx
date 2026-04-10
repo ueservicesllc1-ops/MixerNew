@@ -196,6 +196,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
     };
 
     const handleTouchStart = (e) => {
+        // We don't preventDefault here to allow scrolling on the parent if needed
         if (e.touches.length > 0) {
             audioEngine.startDrag(handleInteraction(e.touches[0].clientX));
         }
@@ -208,9 +209,22 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
     };
 
     const handleTouchEnd = (e) => {
-        let finalX = 0;
-        if (e.changedTouches.length > 0) finalX = e.changedTouches[0].clientX;
-        audioEngine.endDrag(handleInteraction(finalX));
+        let clientX = 0;
+        if (e.changedTouches && e.changedTouches.length > 0) {
+            clientX = e.changedTouches[0].clientX;
+        }
+        const time = handleInteraction(clientX);
+        audioEngine.endDrag(time);
+    };
+
+    const handleClick = (e) => {
+        // Fallback for simple taps if MouseDown/TouchStart logic was swallowed
+        if (!audioEngine.isDragging) {
+            const time = handleInteraction(e.clientX || (e.touches && e.touches[0].clientX));
+            if (time >= 0) {
+                audioEngine.seek(time);
+            }
+        }
     };
 
     return (
@@ -219,7 +233,17 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            style={{ position: 'relative', width: '100%', height: '100%', cursor: 'pointer', borderRadius: '12px', overflow: 'hidden', background: '#0f172a' }}
+            onClick={handleClick}
+            style={{ 
+                position: 'relative', 
+                width: '100%', 
+                height: '100%', 
+                cursor: 'pointer', 
+                borderRadius: '12px', 
+                overflow: 'hidden', 
+                background: '#0f172a',
+                touchAction: 'none' // Prevent browser gestures on the waveform specifically
+            }}
         >
             <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
             <div style={{ position: 'absolute', top: '5px', left: '10px', color: '#fff', fontSize: '10px', opacity: 0.5 }}>{statusInfo.source}</div>
