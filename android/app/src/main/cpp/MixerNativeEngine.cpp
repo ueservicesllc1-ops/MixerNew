@@ -259,6 +259,11 @@ public:
             if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, 0);
         }
 
+        // Flush SoundTouch buffer so previous song's audio doesn't bleed into new song
+        if (stNodeReady) {
+            stNode.st.clear();
+        }
+
         LOGD("swapToPending OK: %zu tracks activos", tracks.size());
         return true;
     }
@@ -292,6 +297,10 @@ public:
         engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         ma_uint64 frame = (ma_uint64)(seconds * kSampleRate);
         for (auto& t : tracks) if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, frame);
+        // Flush SoundTouch internal buffer so old audio doesn't bleed into new position
+        if (stNodeReady) {
+            stNode.st.clear();
+        }
     }
 
     double getPositionInternal() {
@@ -307,6 +316,7 @@ public:
         tracks.clear();
         playbackTimeStart = 0;
         playing = false;
+        if (stNodeReady) stNode.st.clear();
     }
 
     void clearPending() {
