@@ -859,7 +859,7 @@ export default function Admin() {
                         try {
                             await addDoc(collection(db, 'app_versions'), {
                                 versionName: "1.6.5",
-                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-${Date.now()}.apk`, 
+                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775831144014.apk`, 
                                 createdAt: serverTimestamp()
                             });
                             alert("¡Éxito! Versión 1.6.5 (Scroll & Seek) publicada correctamente.");
