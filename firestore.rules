@@ -33,10 +33,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // -- APP VERSIONS: public can read; admin can manage
+    // -- APP VERSIONS: lectura pública (app busca actualización).
+    // create: sin auth — el script Node (upload-final-apk.mjs) usa Firestore SIN usuario logueado.
+    // update/delete: solo admin (evita que cualquiera borre versiones).
     match /app_versions/{docId} {
       allow read: if true;
-      allow write: if true; // TEMPORAL PARA SUBIR APK V10
+      allow create: if true;
+      allow update, delete: if isAdmin();
     }
 
     // -- SELLER APPLICATIONS: owner can create, admin can manage

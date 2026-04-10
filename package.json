@@ -1,13 +1,16 @@
 {
   "name": "mixer",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.7.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "start": "npm run build && node b2-proxy.mjs",
     "start-proxy": "node b2-proxy.mjs",
     "build": "vite build",
+    "build:android": "npm run build && npx cap copy android && cd android && gradlew.bat assembleRelease",
+    "upload:apk": "node upload-final-apk.mjs",
+    "release": "npm run build:android && npm run upload:apk",
     "lint": "eslint .",
     "preview": "vite preview"
   },

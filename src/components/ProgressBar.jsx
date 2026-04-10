@@ -82,7 +82,7 @@ export const ProgressBar = React.memo(({ duration, onSeek }) => {
         
         const onMouseUp = (upEvent) => {
             const finalTime = calculateTime(upEvent.clientX);
-            audioEngine.endDrag(finalTime);
+            void audioEngine.endDrag(finalTime);
             
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
@@ -113,7 +113,7 @@ export const ProgressBar = React.memo(({ duration, onSeek }) => {
         if (e.changedTouches.length > 0) finalX = e.changedTouches[0].clientX;
         const rect = trackRef.current.getBoundingClientRect();
         const pct = Math.max(0, Math.min(1, (finalX - rect.left) / rect.width));
-        audioEngine.endDrag(pct * (duration || 0));
+        void audioEngine.endDrag(pct * (duration || 0));
     };
 
     return (

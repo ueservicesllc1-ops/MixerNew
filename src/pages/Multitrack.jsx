@@ -5,7 +5,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
-import { collection, addDoc, getDocs, onSnapshot, query, where, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, orderBy, limit } from 'firebase/firestore'
+import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
 import { padEngine } from '../PadEngine'
@@ -29,8 +29,35 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
 
+function parseSemverParts(s) {
+    const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!m) return [0, 0, 0];
+    return [parseInt(m[1], 10) || 0, parseInt(m[2], 10) || 0, parseInt(m[3], 10) || 0];
+}
+
+/** True si remoteName es una versión más nueva que installedName (ej. 1.7.6 > 1.7.5). */
+function isRemoteVersionNewer(remoteName, installedName) {
+    const a = parseSemverParts(remoteName);
+    const b = parseSemverParts(installedName);
+    for (let i = 0; i < 3; i++) {
+        if (a[i] > b[i]) return true;
+        if (a[i] < b[i]) return false;
+    }
+    return false;
+}
+
+/** Entre dos metadatos remotos, el de versión semver más alta (para combinar Firestore + app-latest.json). */
+function pickNewerMeta(a, b) {
+    if (!a?.versionName) return b || null;
+    if (!b?.versionName) return a || null;
+    return isRemoteVersionNewer(a.versionName, b.versionName) ? a : b;
+}
+
+const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
+
 export default function Multitrack() {
     const navigate = useNavigate();
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.8";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -93,26 +120,6 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
-    const CURRENT_VERSION = "1.6.9";
-    const [updateAvailable, setUpdateAvailable] = useState(null);
-
-    useEffect(() => {
-        if (!isAppNative) return;
-        
-        const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(1));
-        const unsubscribe = onSnapshot(q, (snap) => {
-            if (!snap.empty) {
-                const latestApp = snap.docs[0].data();
-                if (latestApp && latestApp.versionName && latestApp.versionName !== CURRENT_VERSION) {
-                    setUpdateAvailable(latestApp);
-                } else {
-                    setUpdateAvailable(null); 
-                }
-            }
-        });
-        return () => unsubscribe();
-    }, []);
-
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isPadsOpen, setIsPadsOpen] = useState(false);
@@ -122,6 +129,8 @@ export default function Multitrack() {
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
 
+    /** APK nativo: aviso si en Firestore hay una versión más nueva que la embebida en el bundle. */
+    const [appUpdateOffer, setAppUpdateOffer] = useState(null);
 
     // Intercept console.log/error to show on-screen (for debugging without USB)
     useEffect(() => {
@@ -152,7 +161,7 @@ export default function Multitrack() {
             activationConstraint: { distance: 8 }
         }),
         useSensor(TouchSensor, {
-            activationConstraint: { delay: 150, tolerance: 15 } // Reduced delay to make it feel more responsive, increased tolerance for shaky fingers
+            activationConstraint: { delay: 300, tolerance: 8 }
         })
     );
 
@@ -196,6 +205,79 @@ export default function Multitrack() {
 
         // Optional: Re-lock on window resize if needed for certain browsers, though Capacitor is the main target
     }, []);
+
+    // Comprobar actualización (solo nativo): Firestore + /app-latest.json en el proxy (no depende de que el CLI escriba en Firestore).
+    useEffect(() => {
+        if (!isAppNative) return;
+        let cancelled = false;
+        (async () => {
+            let fromFirestore = null;
+            try {
+                if (db) {
+                    const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(1));
+                    const snap = await getDocs(q);
+                    if (!snap.empty) {
+                        const row = snap.docs[0].data();
+                        if (row.versionName && row.downloadUrl) {
+                            fromFirestore = {
+                                versionName: String(row.versionName),
+                                downloadUrl: String(row.downloadUrl),
+                                releaseNotes: row.releaseNotes ? String(row.releaseNotes) : ''
+                            };
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Update check (Firestore):', e?.message || e);
+            }
+            if (cancelled) return;
+
+            let fromJson = null;
+            try {
+                const savedProxy = typeof localStorage !== 'undefined'
+                    ? localStorage.getItem('mixer_proxyUrl')
+                    : null;
+                const bases = [...new Set([
+                    (savedProxy && savedProxy.startsWith('http')) ? savedProxy.replace(/\/$/, '') : null,
+                    DEFAULT_PROXY_FOR_UPDATES
+                ].filter(Boolean))];
+
+                for (const base of bases) {
+                    for (const path of ['/app-latest.json', '/api/app-latest']) {
+                        const r = await fetch(`${base}${path}?cb=${Date.now()}`, { cache: 'no-store' });
+                        if (!r.ok) continue;
+                        const j = await r.json();
+                        if (j?.versionName && j?.downloadUrl) {
+                            fromJson = {
+                                versionName: String(j.versionName),
+                                downloadUrl: String(j.downloadUrl),
+                                releaseNotes: j.releaseNotes ? String(j.releaseNotes) : ''
+                            };
+                            break;
+                        }
+                    }
+                    if (fromJson) break;
+                }
+            } catch (e) {
+                console.warn('Update check (app-latest.json):', e?.message || e);
+            }
+            if (cancelled) return;
+
+            const row = pickNewerMeta(fromFirestore, fromJson);
+            if (!row?.versionName || !row.downloadUrl) return;
+
+            const dismissKey = `mixer_dismiss_update_${row.versionName}`;
+            if (localStorage.getItem(dismissKey) === '1') return;
+            if (!isRemoteVersionNewer(row.versionName, CURRENT_VERSION)) return;
+
+            setAppUpdateOffer({
+                versionName: row.versionName,
+                downloadUrl: row.downloadUrl,
+                releaseNotes: row.releaseNotes || ''
+            });
+        })();
+        return () => { cancelled = true; };
+    }, [CURRENT_VERSION]);
 
     // Sincronizar encendido y tecla con el motor de audio
     useEffect(() => {
@@ -1123,51 +1205,70 @@ export default function Multitrack() {
     // Final active song object
     const activeSong = liveSong || (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
 
-    const [dynamicDuration, setDynamicDuration] = useState(0);
+    const totalDuration = React.useMemo(() => {
+        const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        const validDur = (v) => Number.isFinite(v) && v > 1;
 
-    // Compute true duration directly from track source when buffers aren't available (Native Mode)
-    useEffect(() => {
-        if (!activeSong || !activeSong.tracks || activeSong.tracks.length === 0) {
-            setDynamicDuration(0);
-            return;
-        }
-        
-        // Strategy 1: check audioEngine buffers (if any)
-        if (audioEngine.tracks && audioEngine.tracks.size > 0) {
-            for (const [, track] of audioEngine.tracks.entries()) {
-                if (track.buffer && track.buffer.duration > 0) {
-                    setDynamicDuration(track.buffer.duration);
-                    return;
+        // Android contract: no fake 180 fallback.
+        if (isNative) {
+            // 1) Prefer decoded buffers already loaded in web map (if any)
+            let best = 0;
+            if (audioEngine.tracks && audioEngine.tracks.size > 0) {
+                for (const [, track] of audioEngine.tracks.entries()) {
+                    if (validDur(track?.buffer?.duration)) best = Math.max(best, track.buffer.duration);
                 }
             }
+            // 2) Native metadata map may hold preview decoded buffer for visuals
+            if (audioEngine._trackMeta && audioEngine._trackMeta.size > 0) {
+                for (const [, meta] of audioEngine._trackMeta.entries()) {
+                    if (validDur(meta?.buffer?.duration)) best = Math.max(best, meta.buffer.duration);
+                }
+            }
+            // 3) Song metadata duration from DB
+            if (validDur(activeSong?.duration)) best = Math.max(best, activeSong.duration);
+            // 4) Engine hint if available
+            if (validDur(audioEngine._durationHint)) best = Math.max(best, audioEngine._durationHint);
+            return best || 0;
         }
 
-        // Strategy 2: Probe file metadata (limit to first 3 tracks to avoid overhead)
-        const tracksToProbe = activeSong.tracks.slice(0, 3);
-        tracksToProbe.forEach(track => {
-            const srcUrl = track.url || track.originalUrl;
-            if (srcUrl) {
-                const tempAudio = new Audio(srcUrl.startsWith('file://') ? window.Capacitor.convertFileSrc(srcUrl) : srcUrl);
-                tempAudio.addEventListener('loadedmetadata', () => {
-                    if (tempAudio.duration && tempAudio.duration > 1 && tempAudio.duration !== Infinity) {
-                        setDynamicDuration(prev => Math.max(prev, tempAudio.duration));
-                        audioEngine._durationHint = Math.max(audioEngine._durationHint || 0, tempAudio.duration);
-                    }
-                });
-            }
-        });
-    }, [activeSong, audioReady]);
+        // Web path unchanged
+        if (!audioEngine.tracks || audioEngine.tracks.size === 0) {
+            return activeSong?.duration || 180;
+        }
+        for (const [, track] of audioEngine.tracks.entries()) {
+            if (track.buffer) return track.buffer.duration;
+        }
+        return activeSong?.duration || 180;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tracks, activeSong, audioReady]); // Recalculate when tracks or audioReady change
 
-    const totalDuration = dynamicDuration > 0 ? dynamicDuration : (activeSong?.duration > 0 ? activeSong.duration : 0);
-    const displayDuration = totalDuration || 0;
-
-    // AUTO-STOP only if we have a REAL verified duration
+    const nativeAutoStopFiredRef = useRef(false);
+    // AUTO-STOP when song finishes
     useEffect(() => {
-        if (isPlaying && dynamicDuration > 0 && progress >= (dynamicDuration - 0.5)) {
-            console.log("[AUTO-STOP] Song actually finished.");
+        const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        if (isNative) {
+            if (!isPlaying || totalDuration <= 0) {
+                nativeAutoStopFiredRef.current = false;
+                return;
+            }
+            if (progress >= (totalDuration - 0.05)) {
+                if (nativeAutoStopFiredRef.current) return;
+                nativeAutoStopFiredRef.current = true;
+                console.log("[AUTO-STOP][NATIVE] Song finished.");
+                handleStop();
+                return;
+            }
+            if (progress < (totalDuration - 1)) {
+                nativeAutoStopFiredRef.current = false;
+            }
+            return;
+        }
+
+        if (isPlaying && totalDuration > 0 && progress >= totalDuration) {
+            console.log("[AUTO-STOP] Song finished.");
             handleStop();
         }
-    }, [progress, dynamicDuration, isPlaying]);
+    }, [progress, totalDuration, isPlaying]);
 
     // Teleprompter and Chords states
     const [isAutoScroll, setIsAutoScroll] = useState(true);
@@ -1407,28 +1508,6 @@ export default function Multitrack() {
     return (
         <div className="multitrack-layout">
 
-            {/* ── OTA UPDATE MODAL ────────────────────────────────────────────────────── */}
-            {updateAvailable && (
-                <div style={{
-                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999999, backdropFilter: 'blur(5px)'
-                }}>
-                    <div className="card-compact" style={{ background: '#0f172a', border: '1px solid #00d2d3', width: '360px', textAlign: 'center', padding: '30px', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
-                        <h2 style={{ color: '#00d2d3', margin: '0 0 10px', fontSize: '1.4rem', fontWeight: '800' }}>Actualización Disponible</h2>
-                        <p style={{ color: '#94a3b8', marginBottom: '25px', lineHeight: '1.5', fontSize: '0.95rem' }}>
-                            Zion Stage (<strong style={{ color: 'white' }}>{updateAvailable.versionName}</strong>) está disponible. Mantenemos el motor actualizado para garantizar tu estabilidad en vivo.
-                        </p>
-                        <button 
-                            className="btn-teal"
-                            style={{ width: '100%', padding: '15px', fontWeight: 'bold', fontSize: '1rem' }}
-                            onClick={() => window.open(updateAvailable.downloadUrl, '_system')}
-                        >
-                            Descargar Ahora
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* ── ALERTS / LOGIN SYSTEM ────────────────────────────────────────────────── */}
 
             {(!currentUser || showLoginModal) && (
@@ -1561,9 +1640,68 @@ export default function Multitrack() {
                 </div>
             )}
 
+            {appUpdateOffer && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        zIndex: 200000,
+                        background: 'linear-gradient(90deg, #0f172a, #1e3a5f)',
+                        borderBottom: '2px solid #00d2d3',
+                        padding: '10px 14px',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '10px',
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+                    }}
+                >
+                    <span style={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: '700', textAlign: 'center' }}>
+                        Nueva versión {appUpdateOffer.versionName} disponible (tenés la {CURRENT_VERSION})
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => window.open(appUpdateOffer.downloadUrl, '_system')}
+                        style={{
+                            background: '#00d2d3',
+                            color: '#0f172a',
+                            border: 'none',
+                            padding: '8px 18px',
+                            borderRadius: '8px',
+                            fontWeight: '800',
+                            cursor: 'pointer',
+                            fontSize: '0.85rem'
+                        }}
+                    >
+                        Descargar APK
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            localStorage.setItem(`mixer_dismiss_update_${appUpdateOffer.versionName}`, '1');
+                            setAppUpdateOffer(null);
+                        }}
+                        style={{
+                            background: 'transparent',
+                            color: '#94a3b8',
+                            border: '1px solid #475569',
+                            padding: '8px 14px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem'
+                        }}
+                    >
+                        Más tarde
+                    </button>
+                </div>
+            )}
+
             {/* PRIME TOP TRANSPORT HEADER */}
-            <div className="transport-bar">
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.9 - ZION STAGE (DEEP SYNC)</div>
+            <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V{CURRENT_VERSION} - ZION STAGE (STABLE SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
@@ -1616,7 +1754,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="audio-info">
-                    <span>{formatTime(progress)} / {displayDuration > 0 ? formatTime(displayDuration) : '--:--'}</span>
+                    <span>{formatTime(progress)} / {totalDuration ? formatTime(totalDuration) : '--:--'}</span>
 
                     {/* TEMPO CONTROL with ┬▒ buttons */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -2108,7 +2246,7 @@ export default function Multitrack() {
                                 </button>
                             </div>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto', touchAction: 'pan-y' }}>
+                        <div style={{ flex: 1, overflowY: 'auto' }}>
                             {!activeSetlist ? (
                                 <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
                                     <p>No hay un setlist activo.</p>
@@ -2438,7 +2576,7 @@ export default function Multitrack() {
                     <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px', touchAction: 'pan-y' }}>
+                <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>
                     {!activeSetlist ? (
                         <div style={{ padding: '20px', textAlign: 'center', color: '#aaa' }}>
                             No hay un setlist activo.
@@ -2494,7 +2632,7 @@ export default function Multitrack() {
                     <button onClick={() => setIsSetlistMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto', touchAction: 'pan-y' }}>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
                     <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '20px' }}>
                         Crea y organiza tus listas. Estas se guardan en vivo en Firestore.
                     </p>
@@ -2742,7 +2880,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         transition,
         opacity: isDragging ? 0.6 : (pStatus === 'loading' && !isActive ? 0.7 : 1),
         zIndex: isDragging ? 100 : 1,
-        touchAction: 'pan-y', // Allow scrolling on the list item itself!
+        touchAction: 'none',
         position: 'relative',
         transformOrigin: '0 0'
     };
@@ -2756,7 +2894,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5, touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
                     <span className="song-index-badge">{idx + 1}</span>

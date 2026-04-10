@@ -45,6 +45,7 @@ class AudioEngine {
         this.tracks = new Map();
         this._playStartWall = 0;
         this._playStartPos = 0;
+        this._sessionId = 0;
 
         if (!IS_NATIVE) {
             this._initWebAudio();
@@ -278,12 +279,10 @@ class AudioEngine {
         if (IS_NATIVE) {
             const m = this._trackMeta.get(id);
             if (!m || m.muted) return 0;
-            // More organic "living" meter behavior
-            const seed = (typeof id === 'string' ? id.length : id) % 10;
-            const time = performance.now() / 120;
-            const base = 0.5 + Math.sin(time + seed) * 0.15;
-            const twitch = Math.random() * 0.2;
-            return (base + twitch) * (m.volume || 1);
+            // More organic "living" meter behavior using sine waves
+            const time = performance.now() / 150;
+            const variance = Math.sin(time + (parseInt(id.slice(-1)) || 0)) * 0.2 + 0.8;
+            return (0.4 * variance) * (m.volume || 1);
         } else {
             const t = this.tracks.get(id);
             if (!t || !t.analyser) return 0;
@@ -365,17 +364,21 @@ class AudioEngine {
     async play() {
         if (this.isPlaying) return;
         if (!IS_NATIVE && this.ctx.state === 'suspended') await this.ctx.resume();
+        const sessionId = ++this._sessionId;
 
         if (IS_NATIVE) {
             const native = await getNative();
             if (this.pausePosition > 0) await native.seek(this.pausePosition);
             await native.play();
-            
+
+            // Use same baseline model as web: start wall + anchor position
+            this._playStartWall = performance.now();
+            this._playStartPos = this.pausePosition;
             this.lastFetchPos = this.pausePosition;
             this.lastFetchTime = performance.now();
             this.progress = this.pausePosition;
             this.isPlaying = true;
-            this._startRAF();
+            this._startRAF(sessionId);
             return;
         }
 
@@ -385,7 +388,7 @@ class AudioEngine {
         this.lastFetchTime = performance.now();
         this.progress = this.pausePosition;
         this.isPlaying = true;
-        this._startRAF();
+        this._startRAF(sessionId);
 
         if (this.masterSoundTouchNode) {
             try { this.masterSoundTouchNode.disconnect(); } catch (e) { console.debug("Worklet disconnect", e); }
@@ -423,10 +426,30 @@ class AudioEngine {
 
     async pause() {
         if (!this.isPlaying) return;
+        this._sessionId += 1;
         if (IS_NATIVE) {
-            const elapsed = (performance.now() - this._playStartWall) / 1000;
-            this.pausePosition = this._playStartPos + elapsed;
             const native = await getNative();
+            // Android authoritative baseline: trust native engine position first.
+            let pos = 0;
+            try {
+                pos = await native.getPosition();
+            } catch (e) {
+                pos = 0;
+            }
+            const elapsed = (performance.now() - this._playStartWall) / 1000;
+            const jsBaselinePos = this._playStartPos + elapsed;
+            const wasAdvanced = this._playStartPos > 0.5 || this.lastFetchPos > 0.5 || jsBaselinePos > 0.5;
+            const nativeZeroLooksTransient = pos === 0 && wasAdvanced;
+
+            if (Number.isFinite(pos) && pos > 0 && !nativeZeroLooksTransient) {
+                this.pausePosition = pos;
+            } else if (pos === 0 && !wasAdvanced) {
+                // Valid zero only when we're truly near start.
+                this.pausePosition = 0;
+            } else {
+                // Fallback for transient zero/invalid native reads.
+                this.pausePosition = jsBaselinePos;
+            }
             await native.pause();
         } else {
             const elapsed = this.ctx.currentTime - this._playStartTime;
@@ -438,6 +461,7 @@ class AudioEngine {
     }
 
     async seek(seconds) {
+        this._sessionId += 1;
         this.pausePosition = seconds;
         this.progress = seconds;
         this.lastFetchPos = seconds;
@@ -446,46 +470,48 @@ class AudioEngine {
 
         if (IS_NATIVE) {
             const n = await getNative();
-            // Anti-pop protection (hardware buffer wipe)
-            n.setVolume(0);
             await n.seek(seconds);
-            setTimeout(() => n.setVolume(1), 30);
+            if (this.isPlaying) {
+                this._playStartWall = performance.now();
+                this._playStartPos = seconds;
+                // seek() kills the RAF via _sessionId increment; restart it so playhead keeps moving.
+                this._startRAF(this._sessionId);
+            }
         } else {
             const wasPlaying = this.isPlaying;
             if (wasPlaying) {
-                const stopTime = this.ctx.currentTime + 0.03;
-                for (const [, t] of this.tracks.entries()) { 
-                    if (t.source && t.gainNode) {
-                         try {
-                             t.gainNode.gain.linearRampToValueAtTime(0, stopTime);
-                             t.source.stop(stopTime);
-                         } catch(e){}
-                    } 
+                for (const [, t] of this.tracks.entries()) {
+                    if (t.source) {
+                        try { t.source.stop(); } catch (e) {}
+                        t.source = null;
+                    }
                 }
                 this.isPlaying = false;
-                setTimeout(() => { if (this.pausePosition === seconds) this.play(); }, 35);
+                await this.play();
             }
         }
         this._notifyProgress();
     }
 
     // ── DRAG SYNC METHODS ──────────────────────────────────────────
-    // Visual decoupling: update state but DO NOT trigger global React state
     startDrag(time) {
         this.isDragging = true;
         this.dragTime = time;
+        this._notifyProgress(); 
     }
 
     updateDrag(time) {
         this.dragTime = time;
+        this._notifyProgress(); 
     }
 
-    endDrag(time) {
+    async endDrag(time) {
         this.isDragging = false;
-        this.seek(time);
+        await this.seek(time);
     }
 
     async stop() {
+        this._sessionId += 1;
         if (IS_NATIVE) {
             const native = await getNative();
             await native.stop();
@@ -507,11 +533,14 @@ class AudioEngine {
     }
 
     resetTiming() {
+        this._sessionId += 1;
         this.progress = 0;
         this.pausePosition = 0;
         this.lastFetchPos = 0;
         this.lastFetchTime = performance.now();
         this._playStartTime = 0;
+        this._playStartWall = 0;
+        this._playStartPos = 0;
     }
 
     /** Subscribe to progress updates. Callback receives (timeInSeconds). */
@@ -547,19 +576,24 @@ class AudioEngine {
         return Math.max(0, Math.min(this._durationHint || 9999, interp));
     }
 
-    _startRAF() {
+    _startRAF(sessionId) {
         const update = async () => {
-            if (!this.isPlaying) return;
+            if (!this.isPlaying || sessionId !== this._sessionId) return;
             
             try {
                 let currentPos = 0;
                 if (IS_NATIVE) {
                     const n = await getNative();
                     currentPos = await n.getPosition();
+                    // Ignore transient zero readbacks from native bridge while already advanced.
+                    if (currentPos === 0 && this.lastFetchPos > 1 && this.pausePosition > 0) {
+                        currentPos = this.lastFetchPos;
+                    }
                 } else {
                     const elapsed = this.ctx.currentTime - this._playStartTime;
                     currentPos = this.pausePosition + (elapsed * this.tempoRatio);
                 }
+                if (sessionId !== this._sessionId || !this.isPlaying) return;
                 
                 // If we detected a jump (e.g. new song or native seek finished)
                 // or if it's been more than 100ms since last fetch, sync the interpolation base.

@@ -42,5 +42,8 @@ compress-pads.mjs
 .env.local
 .env.*.local
 
+# Última subida CLI (solo local; el Admin en dev la lee con un clic)
+public/release-pending.json
+
 .gemini/
 .agents/

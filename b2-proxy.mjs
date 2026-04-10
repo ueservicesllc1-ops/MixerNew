@@ -114,6 +114,42 @@ app.get('/api/health', (req, res) => res.json({
     port: PORT
 }));
 
+/** JSON que deja `upload-final-apk.mjs` en B2 (`apps/zion-release-pending.json`) para el botón ACTIVAR del Admin sin localhost. */
+app.get('/api/b2-pending', async (req, res) => {
+    try {
+        const url = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/apps/zion-release-pending.json`;
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) return res.status(r.status).json({ error: 'pending no en B2 aún' });
+        res.json(await r.json());
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+/** Última APK para la app nativa (fallback si Firestore no está actualizado). Sirve dist/app-latest.json o variables LATEST_APP_* en Railway. */
+app.get('/api/app-latest', (req, res) => {
+    try {
+        const fromDist = path.join(distPath, 'app-latest.json');
+        if (fs.existsSync(fromDist)) {
+            const data = JSON.parse(fs.readFileSync(fromDist, 'utf8'));
+            return res.json(data);
+        }
+    } catch (e) {
+        console.warn('/api/app-latest dist read:', e.message);
+    }
+    const v = process.env.LATEST_APP_VERSION;
+    const url = process.env.LATEST_APP_DOWNLOAD_URL;
+    if (v && url) {
+        return res.json({
+            versionName: v,
+            downloadUrl: url,
+            versionCode: parseInt(process.env.LATEST_APP_VERSION_CODE || '0', 10) || 0,
+            releaseNotes: process.env.LATEST_APP_RELEASE_NOTES || ''
+        });
+    }
+    res.status(404).json({ error: 'No hay app-latest (ni dist/app-latest.json ni env LATEST_APP_*)' });
+});
+
 const handleDownload = async (req, res) => {
     try {
         let { url } = req.query;
@@ -234,6 +270,40 @@ app.post('/api/stripe/create-single-payment', async (req, res) => {
     }
 });
 
+/** Subida directa de JSON a B2 (sin ffmpeg). Usa `upload-final-apk.mjs` para ACTIVAR en Admin. */
+app.post('/api/upload-pending-json', async (req, res) => {
+    try {
+        const fileName = req.body?.fileName || 'apps/zion-release-pending.json';
+        const data = req.body?.data;
+        if (data === undefined || data === null) {
+            return res.status(400).json({ error: 'Falta body.data' });
+        }
+        const buf = Buffer.from(typeof data === 'string' ? data : JSON.stringify(data, null, 2), 'utf8');
+        const uploadNode = await getUploadNode();
+        const sha1 = crypto.createHash('sha1').update(buf).digest('hex');
+        const b2Response = await fetch(uploadNode.uploadUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': uploadNode.authorizationToken,
+                'X-Bz-File-Name': encodeURIComponent(fileName),
+                'Content-Type': 'application/json',
+                'X-Bz-Content-Sha1': sha1,
+                'Content-Length': buf.length
+            },
+            body: buf
+        });
+        const b2Data = await b2Response.json();
+        if (!b2Response.ok) {
+            throw new Error(`B2: ${b2Data.message || b2Data.code || 'error'}`);
+        }
+        const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(fileName)}`;
+        res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
+    } catch (err) {
+        console.error('upload-pending-json:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     let tempInputPath = '';
     let tempOutputPath = '';
@@ -265,9 +335,12 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         const isPdf = file.mimetype === 'application/pdf' ||
             file.originalname.toLowerCase().endsWith('.pdf');
 
+        const isJson = file.mimetype === 'application/json' ||
+            file.originalname.toLowerCase().endsWith('.json');
+
         let mp3Buffer;
 
-        if (isMp3 || isImage || isApk || isPdf) {
+        if (isMp3 || isImage || isApk || isPdf || isJson) {
             mp3Buffer = file.buffer;
         } else {
             console.log("🔄 Transcodificando a MP3...");
@@ -287,7 +360,11 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         // --- SUBIDA DEL ARCHIVO ORIGINAL ---
         const sha1 = crypto.createHash('sha1').update(mp3Buffer).digest('hex');
-        let contentType = isImage ? (file.mimetype || 'image/jpeg') : isApk ? 'application/vnd.android.package-archive' : isPdf ? 'application/pdf' : 'audio/mpeg';
+        let contentType = isImage ? (file.mimetype || 'image/jpeg')
+            : isApk ? 'application/vnd.android.package-archive'
+            : isPdf ? 'application/pdf'
+            : isJson ? 'application/json'
+            : 'audio/mpeg';
 
         const b2Response = await fetch(uploadNode.uploadUrl, {
             method: 'POST',
@@ -308,7 +385,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         // --- GENERACIÓN Y SUBIDA DE PREVIEW (OPCIONAL) ---
         let previewUrl = null;
-        if (generatePreview && !isImage) {
+        if (generatePreview && !isImage && !isJson) {
             console.log(`🎬 Generando clip de prueba (20s-40s) para ${b2Filename}...`);
             try {
                 // Si no escribimos a disco arriba, lo hacemos ahora para el clip

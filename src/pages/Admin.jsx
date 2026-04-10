@@ -30,6 +30,7 @@ export default function Admin() {
     const [isUploadingApk, setIsUploadingApk] = useState(false);
     const [apkFile, setApkFile] = useState(null);
     const [apkVersionName, setApkVersionName] = useState('');
+    const [isActivatingPending, setIsActivatingPending] = useState(false); // botón rojo ACTIVAR
 
     const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
     const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
@@ -666,6 +667,22 @@ export default function Admin() {
         } catch (error) { console.error(error); }
     };
 
+    const activatePendingRelease = async () => {
+        setIsActivatingPending(true);
+        try {
+            await addDoc(collection(db, 'app_versions'), {
+                versionName: "1.7.8",
+                versionCode: 45,
+                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.7.8-1775854738455.apk",
+                createdAt: serverTimestamp(),
+                releaseNotes: "Versión 1.7.8 - Playhead sigue moviéndose después de scrub"
+            });
+            alert("¡LISTO! Versión 1.7.7 publicada. Los usuarios recibirán notificación de actualización.");
+            window.location.reload();
+        } catch (e) { alert("Error: " + e.message); }
+        finally { setIsActivatingPending(false); }
+    };
+
     const uploadApk = async () => {
         if (!apkFile || !apkVersionName.trim()) {
             alert("Por favor selecciona un archivo APK y ponle un nombre de versión.");
@@ -854,21 +871,26 @@ export default function Admin() {
                     <ShieldAlert size={36} color="#f1c40f" />
                     <h1 style={{ margin: 0, fontWeight: '800' }}>Admin Dashboard | Zion Stage</h1>
                 </div>
-                <button 
-                    onClick={async () => {
-                        try {
-                            await addDoc(collection(db, 'app_versions'), {
-                                versionName: "1.6.9",
-                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775832488988.apk`, 
-                                createdAt: serverTimestamp()
-                            });
-                            alert("¡LISTO! Versión 1.6.9 FINAL publicada. Esta versión YA NO pedirá actualización.");
-                            window.location.reload();
-                        } catch(e) { alert("Error: " + e.message); }
+                <button
+                    type="button"
+                    disabled={isActivatingPending}
+                    title="Usá después de npm run upload:apk (misma PC, Admin con npm run dev) si Firestore falló en la consola."
+                    onClick={activatePendingRelease}
+                    style={{
+                        background: '#f43f5e',
+                        color: 'white',
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontWeight: 'bold',
+                        cursor: isActivatingPending ? 'wait' : 'pointer',
+                        fontSize: '1rem',
+                        boxShadow: '0 0 15px rgba(244,63,94,0.5)',
+                        whiteSpace: 'nowrap',
+                        opacity: isActivatingPending ? 0.7 : 1
                     }}
-                    style={{ background: '#f43f5e', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', boxShadow: '0 0 15px rgba(244,63,94,0.5)', whiteSpace: 'nowrap' }}
                 >
-                    🚀 Publicar APK 1.6.9 FINAL (Sin Bucle)
+                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.7.8'}
                 </button>
             </div>
 
