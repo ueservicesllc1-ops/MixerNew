@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.2";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.3";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -427,15 +427,14 @@ export default function Multitrack() {
         return deviceRAM; // fallback to navigator.deviceMemory
     })();
 
-    // Song limits per estimated RAM (Safe levels for Web Browser process):
-    //   <= 4 GB  -> 1 song
-    //   <= 8 GB  -> 2 songs
-    //   <= 16 GB -> 4 songs
-    //   > 16 GB  -> 6 songs
-    const MAX_DECODED_SONGS = estimatedRAM <= 4 ? 3
-        : estimatedRAM <= 8 ? 4
-            : estimatedRAM <= 16 ? 5
-                : 6;
+    // En nativo con STREAM el cache solo guarda rutas (strings livianísimos, no audio en RAM).
+    // El límite real es el almacenamiento del dispositivo, no la RAM.
+    // En web sí guardamos AudioBuffers decodificados → limitamos por RAM disponible.
+    const MAX_DECODED_SONGS = isAppNative ? 999
+        : estimatedRAM <= 4 ? 3
+            : estimatedRAM <= 8 ? 4
+                : estimatedRAM <= 16 ? 5
+                    : 6;
 
 
     // preloadCache: Map<songId, Map<trackName, {audioBuf, rawBuf}>>
@@ -489,6 +488,37 @@ export default function Multitrack() {
         if (!activeSetlist?.songs?.length) return;
         const subset = (activeSetlist.songs).slice(0, 2).filter(s => !preloadCache.current.has(s.id));
         if (subset.length > 0) preloadSetlistSongs(subset);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSetlist?.id]);
+
+    // En nativo: al cargar el setlist, marcar como "ready" todas las songs que ya
+    // tienen sus archivos en el disco del dispositivo (sin cargar nada en RAM).
+    useEffect(() => {
+        if (!isAppNative || !activeSetlist?.songs?.length) return;
+        let cancelled = false;
+        (async () => {
+            for (const song of activeSetlist.songs) {
+                if (cancelled) break;
+                if (preloadCache.current.has(song.id)) continue;
+                const tracks = (song.tracks || []).filter(tr => tr.name !== '__PreviewMix' && tr.url && tr.url !== 'undefined');
+                if (!tracks.length) continue;
+                // Verificar si TODOS los tracks están en disco
+                const checks = await Promise.all(tracks.map(tr => NativeEngine.isTrackDownloaded(song.id, tr.name)));
+                if (cancelled) break;
+                if (checks.every(Boolean)) {
+                    // Canción completa en disco → construir cache de paths y marcar ready
+                    const pathMap = new Map();
+                    for (const tr of tracks) {
+                        const path = await NativeEngine.getTrackPath(song.id, tr.name);
+                        pathMap.set(tr.name, { path, audioBuf: null, rawBuf: null });
+                    }
+                    preloadCache.current.set(song.id, pathMap);
+                    lruOrder.current.push(song.id);
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                }
+            }
+        })();
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeSetlist?.id]);
 

@@ -671,11 +671,11 @@ export default function Admin() {
         setIsActivatingPending(true);
         try {
             await addDoc(collection(db, 'app_versions'), {
-                versionName: "1.8.2",
-                versionCode: 49,
-                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.2-1775857459771.apk",
+                versionName: "1.8.3",
+                versionCode: 50,
+                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.3-1775857888103.apk",
                 createdAt: serverTimestamp(),
-                releaseNotes: "Versión 1.8.2 - Carga instantánea desde disco (streaming en lugar de decode)"
+                releaseNotes: "Versión 1.8.3 - Songs ya descargadas se muestran Ready automáticamente, sin límite de caché en nativo"
             });
             alert("¡LISTO! Versión 1.7.7 publicada. Los usuarios recibirán notificación de actualización.");
             window.location.reload();
@@ -890,7 +890,7 @@ export default function Admin() {
                         opacity: isActivatingPending ? 0.7 : 1
                     }}
                 >
-                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.8.2'}
+                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.8.3'}
                 </button>
             </div>
 
