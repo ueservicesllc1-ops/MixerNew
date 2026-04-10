@@ -412,11 +412,16 @@ export default function Multitrack() {
                     setLibrarySongs(songs);
                 });
 
-                // Global/VIP tab ΓÇö todas las canciones (sin filtro de due├▒o, solo lectura de metadata)
+                // Global/VIP tab - solo canciones que tienen multitrack
                 const qGlobal = query(collection(db, 'songs'));
                 const unsubGlobal = onSnapshot(qGlobal, (snap) => {
                     const songs = [];
-                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
+                    snap.forEach(doc => {
+                        const data = doc.data();
+                        if (Array.isArray(data.tracks) && data.tracks.length > 0) {
+                            songs.push({ id: doc.id, ...data });
+                        }
+                    });
                     setGlobalSongs(songs);
                 });
 
@@ -2493,7 +2498,7 @@ export default function Multitrack() {
                             onClick={() => setLibraryTab('global')}
                             style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                         >
-                            🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
+                            🌐 Global ({globalSongs.length})
                         </button>
                     </div>
 
@@ -2534,7 +2539,7 @@ export default function Multitrack() {
                                 Debes iniciar sesión para ver la librería.
                             </div>
                         ) : (() => {
-                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs.filter(s =>  Array.isArray(s.tracks) && s.tracks.length > 0);
+                            const baseSongs = libraryTab === 'mine' ? librarySongs : globalSongs;
                             const songs = baseSongs.filter(song => {
                                 if (!searchQuery) return true;
                                 const q = searchQuery.toLowerCase();
