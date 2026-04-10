@@ -671,11 +671,11 @@ export default function Admin() {
         setIsActivatingPending(true);
         try {
             await addDoc(collection(db, 'app_versions'), {
-                versionName: "1.7.8",
-                versionCode: 45,
-                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.7.8-1775854738455.apk",
+                versionName: "1.7.9",
+                versionCode: 46,
+                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.7.9-1775855262424.apk",
                 createdAt: serverTimestamp(),
-                releaseNotes: "Versión 1.7.8 - Playhead sigue moviéndose después de scrub"
+                releaseNotes: "Versión 1.7.9 - Scroll lista canciones restaurado"
             });
             alert("¡LISTO! Versión 1.7.7 publicada. Los usuarios recibirán notificación de actualización.");
             window.location.reload();
@@ -890,7 +890,7 @@ export default function Admin() {
                         opacity: isActivatingPending ? 0.7 : 1
                     }}
                 >
-                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.7.8'}
+                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.7.9'}
                 </button>
             </div>
 

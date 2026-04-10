@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.8";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.9";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -2880,7 +2880,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         transition,
         opacity: isDragging ? 0.6 : (pStatus === 'loading' && !isActive ? 0.7 : 1),
         zIndex: isDragging ? 100 : 1,
-        touchAction: 'none',
+        touchAction: 'pan-y',
         position: 'relative',
         transformOrigin: '0 0'
     };
@@ -2894,7 +2894,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5, touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
                     <span className="song-index-badge">{idx + 1}</span>
