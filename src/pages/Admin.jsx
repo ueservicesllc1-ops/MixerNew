@@ -858,17 +858,17 @@ export default function Admin() {
                     onClick={async () => {
                         try {
                             await addDoc(collection(db, 'app_versions'), {
-                                versionName: "1.6.5",
-                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775831144014.apk`, 
+                                versionName: "1.6.6",
+                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775831333586.apk`, 
                                 createdAt: serverTimestamp()
                             });
-                            alert("¡Éxito! Versión 1.6.5 (Scroll & Seek) publicada correctamente.");
+                            alert("¡Éxito! Versión 1.6.6 (Build Limpio) publicada. NOTA: Desinstala la app vieja antes de instalar esta.");
                             window.location.reload();
                         } catch(e) { alert("Error: " + e.message); }
                     }}
                     style={{ background: '#f43f5e', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', boxShadow: '0 0 15px rgba(244,63,94,0.5)', whiteSpace: 'nowrap' }}
                 >
-                    🚀 Publicar APK 1.6.5 (Scroll & Seek)
+                    🚀 Publicar APK 1.6.6 (Build Limpio)
                 </button>
             </div>
 
