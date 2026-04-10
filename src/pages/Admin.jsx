@@ -859,7 +859,7 @@ export default function Admin() {
                         try {
                             await addDoc(collection(db, 'app_versions'), {
                                 versionName: "1.6.4",
-                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-${Date.now()}.apk`, 
+                                downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775830811075.apk`, 
                                 createdAt: serverTimestamp()
                             });
                             alert("¡Éxito! Versión 1.6.4 (Clean Sync) publicada correctamente.");
