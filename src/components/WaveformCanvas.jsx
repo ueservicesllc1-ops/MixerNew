@@ -36,22 +36,31 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
             let currentSource = 'Analizando...';
             let bestScore = -1;
 
-            const engineTracks = Array.from(audioEngine.tracks.entries());
+            let engineTracks = Array.from(audioEngine.tracks.entries());
+            
+            // IF NATIVE: check _trackMeta (where we store high-fidelity buffers for visual analysis)
+            if (engineTracks.length === 0 && audioEngine._trackMeta) {
+                engineTracks = Array.from(audioEngine._trackMeta.entries());
+            }
+
             if (engineTracks.length === 0) return;
 
             for (const [id, t] of engineTracks) {
-                if (!t.buffer || typeof t.buffer.getChannelData !== 'function') continue;
+                // Buffer can be in .buffer (Map) or in .buffer (Meta)
+                const buf = t.buffer;
+                if (!buf || typeof buf.getChannelData !== 'function') continue;
+                
                 const name = id.toLowerCase();
                 let score = 10;
-                if (name.includes('__previewmix')) score = 1000;
-                else if (name.includes('drum') || name.includes('bat')) score = 800;
-                else if (name.includes('bass') || name.includes('bajo')) score = 500;
-                else if (name.includes('keys') || name.includes('téc')) score = 300;
-                else if (name.includes('gui')) score = 200;
+                if (name.includes('__previewmix')) score = 10000;
+                else if (name.includes('drum') || name.includes('bat')) score = 8000;
+                else if (name.includes('bass') || name.includes('bajo')) score = 5000;
+                else if (name.includes('keys') || name.includes('téc')) score = 3000;
+                else if (name.includes('gui')) score = 2000;
                 
                 if (score > bestScore) {
                     bestScore = score;
-                    bufferToUse = t.buffer;
+                    bufferToUse = buf;
                     currentSource = id;
                 }
             }
@@ -84,25 +93,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
         if (!peaks) {
             const timer = setInterval(updateWaveform, 2000);
             updateWaveform();
-            
-            // AFTER 6 SECONDS, IF NO PEAKS, GENERATE SYNTHETIC TO ENSURE UI IS NOT BROKEN
-            const fallbackTimer = setTimeout(() => {
-                if (!peaks) {
-                    const displayW = 800;
-                    const synthP = new Float32Array(displayW);
-                    for (let i = 0; i < displayW; i++) {
-                        // Generate a nice-looking symmetric organic shape for the placeholder
-                        synthP[i] = 0.2 + (Math.sin(i * 0.05) * 0.3 * Math.sin(i * 0.01)) + (Math.random() * 0.1);
-                    }
-                    setPeaks(synthP);
-                    setStatusInfo({ isReal: false, source: 'ONDA GENERADA (MODO SEGURO)', color: '#f39c12' });
-                }
-            }, 6000);
-
-            return () => {
-                clearInterval(timer);
-                clearTimeout(fallbackTimer);
-            };
+            return () => clearInterval(timer);
         }
     }, [songId, tracks, peaks]);
 
