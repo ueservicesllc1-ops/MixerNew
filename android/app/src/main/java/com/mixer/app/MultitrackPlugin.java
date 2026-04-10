@@ -17,20 +17,24 @@ public class MultitrackPlugin extends Plugin {
     private static boolean nativeLibLoaded = false;
 
     // Declaraciones JNI (C++)
-    public native void   nativeInit();
-    public native void   nativeLoadTrack(String trackId, String path);
-    public native void   nativeClearTracks();
-    public native void   nativePlay();
-    public native void   nativePause();
-    public native void   nativeStop();
-    public native void   nativeSeek(double seconds);
-    public native void   nativeSetVolume(float volume);
-    public native void   nativeSetTrackVolume(String id, float volume);
-    public native void   nativeSetTrackMute(String id, boolean muted);
-    public native void   nativeSetTrackSolo(String id, boolean solo);
-    public native double nativeGetPosition();
-    public native int    nativeGetTrackCount();
-    public native void   nativeSetSpeed(float speed);
+    public native void    nativeInit();
+    public native void    nativeLoadTrack(String trackId, String path);
+    public native void    nativeClearTracks();
+    public native void    nativePlay();
+    public native void    nativePause();
+    public native void    nativeStop();
+    public native void    nativeSeek(double seconds);
+    public native void    nativeSetVolume(float volume);
+    public native void    nativeSetTrackVolume(String id, float volume);
+    public native void    nativeSetTrackMute(String id, boolean muted);
+    public native void    nativeSetTrackSolo(String id, boolean solo);
+    public native double  nativeGetPosition();
+    public native int     nativeGetTrackCount();
+    public native void    nativeSetSpeed(float speed);
+    // Pre-load (siguiente canción en background)
+    public native void    nativePreloadTrack(String songId, String trackId, String path);
+    public native boolean nativeSwapToPending(String songId);
+    public native void    nativeClearPending();
 
     @Override
     public void load() {
@@ -167,6 +171,45 @@ public class MultitrackPlugin extends Plugin {
     public void setSpeed(PluginCall call) {
         Float speed = call.getFloat("speed");
         if (speed != null && nativeLibLoaded) nativeSetSpeed(speed);
+        call.resolve();
+    }
+
+    /** Pre-carga las pistas de la siguiente canción en background sin interrumpir la reproducción actual. */
+    @PluginMethod
+    public void preloadTracks(PluginCall call) {
+        JSArray tracks = call.getArray("tracks");
+        String songId  = call.getString("songId", "");
+        if (tracks == null || songId == null || songId.isEmpty()) { call.reject("Faltan tracks o songId"); return; }
+        // Ejecutar en thread separado para no bloquear el bridge (la decodificación es lenta)
+        final String fSongId = songId;
+        new Thread(() -> {
+            try {
+                if (nativeLibLoaded) {
+                    for (int i = 0; i < tracks.length(); i++) {
+                        JSONObject t = tracks.getJSONObject(i);
+                        nativePreloadTrack(fSongId, t.getString("id"), t.getString("path"));
+                    }
+                }
+                call.resolve();
+            } catch (Exception e) {
+                call.reject(e.getMessage());
+            }
+        }, "preload-thread").start();
+    }
+
+    /** Swap atómico O(1): la canción pre-cargada pasa a ser la activa instantáneamente. */
+    @PluginMethod
+    public void swapToPending(PluginCall call) {
+        String songId = call.getString("songId", "");
+        boolean swapped = nativeLibLoaded && songId != null && !songId.isEmpty() && nativeSwapToPending(songId);
+        JSObject ret = new JSObject();
+        ret.put("swapped", swapped);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void clearPending(PluginCall call) {
+        if (nativeLibLoaded) nativeClearPending();
         call.resolve();
     }
 }

@@ -80,8 +80,12 @@ class AudioEngine {
      * NATIVE MODE / WEB BATCH: Loads multiple tracks at once for maximum speed.
      */
     async addTracksBatch(tracksArray) {
-        this.resetTiming(); // Total reset BEFORE loading new song
+        this.resetTiming();
         if (IS_NATIVE) {
+            // Extraer songId del primer trackId (formato: "songId_trackName")
+            const firstId = tracksArray[0]?.id || '';
+            const songId  = firstId.includes('_') ? firstId.substring(0, firstId.indexOf('_')) : '';
+
             const batch = [];
             for (const t of tracksArray) {
                 const trackInfo = {
@@ -90,13 +94,25 @@ class AudioEngine {
                     muted: false,
                     solo: false,
                     isVisualOnly: !!t.isVisualOnly,
-                    buffer: t.audioBuffer // Guardar buffer para visuales
+                    buffer: t.audioBuffer
                 };
                 this._trackMeta.set(t.id, trackInfo);
                 if (t.path) batch.push({ id: t.id, path: t.path });
             }
+
+            const n = await getNative();
+
+            // ── FAST PATH: intentar swap con pre-cargado ──────────────────────
+            if (songId && batch.length > 0) {
+                const swapped = await n.swapToPending(songId);
+                if (swapped) {
+                    console.log(`[AudioEngine] ⚡ Swap instantáneo: ${songId}`);
+                    return; // ¡No hay decode! La canción ya estaba en memoria
+                }
+            }
+
+            // ── SLOW PATH: carga normal (clearTracks + loadTracks) ────────────
             if (batch.length > 0) {
-                const n = await getNative();
                 await n.loadTracks(batch);
             }
             return;
@@ -491,6 +507,27 @@ class AudioEngine {
             }
         }
         this._notifyProgress();
+    }
+
+    /**
+     * Pre-carga las pistas de una canción en el buffer C++ de background.
+     * Llámalo después de cargar exitosamente la canción actual.
+     * Cuando el usuario toque la siguiente, el swap será instantáneo.
+     * @param {string} songId - ID de la canción a pre-cargar
+     * @param {Array<{id: string, path: string}>} tracks - Pistas con paths absolutos
+     */
+    async preloadNextSong(songId, tracks) {
+        if (!IS_NATIVE) return;
+        const batch = tracks.filter(t => t.path).map(t => ({ id: t.id, path: t.path }));
+        if (!batch.length) return;
+        try {
+            const n = await getNative();
+            // Lanzar sin await — corre en background thread del C++, no bloquea
+            n.preloadTracks(songId, batch).catch(e => console.warn('[AudioEngine] preload bg error:', e));
+            console.log(`[AudioEngine] 🔄 Pre-cargando en background: ${songId} (${batch.length} pistas)`);
+        } catch (e) {
+            console.warn('[AudioEngine] preloadNextSong error:', e);
+        }
     }
 
     // ── DRAG SYNC METHODS ──────────────────────────────────────────

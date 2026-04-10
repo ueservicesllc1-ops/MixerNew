@@ -7,6 +7,8 @@
 #include <string>
 #include <list>
 #include <mutex>
+#include <thread>
+#include <atomic>
 
 #define TAG     "MixerNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
@@ -35,11 +37,17 @@ public:
     std::list<Track>   tracks;
     std::mutex         mtx;
 
+    // ── PRE-LOAD BUFFER (siguiente canción, carga mientras la actual suena) ──
+    std::list<Track>   pendingTracks;
+    std::mutex         pendingMtx;
+    std::string        pendingSongId;
+    std::atomic<bool>  preloading{false};
+
     double  playbackTimeStart = 0.0;
     ma_uint64 engineTimeStart = 0;
     bool    playing           = false;
     float   masterVolume      = 1.0f;
-    float   speedRatio        = 1.0f; // Tempo: 1.0 = normal speed
+    float   speedRatio        = 1.0f;
 
     static constexpr int kSampleRate = 44100;
 
@@ -76,12 +84,85 @@ public:
             ma_uint64 frame = (ma_uint64)(currentPos * kSampleRate);
             ma_sound_seek_to_pcm_frame(&tPtr->sound, frame);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            
             updateMuteSoloInternal();
             LOGD("Track %s cargado y sincronizado a %.2fs", id.c_str(), currentPos);
         } else {
             LOGE("Error cargando track %s: %d", id.c_str(), r);
         }
+    }
+
+    /**
+     * Carga una pista en el buffer pendiente (pre-carga en background).
+     * No interrumpe la reproducción actual.
+     */
+    void preloadTrack(const std::string& songId, const std::string& id, const std::string& path) {
+        if (!engineReady) return;
+        std::lock_guard<std::mutex> lk(pendingMtx);
+
+        if (pendingSongId != songId) {
+            // Nueva canción → limpiar buffer pendiente anterior
+            for (auto& t : pendingTracks) t.release();
+            pendingTracks.clear();
+            pendingSongId = songId;
+        }
+
+        // Reusar slot si existe, sino agregar
+        Track* tPtr = nullptr;
+        for (auto& tr : pendingTracks) { if (tr.id == id) { tPtr = &tr; break; } }
+        if (!tPtr) {
+            pendingTracks.emplace_back();
+            tPtr = &pendingTracks.back();
+            tPtr->id = id;
+        } else {
+            tPtr->release();
+        }
+
+        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
+        if (r == MA_SUCCESS) {
+            tPtr->soundReady = true;
+            // Pre-seek a 0 para que esté listo
+            ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);
+            ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
+            LOGD("Preload track %s de cancion %s OK", id.c_str(), songId.c_str());
+        } else {
+            LOGE("Error preload track %s: %d", id.c_str(), r);
+        }
+    }
+
+    /**
+     * Swap atómico O(1): convierte los tracks pendientes en activos.
+     * La próxima canción cargada en background pasa a ser la actual instantáneamente.
+     * Retorna true si el swap fue exitoso.
+     */
+    bool swapToPending(const std::string& songId) {
+        std::lock_guard<std::mutex> lkP(pendingMtx);
+        if (pendingSongId != songId || pendingTracks.empty()) {
+            LOGD("swapToPending: no hay pending para %s", songId.c_str());
+            return false;
+        }
+
+        std::lock_guard<std::mutex> lkA(mtx);
+        // Liberar tracks actuales
+        for (auto& t : tracks) t.release();
+        tracks.clear();
+
+        // Swap O(1) - simplemente mover el puntero de la lista
+        tracks = std::move(pendingTracks);
+        pendingTracks.clear();
+        pendingSongId = "";
+
+        // Reset posición
+        playbackTimeStart = 0;
+        engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
+        playing = false;
+
+        // Seek todos a 0
+        for (auto& t : tracks) {
+            if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, 0);
+        }
+
+        LOGD("swapToPending OK: %zu tracks activos", tracks.size());
+        return true;
     }
 
     void play() {
@@ -128,6 +209,13 @@ public:
         tracks.clear();
         playbackTimeStart = 0;
         playing = false;
+    }
+
+    void clearPending() {
+        std::lock_guard<std::mutex> lk(pendingMtx);
+        for (auto& t : pendingTracks) t.release();
+        pendingTracks.clear();
+        pendingSongId = "";
     }
     
     void setTrackVolume(const std::string& id, float vol) {
@@ -204,4 +292,24 @@ extern "C" {
     JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetPosition(JNIEnv*, jobject) { return gEngine ? gEngine->getPositionInternal() : 0.0; }
     JNIEXPORT jint JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackCount(JNIEnv*, jobject) { return gEngine ? gEngine->getTrackCount() : 0; }
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetSpeed(JNIEnv*, jobject, jfloat speed) { if (gEngine) gEngine->setSpeed(speed); }
+
+    // ── PRE-LOAD ──────────────────────────────────────────────────────────────
+    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativePreloadTrack(JNIEnv* env, jobject, jstring jSongId, jstring jId, jstring jPath) {
+        const char* songId = env->GetStringUTFChars(jSongId, 0);
+        const char* id     = env->GetStringUTFChars(jId,     0);
+        const char* path   = env->GetStringUTFChars(jPath,   0);
+        if (gEngine) gEngine->preloadTrack(songId, id, path);
+        env->ReleaseStringUTFChars(jSongId, songId);
+        env->ReleaseStringUTFChars(jId,     id);
+        env->ReleaseStringUTFChars(jPath,   path);
+    }
+    JNIEXPORT jboolean JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSwapToPending(JNIEnv* env, jobject, jstring jSongId) {
+        const char* songId = env->GetStringUTFChars(jSongId, 0);
+        jboolean result = (gEngine && gEngine->swapToPending(songId)) ? JNI_TRUE : JNI_FALSE;
+        env->ReleaseStringUTFChars(jSongId, songId);
+        return result;
+    }
+    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeClearPending(JNIEnv*, jobject) {
+        if (gEngine) gEngine->clearPending();
+    }
 }

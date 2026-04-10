@@ -151,12 +151,43 @@ export const NativeEngine = {
     loadTracks: async (tracks) => {
         try {
             await MultitrackPlugin.clearTracks();
-            // tracks is [{id, path}, ...]
             await MultitrackPlugin.loadTracks({ tracks });
             console.log(`[NativeEngine] Pistas cargadas en C++: ${tracks.length}`);
         } catch (err) {
             console.error('[NativeEngine] loadTracks error:', err);
         }
+    },
+
+    /**
+     * Pre-carga las pistas de la SIGUIENTE canción en un buffer paralelo del C++.
+     * No interrumpe la reproducción actual. Lento (decodifica en background thread).
+     */
+    preloadTracks: async (songId, tracks) => {
+        try {
+            await MultitrackPlugin.preloadTracks({ songId, tracks });
+            console.log(`[NativeEngine] Pre-carga completada: ${songId} (${tracks.length} pistas)`);
+        } catch (err) {
+            console.warn('[NativeEngine] preloadTracks error:', err);
+        }
+    },
+
+    /**
+     * Swap atómico O(1): la canción pre-cargada pasa a ser la activa.
+     * Retorna true si el swap fue exitoso (la canción estaba pre-cargada).
+     */
+    swapToPending: async (songId) => {
+        try {
+            const { swapped } = await MultitrackPlugin.swapToPending({ songId });
+            console.log(`[NativeEngine] swapToPending ${songId}: ${swapped}`);
+            return !!swapped;
+        } catch (err) {
+            console.warn('[NativeEngine] swapToPending error:', err);
+            return false;
+        }
+    },
+
+    clearPending: async () => {
+        try { await MultitrackPlugin.clearPending(); } catch { /* ignore */ }
     },
 
     play: async () => {

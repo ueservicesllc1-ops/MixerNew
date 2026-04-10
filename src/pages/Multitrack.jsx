@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.0";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.1";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -704,10 +704,17 @@ export default function Multitrack() {
                         } else {
                             let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                             if (!rawBuf) {
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                if (!res.ok) return;
-                                rawBuf = await res.blob();
-                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                                // Directo de B2 primero (funciona en web y nativo), luego proxy fallback
+                                try {
+                                    const r = await fetch(tr.url, { cache: 'no-store' });
+                                    if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
+                                } catch { /* fall through */ }
+                                if (!rawBuf) {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (!res.ok) return;
+                                    rawBuf = await res.blob();
+                                }
+                                if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                             }
 
                             try {
@@ -804,29 +811,32 @@ export default function Multitrack() {
                     continue;
                 }
 
+                /**
+                 * Descarga una pista: intenta directo de B2 primero (funciona en nativo y en web
+                 * porque B2 público devuelve Access-Control-Allow-Origin: *), luego proxy como fallback.
+                 */
+                const downloadBlob = async () => {
+                    try {
+                        const r = await fetch(tr.url, { cache: 'no-store' });
+                        if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
+                    } catch { /* fall through */ }
+                    const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                    if (!r2.ok) throw new Error(`Error ${r2.status} descargando ${tr.name}`);
+                    return await r2.blob();
+                };
+
                 if (isAppNative) {
                     const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
                     if (!alreadyHasFile) {
-                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) {
-                            const errorData = await res.json().catch(() => ({}));
-                            const msg = errorData.error || `Error ${res.status}`;
-                            throw new Error(`Error en ${tr.name}: ${msg}`);
-                        }
-                        const blobData = await res.blob();
+                        const blobData = await downloadBlob();
                         await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
+                        await LocalFileManager.saveTrackLocal(song.id, tr.name, blobData);
                     }
                 } else {
                     let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                     if (!rawBuf) {
-                        const res = await fetch(`${proxyUrl}/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!res.ok) {
-                            const errorData = await res.json().catch(() => ({}));
-                            const msg = errorData.error || `Error ${res.status}`;
-                            throw new Error(`Error en ${tr.name}: ${msg}`);
-                        }
-                        const blobData = await res.blob();
-                        await LocalFileManager.saveTrackLocal(song.id, tr.name, blobData);
+                        rawBuf = await downloadBlob();
+                        await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                     }
                 }
             }
@@ -1024,12 +1034,17 @@ export default function Multitrack() {
                         let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                         if (!rawBuf) {
                             try {
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                if (res.ok) {
-                                    rawBuf = await res.blob();
-                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
-                                }
-                            } catch { /* ignore */ }
+                                // Directo de B2 (sin proxy) — B2 público manda CORS headers
+                                const r = await fetch(tr.url, { cache: 'no-store' });
+                                if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
+                            } catch { /* fall through */ }
+                            if (!rawBuf) {
+                                try {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (res.ok) rawBuf = await res.blob();
+                                } catch { /* ignore */ }
+                            }
+                            if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                         }
 
                         let audioBuf = null;
@@ -1069,6 +1084,28 @@ export default function Multitrack() {
             await audioEngine.addTracksBatch(batchMove);
             setTracks(newTracksList);
             setAudioReady(prev => prev + 1);
+
+            // ── PRE-CARGAR LA SIGUIENTE CANCIÓN DEL SETLIST EN C++ BACKGROUND ──
+            if (isAppNative && activeSetlist?.songs) {
+                const allSongs = activeSetlist.songs;
+                const currentIdx = allSongs.findIndex(s => s.id === song.id);
+                const nextSong = allSongs[currentIdx + 1];
+                if (nextSong) {
+                    // Obtener paths del preloadCache o del filesystem
+                    const nextCached = preloadCache.current.get(nextSong.id);
+                    if (nextCached && nextCached.size > 0) {
+                        const nextBatch = [];
+                        for (const [trackName, cached] of nextCached.entries()) {
+                            if (cached.path && trackName !== '__PreviewMix') {
+                                nextBatch.push({ id: `${nextSong.id}_${trackName}`, path: cached.path });
+                            }
+                        }
+                        if (nextBatch.length > 0) {
+                            audioEngine.preloadNextSong(nextSong.id, nextBatch);
+                        }
+                    }
+                }
+            }
 
         } catch (err) {
             console.error(`[ERROR] No se pudo cargar "${song.name}":`, err);
