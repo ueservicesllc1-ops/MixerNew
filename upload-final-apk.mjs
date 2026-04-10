@@ -12,7 +12,7 @@ async function uploadApk() {
 
     const form = new FormData();
     form.append('audioFile', fs.createReadStream(apkPath));
-    form.append('fileName', `apps/zion-stage-release-1775782309423.apk`);
+    form.append('fileName', `apps/zion-stage-release-${Date.now()}.apk`);
     form.append('generatePreview', 'false');
 
     console.log("Uploading APK to B2...");
