@@ -93,7 +93,7 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
-    const CURRENT_VERSION = "1.6.7";
+    const CURRENT_VERSION = "1.6.8";
     const [updateAvailable, setUpdateAvailable] = useState(null);
 
     useEffect(() => {
@@ -1563,7 +1563,7 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar">
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.7 - ZION STAGE (DEEP SYNC)</div>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V1.6.8 - ZION STAGE (DEEP SYNC)</div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
@@ -2742,7 +2742,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         transition,
         opacity: isDragging ? 0.6 : (pStatus === 'loading' && !isActive ? 0.7 : 1),
         zIndex: isDragging ? 100 : 1,
-        touchAction: 'none',
+        touchAction: 'pan-y', // Allow scrolling on the list item itself!
         position: 'relative',
         transformOrigin: '0 0'
     };
@@ -2756,7 +2756,7 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
         >
             <div className="song-item-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5 }} onClick={(e) => e.stopPropagation()}>
+                    <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5, touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
                         <GripVertical size={16} />
                     </div>
                     <span className="song-index-badge">{idx + 1}</span>
