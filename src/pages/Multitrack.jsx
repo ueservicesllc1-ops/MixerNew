@@ -55,6 +55,21 @@ function pickNewerMeta(a, b) {
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
+// ─── KEY TRANSPOSITION ────────────────────────────────────────────────────────
+const CHROMATIC = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_TO_SHARP = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
+function transposeKey(baseKey, semitones) {
+    if (!baseKey || semitones === 0) return baseKey;
+    const isMinor = baseKey.endsWith('m');
+    const root = isMinor ? baseKey.slice(0, -1) : baseKey;
+    const normalized = FLAT_TO_SHARP[root] ?? root;
+    const idx = CHROMATIC.indexOf(normalized);
+    if (idx === -1) return baseKey; // unknown format, show as-is
+    const newIdx = ((idx + semitones) % 12 + 12) % 12;
+    return CHROMATIC[newIdx] + (isMinor ? 'm' : '');
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 // ─── LIBRARY DRAWER ──────────────────────────────────────────────────────────
 // Memoized to prevent re-renders when unrelated Multitrack state changes.
 const LibraryDrawer = React.memo(function LibraryDrawer({
@@ -2021,8 +2036,8 @@ export default function Multitrack() {
                             className="control-value"
                             style={{ minWidth: '45px', color: pitchOffset !== 0 ? '#f39c12' : 'inherit' }}
                         >
-                            {activeSong?.key || '--'}
-                            {pitchOffset !== 0 && <span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>{pitchOffset > 0 ? `+${pitchOffset}` : pitchOffset}</span>}
+                            {transposeKey(activeSong?.key, pitchOffset) || activeSong?.key || '--'}
+                            {pitchOffset !== 0 && <span style={{ fontSize: '0.6rem', color: '#f39c12', marginLeft: '2px' }}>({pitchOffset > 0 ? `+${pitchOffset}` : pitchOffset})</span>}
                         </span>
                         <button onClick={() => handlePitchChange(+1)} className="square-btn">+</button>
                     </span>

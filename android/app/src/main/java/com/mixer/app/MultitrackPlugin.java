@@ -36,6 +36,8 @@ public class MultitrackPlugin extends Plugin {
     public native void    nativePreloadTrack(String songId, String trackId, String path);
     public native boolean nativeSwapToPending(String songId);
     public native void    nativeClearPending();
+    // Pitch shifting (SoundTouch — no afecta el tempo)
+    public native void    nativeSetPitch(float semitones);
 
     @Override
     public void load() {
@@ -219,6 +221,13 @@ public class MultitrackPlugin extends Plugin {
     @PluginMethod
     public void clearPending(PluginCall call) {
         if (nativeLibLoaded) nativeClearPending();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setPitch(PluginCall call) {
+        Float semitones = call.getFloat("semitones", 0f);
+        if (nativeLibLoaded) nativeSetPitch(semitones);
         call.resolve();
     }
 }

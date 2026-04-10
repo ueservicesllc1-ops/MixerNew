@@ -246,4 +246,11 @@ export const NativeEngine = {
             return 0;
         }
     },
+
+    // Pitch shifting (SoundTouch — tempo-independent).
+    // semitones: -12..+12 (0 = bypass, no processing overhead)
+    setPitch: async (semitones) => {
+        try { await MultitrackPlugin.setPitch({ semitones }); }
+        catch (err) { console.warn('[NativeEngine] setPitch error', err); }
+    },
 };

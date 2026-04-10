@@ -2,6 +2,9 @@
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 
+#include "soundtouch/SoundTouch.h"
+using namespace soundtouch;
+
 #include <jni.h>
 #include <android/log.h>
 #include <string>
@@ -9,10 +12,68 @@
 #include <mutex>
 #include <thread>
 #include <atomic>
+#include <cstring>
 
 #define TAG     "MixerNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+// ── SOUNDTOUCH NODE ──────────────────────────────────────────────────────────
+// Inserts a SoundTouch pitch-shifting processor into the miniaudio node graph.
+// All sounds are routed through this node before reaching the engine endpoint,
+// enabling tempo-independent pitch shifting on the entire mix output.
+
+struct SoundTouchNodeData {
+    ma_node_base        base;            // Must be first — miniaudio casts this to ma_node*
+    SoundTouch          st;
+    std::atomic<float>  pendingPitch{0.0f}; // Written by Java thread
+    float               activePitch  = 0.0f; // Only touched by audio thread
+};
+
+static void stNodeProcess(
+    ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn,
+    float** ppFramesOut, ma_uint32* pFrameCountOut)
+{
+    auto* d = (SoundTouchNodeData*)pNode;
+
+    // Check if pitch changed (lock-free; SoundTouch is owned by the audio thread)
+    float newPitch = d->pendingPitch.load(std::memory_order_relaxed);
+    if (newPitch != d->activePitch) {
+        d->activePitch = newPitch;
+        d->st.clear();
+        d->st.setPitchSemiTones(newPitch);
+    }
+
+    if (d->activePitch == 0.0f) {
+        // Bypass: direct copy, zero latency
+        ma_uint32 cnt = (*pFrameCountIn < *pFrameCountOut) ? *pFrameCountIn : *pFrameCountOut;
+        if (cnt > 0) memcpy(ppFramesOut[0], ppFramesIn[0], cnt * 2 * sizeof(float));
+        *pFrameCountOut = cnt;
+        return;
+    }
+
+    // Feed interleaved stereo frames into SoundTouch
+    d->st.putSamples(ppFramesIn[0], *pFrameCountIn);
+    // Drain available output frames
+    ma_uint32 received = (ma_uint32)d->st.receiveSamples(ppFramesOut[0], *pFrameCountOut);
+    if (received < *pFrameCountOut) {
+        // Fill remainder with silence while SoundTouch is warming up
+        memset(ppFramesOut[0] + received * 2, 0,
+               (*pFrameCountOut - received) * 2 * sizeof(float));
+    }
+    *pFrameCountOut = *pFrameCountOut; // keep requested count for smooth playback
+}
+
+static ma_uint32 stBusChannels[1] = { 2 };  // 1 bus, stereo
+
+static ma_node_vtable stNodeVtable = {
+    stNodeProcess,  // onProcess
+    nullptr,        // onGetRequiredInputFrameCount
+    1,              // inputBusCount
+    1,              // outputBusCount
+    0               // flags
+};
+// ─────────────────────────────────────────────────────────────────────────────
 
 struct Track {
     std::string id;
@@ -49,6 +110,11 @@ public:
     float   masterVolume      = 1.0f;
     float   speedRatio        = 1.0f;
 
+    // ── SOUNDTOUCH PITCH NODE ────────────────────────────────────────────────
+    SoundTouchNodeData stNode;
+    bool               stNodeReady = false;
+    // ────────────────────────────────────────────────────────────────────────
+
     static constexpr int kSampleRate = 44100;
 
     void init() {
@@ -59,6 +125,29 @@ public:
             ma_engine_stop(&engine);
             engineReady = true;
             LOGD("ma_engine_init OK");
+
+            // Init SoundTouch pitch node and insert into the node graph
+            stNode.st.setChannels(2);
+            stNode.st.setSampleRate(kSampleRate);
+            stNode.st.setPitchSemiTones(0.0f);
+            stNode.st.setSetting(SETTING_USE_QUICKSEEK, 1);
+            stNode.st.setSetting(SETTING_OVERLAP_MS, 8);
+
+            ma_node_config nodeCfg = ma_node_config_init();
+            nodeCfg.vtable          = &stNodeVtable;
+            nodeCfg.inputBusCount   = 1;
+            nodeCfg.outputBusCount  = 1;
+            nodeCfg.pInputChannels  = stBusChannels;
+            nodeCfg.pOutputChannels = stBusChannels;
+
+            ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
+            if (ma_node_init(pGraph, &nodeCfg, nullptr, &stNode.base) == MA_SUCCESS) {
+                ma_node_attach_output_bus(&stNode.base, 0, ma_engine_get_endpoint(&engine), 0);
+                stNodeReady = true;
+                LOGD("SoundTouchNode OK — pitch shifting ready");
+            } else {
+                LOGE("SoundTouchNode init FAILED");
+            }
         }
     }
 
@@ -86,6 +175,10 @@ public:
             ma_uint64 frame = (ma_uint64)(currentPos * kSampleRate);
             ma_sound_seek_to_pcm_frame(&tPtr->sound, frame);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
+            // Route through SoundTouch pitch node
+            if (stNodeReady) {
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+            }
             updateMuteSoloInternal();
             LOGD("Track %s cargado (stream) y sincronizado a %.2fs", id.c_str(), currentPos);
         } else {
@@ -124,6 +217,10 @@ public:
             tPtr->soundReady = true;
             ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
+            // Route through SoundTouch pitch node (preloaded tracks also need it when active)
+            if (stNodeReady) {
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+            }
             LOGD("Preload track %s (stream) de cancion %s OK", id.c_str(), songId.c_str());
         } else {
             LOGE("Error preload track %s: %d", id.c_str(), r);
@@ -279,6 +376,14 @@ public:
         }
         return maxDur;
     }
+
+    // Tempo-independent pitch shifting via SoundTouch.
+    // semitones: negative = lower pitch, positive = raise pitch (range: -12..+12)
+    void setPitch(float semitones) {
+        if (!stNodeReady) return;
+        stNode.pendingPitch.store(semitones, std::memory_order_relaxed);
+        LOGD("setPitch %.1f semitones", (double)semitones);
+    }
 };
 
 static MultitrackEngine* gEngine = nullptr;
@@ -328,5 +433,8 @@ extern "C" {
     }
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeClearPending(JNIEnv*, jobject) {
         if (gEngine) gEngine->clearPending();
+    }
+    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetPitch(JNIEnv*, jobject, jfloat semitones) {
+        if (gEngine) gEngine->setPitch((float)semitones);
     }
 }
