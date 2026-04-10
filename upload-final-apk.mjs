@@ -29,7 +29,7 @@ async function uploadApk() {
         // Use Node-friendly Firebase to record version
         try {
             await addDoc(collection(db, 'app_versions'), {
-                versionName: "1.0-V12-UIFixes",
+                versionName: "1.5.0",
                 downloadUrl: data.url,
                 fileId: data.fileId,
                 createdAt: serverTimestamp()

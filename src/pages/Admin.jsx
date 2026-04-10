@@ -1997,6 +1997,31 @@ export default function Admin() {
                     </div>
                 </div>
             )}
+            {/* ── APK PUBLISHER ── */}
+            {activeTab === 'apk150' && (
+                <div style={{ padding: '20px' }}>
+                    <h2 style={{ color: '#00d2d3' }}>Publicar Nueva Versión 1.5.0</h2>
+                    <p style={{ color: '#94a3b8' }}>La versión del APK ha sido compilada con éxito y subida a los servidores. Haz clic aquí abajo para ponerla a disposición de los usuarios y que la app la reconozca como la última descargable instalada.</p>
+                    <button 
+                        className="btn-teal" 
+                        onClick={async () => {
+                            try {
+                                await addDoc(collection(db, 'app_versions'), {
+                                    versionName: "1.5.0",
+                                    downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775782309421.apk",
+                                    createdAt: serverTimestamp()
+                                });
+                                alert("¡APK 1.5.0 publicado con éxito! Ya pueden descargarlo.");
+                            } catch(e) {
+                                alert("Error: " + e.message);
+                            }
+                        }}
+                    >
+                        PUBLICAR APK 1.5.0 AHORA
+                    </button>
+                </div>
+            )}
+
             {/* ── Global Preview Modal (L / C badges) ── */}
             {viewingChord && (
                 <div onClick={() => setViewingChord(null)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.92)', zIndex: 5000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
