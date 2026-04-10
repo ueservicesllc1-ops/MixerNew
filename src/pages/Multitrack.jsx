@@ -93,6 +93,26 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
+    const CURRENT_VERSION = "1.6.2";
+    const [updateAvailable, setUpdateAvailable] = useState(null);
+
+    useEffect(() => {
+        if (!isAppNative) return;
+        
+        const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(1));
+        const unsubscribe = onSnapshot(q, (snap) => {
+            if (!snap.empty) {
+                const latestApp = snap.docs[0].data();
+                if (latestApp && latestApp.versionName && latestApp.versionName !== CURRENT_VERSION) {
+                    setUpdateAvailable(latestApp);
+                } else {
+                    setUpdateAvailable(null); 
+                }
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isPadsOpen, setIsPadsOpen] = useState(false);
@@ -1386,6 +1406,28 @@ export default function Multitrack() {
 
     return (
         <div className="multitrack-layout">
+
+            {/* ── OTA UPDATE MODAL ────────────────────────────────────────────────────── */}
+            {updateAvailable && (
+                <div style={{
+                    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999999, backdropFilter: 'blur(5px)'
+                }}>
+                    <div className="card-compact" style={{ background: '#0f172a', border: '1px solid #00d2d3', width: '360px', textAlign: 'center', padding: '30px', borderRadius: '16px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+                        <h2 style={{ color: '#00d2d3', margin: '0 0 10px', fontSize: '1.4rem', fontWeight: '800' }}>Actualización Disponible</h2>
+                        <p style={{ color: '#94a3b8', marginBottom: '25px', lineHeight: '1.5', fontSize: '0.95rem' }}>
+                            Zion Stage (<strong style={{ color: 'white' }}>{updateAvailable.versionName}</strong>) está disponible. Mantenemos el motor actualizado para garantizar tu estabilidad en vivo.
+                        </p>
+                        <button 
+                            className="btn-teal"
+                            style={{ width: '100%', padding: '15px', fontWeight: 'bold', fontSize: '1rem' }}
+                            onClick={() => window.open(updateAvailable.downloadUrl, '_system')}
+                        >
+                            Descargar Ahora
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* ── ALERTS / LOGIN SYSTEM ────────────────────────────────────────────────── */}
 
