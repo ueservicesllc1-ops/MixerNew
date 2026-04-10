@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.7.9";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.0";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);
@@ -89,6 +89,7 @@ export default function Multitrack() {
 
     // Download States
     const [downloadProgress, setDownloadProgress] = useState({ songId: null, text: '' });
+    const [nativeLoadProgress, setNativeLoadProgress] = useState(null); // { songId, loaded, total }
     // Active loaded song
     const [activeSongId, setActiveSongId] = useState(null);
     const [audioReady, setAudioReady] = useState(0); // Trigger re-renders when buffers finish decoding
@@ -483,6 +484,14 @@ export default function Multitrack() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setlists, activeSetlist]);
 
+    // Preload first 2 songs whenever the active setlist changes (covers manual selection too)
+    useEffect(() => {
+        if (!activeSetlist?.songs?.length) return;
+        const subset = (activeSetlist.songs).slice(0, 2).filter(s => !preloadCache.current.has(s.id));
+        if (subset.length > 0) preloadSetlistSongs(subset);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSetlist?.id]);
+
     // Auto-load a pending song from the Dashboard if present
     useEffect(() => {
         const pendingSongId = localStorage.getItem('mixer_pendingSongId');
@@ -653,19 +662,29 @@ export default function Multitrack() {
                                 if (tr.name === '__PreviewMix') {
                                     blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
                                     if (!blob) {
-                                        const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                        if (res.ok) blob = await res.blob();
+                                        // Filesystem tiene el archivo pero localforage fue limpiado → recuperar
+                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                                        if (blob) await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
                                     }
                                 }
                             } else {
+                                // Intentar localforage legacy, luego descarga directa de B2
                                 let legacyRawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                                 if (legacyRawBuf) {
                                     finalPath = await NativeEngine.saveTrackBlob(legacyRawBuf, `${song.id}_${tr.name}.mp3`);
                                     blob = legacyRawBuf;
                                 } else {
-                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                    if (!res.ok) return;
-                                    blob = await res.blob();
+                                    // Directo de B2 (sin proxy) → mucho más rápido en nativo
+                                    try {
+                                        const r = await fetch(tr.url, { cache: 'no-store' });
+                                        if (r.ok) { blob = await r.blob(); if (blob.size < 500) blob = null; }
+                                    } catch { /* fall through */ }
+                                    if (!blob) {
+                                        const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                        if (!res.ok) return;
+                                        blob = await res.blob();
+                                    }
+                                    if (!blob) return;
                                     finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
                                 }
                             }
@@ -933,10 +952,29 @@ export default function Multitrack() {
         const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
+        /**
+         * En nativo: intenta descarga directa desde B2 (sin proxy, Capacitor no tiene CORS).
+         * Si falla, cae al proxy de Railway como respaldo.
+         */
+        const fetchBlobNative = async (url) => {
+            try {
+                const r = await fetch(url, { cache: 'no-store' });
+                if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
+            } catch { /* fall through */ }
+            const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(url)}`);
+            if (!r2.ok) return null;
+            return await r2.blob();
+        };
+
         try {
             evictOldestIfNeeded();
             const trackBuffers = new Map();
             const tracksData = song.tracks || [];
+
+            // Inicializar barra de progreso de descarga en nativo
+            const downloadableTracks = tracksData.filter(tr => tr.url && tr.url !== 'undefined');
+            let loadedCount = 0;
+            if (isAppNative) setNativeLoadProgress({ songId: song.id, loaded: 0, total: downloadableTracks.length });
 
             // Descarga/Lectura en batches para evitar picos de RAM
             for (let i = 0; i < tracksData.length; i += 3) {
@@ -950,14 +988,20 @@ export default function Multitrack() {
                         try {
                             const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
                             if (alreadyHasFile) {
+                                // Archivo ya en disco → ruta directa, sin descarga
                                 finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                                 if (tr.name === '__PreviewMix') {
+                                    // Intentar localforage; si Android lo limpió, leer del filesystem
                                     blob = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                                    if (!blob) {
+                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                                        if (blob) await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
+                                    }
                                 }
                             } else {
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                if (res.ok) {
-                                    blob = await res.blob();
+                                // Primera vez: descarga directa de B2, sin pasar por Railway
+                                blob = await fetchBlobNative(tr.url);
+                                if (blob) {
                                     finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
                                     await LocalFileManager.saveTrackLocal(song.id, tr.name, blob);
                                 }
@@ -974,6 +1018,8 @@ export default function Multitrack() {
                             }
                         }
                         trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
+                        loadedCount++;
+                        setNativeLoadProgress({ songId: song.id, loaded: loadedCount, total: downloadableTracks.length });
                     } else {
                         let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                         if (!rawBuf) {
@@ -999,6 +1045,7 @@ export default function Multitrack() {
                     }
                 }));
             }
+            if (isAppNative) setNativeLoadProgress(null);
 
             preloadCache.current.set(song.id, trackBuffers);
             touchLRU(song.id);
@@ -2271,6 +2318,7 @@ export default function Multitrack() {
                                                     idx={idx}
                                                     isActive={activeSongId === song.id}
                                                     pStatus={preloadStatus[song.id]}
+                                                    loadProgress={nativeLoadProgress?.songId === song.id ? nativeLoadProgress : null}
                                                     onSelect={() => handleLoadSong(song)}
                                                     onRemove={handleRemoveSongFromSetlist}
                                                 />
@@ -2605,9 +2653,10 @@ export default function Multitrack() {
                                                     idx={idx}
                                                     isActive={activeSongId === song.id}
                                                     pStatus={preloadStatus[song.id]}
+                                                    loadProgress={nativeLoadProgress?.songId === song.id ? nativeLoadProgress : null}
                                                     onSelect={() => {
                                                         handleLoadSong(song);
-                                                        setIsCurrentListOpen(false); // Close drawer on selection
+                                                        setIsCurrentListOpen(false);
                                                     }}
                                                     onRemove={handleRemoveSongFromSetlist}
                                                 />
@@ -2865,7 +2914,7 @@ export default function Multitrack() {
         );
     }
 
-function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) {
+function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect, onRemove }) {
     const {
         attributes,
         listeners,
@@ -2906,7 +2955,9 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
                     {pStatus === 'loading' && !isActive && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f39c12', boxShadow: '0 0 5px #f39c12' }} />
-                            <span style={{ fontSize: '0.6rem', color: '#f39c12', fontWeight: '800', textTransform: 'uppercase' }}>Loading</span>
+                            <span style={{ fontSize: '0.6rem', color: '#f39c12', fontWeight: '800', textTransform: 'uppercase' }}>
+                                {loadProgress ? `${loadProgress.loaded}/${loadProgress.total}` : 'Cargando'}
+                            </span>
                         </div>
                     )}
                     {pStatus === 'ready' && !isActive && (
@@ -2950,6 +3001,17 @@ function SortableSongItem({ song, idx, isActive, pStatus, onSelect, onRemove }) 
                 {song.key && `${song.key} • `}
                 {song.tempo && `${song.tempo} BPM`}
             </div>
+            {pStatus === 'loading' && loadProgress && loadProgress.total > 0 && (
+                <div style={{ margin: '4px 0 2px 24px', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{
+                        height: '100%',
+                        width: `${Math.round((loadProgress.loaded / loadProgress.total) * 100)}%`,
+                        background: 'linear-gradient(90deg, #f39c12, #f1c40f)',
+                        borderRadius: '2px',
+                        transition: 'width 0.3s ease'
+                    }} />
+                </div>
+            )}
         </div>
     );
 }

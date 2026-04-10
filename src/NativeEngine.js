@@ -112,6 +112,24 @@ export const NativeEngine = {
         return await getFilePath(filename);
     },
 
+    /**
+     * Lee un archivo del filesystem nativo y lo devuelve como Blob.
+     * Útil para recuperar el blob de __PreviewMix cuando localforage fue limpiado.
+     */
+    readTrackBlob: async (songId, trackName) => {
+        const filename = `${songId}_${trackName}.mp3`;
+        try {
+            const { data } = await Filesystem.readFile({ path: filename, directory: Directory.Data });
+            const binaryString = atob(data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+            return new Blob([bytes.buffer], { type: 'audio/mpeg' });
+        } catch (e) {
+            console.warn('[NativeEngine] readTrackBlob failed:', trackName, e);
+            return null;
+        }
+    },
+
     loadSingleTrack: async (id, path) => {
         try {
             await MultitrackPlugin.loadTracks({ tracks: [{ id, path }] });
