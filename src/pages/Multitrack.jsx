@@ -57,7 +57,7 @@ const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 export default function Multitrack() {
     const navigate = useNavigate();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.1";
+    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.2";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const [progress, setProgress] = useState(0);

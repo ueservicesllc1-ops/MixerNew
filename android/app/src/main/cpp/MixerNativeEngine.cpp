@@ -77,7 +77,9 @@ public:
             tPtr->release();
         }
 
-        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
+        // MA_SOUND_FLAG_STREAM: abre el archivo sin decodificar → carga instantánea desde disco.
+        // (vs DECODE que cargaba todo en RAM y tardaba 4 segundos por canción)
+        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
             double currentPos = getPositionInternal();
@@ -85,7 +87,7 @@ public:
             ma_sound_seek_to_pcm_frame(&tPtr->sound, frame);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
             updateMuteSoloInternal();
-            LOGD("Track %s cargado y sincronizado a %.2fs", id.c_str(), currentPos);
+            LOGD("Track %s cargado (stream) y sincronizado a %.2fs", id.c_str(), currentPos);
         } else {
             LOGE("Error cargando track %s: %d", id.c_str(), r);
         }
@@ -117,13 +119,12 @@ public:
             tPtr->release();
         }
 
-        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
+        ma_result r = ma_sound_init_from_file(&engine, path.c_str(), MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
-            // Pre-seek a 0 para que esté listo
             ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            LOGD("Preload track %s de cancion %s OK", id.c_str(), songId.c_str());
+            LOGD("Preload track %s (stream) de cancion %s OK", id.c_str(), songId.c_str());
         } else {
             LOGE("Error preload track %s: %d", id.c_str(), r);
         }
