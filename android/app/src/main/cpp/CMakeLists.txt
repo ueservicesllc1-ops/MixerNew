@@ -17,6 +17,7 @@ target_compile_options(multitrack-native-engine PRIVATE
         -frtti
         -DMINIAUDIO_IMPLEMENTATION
         -DSOUNDTOUCH_FLOAT_SAMPLES=1
+        -DSOUNDTOUCH_DISABLE_X86_OPTIMIZATIONS=1
         -DST_NO_EXCEPTION_HANDLING=1
 )
 

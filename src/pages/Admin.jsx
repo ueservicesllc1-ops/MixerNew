@@ -673,7 +673,7 @@ export default function Admin() {
             await addDoc(collection(db, 'app_versions'), {
                 versionName: "1.8.9",
                 versionCode: 56,
-                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.9-1775862950751.apk",
+                downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.9-1775863715349.apk",
                 createdAt: serverTimestamp(),
                 releaseNotes: "Versión 1.8.9 - Native pitch shift con SoundTouch (sin modificar tempo) + display de nota transpuesta en header"
             });
