@@ -849,9 +849,30 @@ export default function Admin() {
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '30px' }}>
-                <ShieldAlert size={36} color="#f1c40f" />
-                <h1 style={{ margin: 0, fontWeight: '800' }}>Admin Dashboard | Zion Stage</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '30px', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                    <ShieldAlert size={36} color="#f1c40f" />
+                    <h1 style={{ margin: 0, fontWeight: '800' }}>Admin Dashboard | Zion Stage</h1>
+                </div>
+                {!localStorage.getItem('apk_152_published') && (
+                    <button 
+                        onClick={async () => {
+                            try {
+                                await addDoc(collection(db, 'app_versions'), {
+                                    versionName: "1.5.2",
+                                    downloadUrl: `https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-release-1775782309423.apk`, 
+                                    createdAt: serverTimestamp()
+                                });
+                                localStorage.setItem('apk_152_published', 'true');
+                                alert("¡Éxito! Versión 1.5.2 (Súper Optimizado) lanzada. Ya puedes instalarla.");
+                                window.location.reload();
+                            } catch(e) { alert(e.message); }
+                        }}
+                        style={{ background: '#f43f5e', color: 'white', padding: '10px 20px', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer', fontSize: '1.1rem', boxShadow: '0 0 15px rgba(244,63,94,0.5)' }}
+                    >
+                        🚀 CLIC AQUÍ PARA ACTIVAR LA VERSIÓN 1.5.2 (MÁXIMA VELOCIDAD)
+                    </button>
+                )}
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>

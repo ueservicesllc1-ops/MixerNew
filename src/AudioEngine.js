@@ -23,6 +23,10 @@ class AudioEngine {
         this.pitchSemitones = 0;
         this.progress = 0;
         this._updater = null;
+        this._progressListeners = new Set();
+        // Frame limiter: notify at max ~15 FPS to reduce JS bridge pressure
+        this._lastNotifyTime = 0;
+        this._NOTIFY_INTERVAL = 66; // ms
 
         this.workletLoaded = false;
         this.masterSoundTouchNode = null;
@@ -454,6 +458,26 @@ class AudioEngine {
         if (this._updater) cancelAnimationFrame(this._updater);
     }
 
+    /** Subscribe to progress updates. Callback receives (timeInSeconds). */
+    addProgressListener(fn) {
+        this._progressListeners.add(fn);
+    }
+
+    /** Unsubscribe from progress updates. */
+    removeProgressListener(fn) {
+        this._progressListeners.delete(fn);
+    }
+
+    _notifyProgress() {
+        const now = performance.now();
+        if (now - this._lastNotifyTime < this._NOTIFY_INTERVAL) return;
+        this._lastNotifyTime = now;
+        // Legacy single-callback support
+        if (this.onProgress) this.onProgress(this.progress);
+        // New multi-subscriber pattern
+        for (const fn of this._progressListeners) fn(this.progress);
+    }
+
     _startRAF() {
         const update = async () => {
             if (!this.isPlaying) return;
@@ -464,9 +488,7 @@ class AudioEngine {
                 const elapsed = this.ctx.currentTime - this._playStartTime;
                 this.progress = this.pausePosition + (elapsed * this.tempoRatio);
             }
-            if (this.onProgress) {
-                this.onProgress(this.progress);
-            }
+            this._notifyProgress();
             this._updater = requestAnimationFrame(update);
         };
         this._updater = requestAnimationFrame(update);

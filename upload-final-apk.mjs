@@ -12,7 +12,7 @@ async function uploadApk() {
 
     const form = new FormData();
     form.append('audioFile', fs.createReadStream(apkPath));
-    form.append('fileName', `apps/zion-stage-release-${Date.now()}.apk`);
+    form.append('fileName', `apps/zion-stage-release-1775782309423.apk`);
     form.append('generatePreview', 'false');
 
     console.log("Uploading APK to B2...");
@@ -29,7 +29,7 @@ async function uploadApk() {
         // Use Node-friendly Firebase to record version
         try {
             await addDoc(collection(db, 'app_versions'), {
-                versionName: "1.5.0",
+                versionName: "1.5.2",
                 downloadUrl: data.url,
                 fileId: data.fileId,
                 createdAt: serverTimestamp()
