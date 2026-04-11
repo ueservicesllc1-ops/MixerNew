@@ -837,20 +837,11 @@ export default function Multitrack() {
                                     blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 }
                             } else {
-                                // Descarga directa de B2, guarda solo en filesystem
-                                try {
-                                    const ac = new AbortController();
-                                    const t = setTimeout(() => ac.abort(), 6000);
-                                    const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
-                                    clearTimeout(t);
-                                    if (r.ok) { blob = await r.blob(); if (blob.size < 500) blob = null; }
-                                } catch { /* fall through to proxy */ }
-                                if (!blob) {
-                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                    if (!res.ok) return;
-                                    blob = await res.blob();
-                                }
-                                if (!blob) return;
+                                // Descarga via Railway proxy
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (!res.ok) return;
+                                blob = await res.blob();
+                                if (!blob || blob.size < 500) return;
                                 finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
                             }
 
@@ -869,19 +860,10 @@ export default function Multitrack() {
                         } else {
                             let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                             if (!rawBuf) {
-                                // Directo de B2 primero (funciona en web y nativo), luego proxy fallback
-                                try {
-                                    const ac = new AbortController();
-                                    const t = setTimeout(() => ac.abort(), 6000);
-                                    const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
-                                    clearTimeout(t);
-                                    if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
-                                } catch { /* fall through to proxy */ }
-                                if (!rawBuf) {
-                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                    if (!res.ok) return;
-                                    rawBuf = await res.blob();
-                                }
+                                // Descarga via Railway proxy
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (!res.ok) return;
+                                rawBuf = await res.blob();
                                 if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                             }
 
@@ -980,20 +962,12 @@ export default function Multitrack() {
                 }
 
                 /**
-                 * Descarga una pista: intenta directo de B2 primero (funciona en nativo y en web
-                 * porque B2 público devuelve Access-Control-Allow-Origin: *), luego proxy como fallback.
+                 * Descarga una pista via Railway proxy.
                  */
                 const downloadBlob = async () => {
-                    try {
-                        const ac = new AbortController();
-                        const t = setTimeout(() => ac.abort(), 6000);
-                        const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
-                        clearTimeout(t);
-                        if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
-                    } catch { /* fall through to proxy */ }
-                    const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                    if (!r2.ok) throw new Error(`Error ${r2.status} descargando ${tr.name}`);
-                    return await r2.blob();
+                    const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                    if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
+                    return await r.blob();
                 };
 
                 if (isAppNative) {
@@ -1134,17 +1108,9 @@ export default function Multitrack() {
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         /**
-         * En nativo: intenta descarga directa desde B2 (sin proxy, Capacitor no tiene CORS).
-         * Si falla, cae al proxy de Railway como respaldo.
+         * Descarga blob via Railway proxy.
          */
         const fetchBlobNative = async (url) => {
-            try {
-                const ac = new AbortController();
-                const t = setTimeout(() => ac.abort(), 6000);
-                const r = await fetch(url, { cache: 'no-store', signal: ac.signal });
-                clearTimeout(t);
-                if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
-            } catch { /* fall through to proxy */ }
             const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(url)}`);
             if (!r2.ok) return null;
             return await r2.blob();
@@ -1202,20 +1168,11 @@ export default function Multitrack() {
                     } else {
                         let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                         if (!rawBuf) {
+                            // Descarga via Railway proxy
                             try {
-                                // Directo de B2 con timeout — si el ISP lo bloquea cae al proxy rápido
-                                const ac = new AbortController();
-                                const t = setTimeout(() => ac.abort(), 6000);
-                                const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
-                                clearTimeout(t);
-                                if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
-                            } catch { /* fall through to proxy */ }
-                            if (!rawBuf) {
-                                try {
-                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                    if (res.ok) rawBuf = await res.blob();
-                                } catch { /* ignore */ }
-                            }
+                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                if (res.ok) rawBuf = await res.blob();
+                            } catch { /* ignore */ }
                             if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                         }
 
