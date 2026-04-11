@@ -43,8 +43,16 @@ const isNativeApp = () => {
     window.Capacitor?.isNativePlatform?.() === true
 }
 
+// Detecta si corre como PWA instalada (standalone — no en pestaña del navegador)
+const isPWA = () => {
+  return typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches ||
+     window.navigator.standalone === true)
+}
+
 function App() {
   const native = isNativeApp()
+  const pwa = isPWA()
 
   useEffect(() => {
     if (native) {
@@ -58,7 +66,7 @@ function App() {
         <Routes>
           <Route
             path="/"
-            element={native ? <Navigate to="/multitrack" replace /> : <Landing />}
+            element={(native || pwa) ? <Navigate to="/multitrack" replace /> : <Landing />}
           />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/multitrack" element={<Multitrack />} />
