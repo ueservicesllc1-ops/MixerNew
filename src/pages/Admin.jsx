@@ -31,6 +31,7 @@ export default function Admin() {
     const [apkFile, setApkFile] = useState(null);
     const [apkVersionName, setApkVersionName] = useState('');
     const [isActivatingPending, setIsActivatingPending] = useState(false); // botón rojo ACTIVAR
+    const [pendingRelease, setPendingRelease] = useState(null);
 
     const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
     const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
@@ -78,6 +79,28 @@ export default function Admin() {
             setLoading(false);
         });
         return () => checkAdmin();
+    }, []);
+
+    // Try to read local release-pending.json (written by upload script) so the "ACTIVAR" button
+    // shows the actual pending version instead of a hardcoded string.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                // prefer dev proxy when running locally (proxy serves same file)
+                const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? ''
+                    : '';
+                const r = await fetch(`${base}/release-pending.json`, { cache: 'no-store' });
+                if (!r.ok) return;
+                const j = await r.json();
+                if (cancelled) return;
+                if (j && j.versionName) setPendingRelease(j);
+            } catch (e) {
+                // ignore - file may not exist
+            }
+        })();
+        return () => { cancelled = true; };
     }, []);
 
     const fetchData = async () => {
@@ -670,14 +693,27 @@ export default function Admin() {
     const activatePendingRelease = async () => {
         setIsActivatingPending(true);
         try {
-            await addDoc(collection(db, 'app_versions'), {
+            // Prefer the release-pending.json written by the upload script, fallback to the previous hardcoded values.
+            const payload = pendingRelease ? {
+                versionName: pendingRelease.versionName,
+                versionCode: pendingRelease.versionCode || 0,
+                downloadUrl: pendingRelease.downloadUrl,
+                releaseNotes: pendingRelease.releaseNotes || `Versión ${pendingRelease.versionName}`
+            } : {
                 versionName: "1.8.13",
                 versionCode: 60,
                 downloadUrl: "https://f005.backblazeb2.com/file/mixercur/apps/zion-stage-v1.8.13-1775865410632.apk",
-                createdAt: serverTimestamp(),
                 releaseNotes: "Versión 1.8.13 - Fix desfase: stop all tracks → seek → flush SoundTouch → restart"
+            };
+
+            await addDoc(collection(db, 'app_versions'), {
+                versionName: payload.versionName,
+                versionCode: payload.versionCode,
+                downloadUrl: payload.downloadUrl,
+                createdAt: serverTimestamp(),
+                releaseNotes: payload.releaseNotes
             });
-            alert("¡LISTO! Versión 1.8.13 publicada. Los usuarios recibirán notificación de actualización.");
+            alert(`¡LISTO! Versión ${payload.versionName} publicada. Los usuarios recibirán notificación de actualización.`);
             window.location.reload();
         } catch (e) { alert("Error: " + e.message); }
         finally { setIsActivatingPending(false); }
@@ -875,7 +911,7 @@ export default function Admin() {
                     type="button"
                     disabled={isActivatingPending}
                     title="Usá después de npm run upload:apk (misma PC, Admin con npm run dev) si Firestore falló en la consola."
-                    onClick={activatePendingRelease}
+                onClick={activatePendingRelease}
                     style={{
                         background: '#f43f5e',
                         color: 'white',
@@ -890,7 +926,7 @@ export default function Admin() {
                         opacity: isActivatingPending ? 0.7 : 1
                     }}
                 >
-                    {isActivatingPending ? '…' : '🚀 ACTIVAR VERSIÓN 1.8.13'}
+                    {isActivatingPending ? '…' : (pendingRelease?.versionName ? `🚀 ACTIVAR VERSIÓN ${pendingRelease.versionName}` : '🚀 ACTIVAR VERSIÓN 1.8.13')}
                 </button>
             </div>
 
