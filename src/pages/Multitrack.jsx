@@ -2548,6 +2548,16 @@ export default function Multitrack() {
                                 <h4 className="pad-title">Ambient Pads</h4>
                                 <div className="pad-subtitle" style={{ fontSize: '0.7rem' }}>Fundamental Pads</div>
                             </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, maxWidth: '110px' }}>
+                                <input
+                                    type="range" min="0" max="1" step="0.01"
+                                    value={padVolume}
+                                    onChange={e => setPadVolume(parseFloat(e.target.value))}
+                                    style={{ flex: 1, accentColor: '#00bcd4', height: '4px' }}
+                                    title={`Volumen: ${Math.round(padVolume * 100)}%`}
+                                />
+                                <span style={{ fontSize: '0.6rem', color: '#00bcd4', minWidth: '24px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
+                            </div>
                             <div className="pad-pitch-control">
                                 <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>-</button>
                                 <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
@@ -2559,17 +2569,9 @@ export default function Multitrack() {
                                 <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '35px', fontSize: '0.85rem' }}>{k}</button>
                             ))}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
                             <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '32px', height: '32px' }}>M</button>
                             <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '32px', height: '32px' }}>S</button>
-                            <span style={{ fontSize: '0.65rem', color: '#aaa', marginLeft: '4px' }}>VOL</span>
-                            <input
-                                type="range" min="0" max="1" step="0.01"
-                                value={padVolume}
-                                onChange={e => setPadVolume(parseFloat(e.target.value))}
-                                style={{ flex: 1, accentColor: '#00bcd4', height: '4px' }}
-                            />
-                            <span style={{ fontSize: '0.65rem', color: '#aaa', minWidth: '26px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
                         </div>
                     </div>
                 </aside>
@@ -2812,6 +2814,16 @@ export default function Multitrack() {
                             <h3 className="pad-title">Fundamental Ambient Pads</h3>
                             <div className="pad-subtitle">Loop Community</div>
                         </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '140px' }}>
+                            <input
+                                type="range" min="0" max="1" step="0.01"
+                                value={padVolume}
+                                onChange={e => setPadVolume(parseFloat(e.target.value))}
+                                style={{ flex: 1, accentColor: '#00bcd4', height: '5px' }}
+                                title={`Volumen: ${Math.round(padVolume * 100)}%`}
+                            />
+                            <span style={{ fontSize: '0.75rem', color: '#00bcd4', minWidth: '32px', textAlign: 'right', fontWeight: 600 }}>{Math.round(padVolume * 100)}%</span>
+                        </div>
                         <div className="pad-pitch-control">
                             <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>−</button>
                             <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
@@ -2823,19 +2835,9 @@ export default function Multitrack() {
                             <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '60px', fontSize: '1.1rem' }}>{k}</button>
                         ))}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                         <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '60px', height: '40px' }}>M</button>
                         <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '60px', height: '40px' }}>S</button>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 4px' }}>
-                        <span style={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'nowrap' }}>VOL PAD</span>
-                        <input
-                            type="range" min="0" max="1" step="0.01"
-                            value={padVolume}
-                            onChange={e => setPadVolume(parseFloat(e.target.value))}
-                            style={{ flex: 1, accentColor: '#00bcd4', height: '6px' }}
-                        />
-                        <span style={{ fontSize: '0.8rem', color: '#00bcd4', minWidth: '38px', textAlign: 'right', fontWeight: 600 }}>{Math.round(padVolume * 100)}%</span>
                     </div>
                 </div>
             </div>
