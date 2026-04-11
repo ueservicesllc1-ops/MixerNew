@@ -263,4 +263,39 @@ export const NativeEngine = {
             return '';
         }
     },
+
+    // ── Audio Format v2 (FLAC) helpers ───────────────────────────────────────
+    // Tracks marked normalizedReady===true are stored on device as .flac files.
+    // These helpers parallel the .mp3 equivalents for those tracks.
+
+    /**
+     * Returns true if a v2 (FLAC) cached file exists for this track.
+     */
+    isNormalizedDownloaded: async (songId, trackName) => {
+        const filename = `${songId}_${trackName}.flac`;
+        return await fileExists(filename);
+    },
+
+    /**
+     * Absolute file path to the v2 FLAC cache for this track.
+     */
+    getNormalizedPath: async (songId, trackName) => {
+        const filename = `${songId}_${trackName}.flac`;
+        return await getFilePath(filename);
+    },
+
+    /**
+     * Deletes the legacy v1 MP3 cache file for a track (if it exists).
+     * Called after a FLAC download so old MP3 storage is freed.
+     */
+    invalidateLegacyCache: async (songId, trackName) => {
+        const filename = `${songId}_${trackName}.mp3`;
+        try {
+            await Filesystem.deleteFile({ path: filename, directory: Directory.Data });
+            fileCache.delete(filename);
+            console.log('[NativeEngine] Legacy MP3 deleted:', filename);
+        } catch {
+            // File didn't exist — nothing to do.
+        }
+    },
 };

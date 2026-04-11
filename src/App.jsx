@@ -60,6 +60,14 @@ function App() {
     }
   }, [native]);
 
+  useEffect(() => {
+    if (!pwa) return;
+    const hash = window.location.hash || '';
+    if (hash === '' || hash === '#' || hash === '#/') {
+      window.location.replace(`${window.location.origin}/#/multitrack`);
+    }
+  }, [pwa]);
+
   return (
     <Router>
       <Suspense fallback={<PageLoader />}>

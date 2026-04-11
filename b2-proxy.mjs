@@ -15,6 +15,9 @@ import Stripe from 'stripe';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
+// URL pública de este servidor (Railway). Used to build normalizedUrl proxy links.
+const PROXY_SELF = process.env.PROXY_URL || 'https://mixernew-production.up.railway.app';
+
 // Usando la clave secreta de Stripe:
 let stripe = null;
 const initStripe = () => {
@@ -319,10 +322,11 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     let tempInputPath = '';
     let tempOutputPath = '';
     let tempPreviewPath = '';
+    let tempFlacPath = '';
     try {
         const file = req.file;
         const b2Filename = req.body.fileName;
-        const generatePreview = req.body.generatePreview === 'true'; // Bandera para generar preview
+        const generatePreview = req.body.generatePreview === 'true';
 
         if (!file || !b2Filename) return res.status(400).json({ error: 'Falta archivo' });
 
@@ -332,6 +336,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         tempInputPath = path.join(tmpDir, `in_${tempId}`);
         tempOutputPath = path.join(tmpDir, `out_${tempId}.mp3`);
         tempPreviewPath = path.join(tmpDir, `prev_${tempId}.mp3`);
+        tempFlacPath = path.join(tmpDir, `flac_${tempId}.flac`);
 
         const isMp3 = file.mimetype === 'audio/mpeg' ||
             file.mimetype === 'audio/mp3' ||
@@ -348,6 +353,10 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         const isJson = file.mimetype === 'application/json' ||
             file.originalname.toLowerCase().endsWith('.json');
+
+        // Audio tracks eligible for FLAC normalization (not waveform preview, not non-audio files)
+        const isAudioTrack = !isImage && !isApk && !isPdf && !isJson &&
+            !b2Filename.includes('__PreviewMix');
 
         let mp3Buffer;
 
@@ -399,7 +408,6 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         if (generatePreview && !isImage && !isJson) {
             console.log(`🎬 Generando clip de prueba (20s-40s) para ${b2Filename}...`);
             try {
-                // Si no escribimos a disco arriba, lo hacemos ahora para el clip
                 if (!fs.existsSync(tempInputPath)) fs.writeFileSync(tempInputPath, file.buffer);
 
                 await new Promise((resolve, reject) => {
@@ -408,7 +416,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
                         .setStartTime(20)
                         .setDuration(20)
                         .audioCodec('libmp3lame')
-                        .audioBitrate('64k') // Calidad menor para preview = más rápido
+                        .audioBitrate('64k')
                         .output(tempPreviewPath)
                         .on('end', () => resolve())
                         .on('error', (err) => reject(err))
@@ -442,14 +450,80 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
             }
         }
 
-        res.json({ success: true, url: finalUrl, previewUrl: previewUrl, fileId: b2Data.fileId });
+        // --- NORMALIZACIÓN FLAC (solo pistas de audio, no PreviewMix) ---
+        // Converts to FLAC 44100 Hz 16-bit — guarantees deterministic seek sync in the C++ engine.
+        let normalizedUrl = null;
+        let normalizedB2Url = null;
+        if (isAudioTrack) {
+            try {
+                // Ensure source is on disk for FFmpeg
+                if (!fs.existsSync(tempInputPath)) fs.writeFileSync(tempInputPath, file.buffer);
+
+                console.log(`🎵 Normalizando a FLAC: ${b2Filename}...`);
+                await new Promise((resolve, reject) => {
+                    ffmpeg()
+                        .input(tempInputPath)
+                        .audioFrequency(44100)
+                        .audioCodec('flac')
+                        .addOutputOptions(['-sample_fmt', 's16', '-compression_level', '3', '-vn'])
+                        .output(tempFlacPath)
+                        .on('end', () => resolve())
+                        .on('error', (err) => reject(err))
+                        .run();
+                });
+
+                const flacBuffer = fs.readFileSync(tempFlacPath);
+                const flacSha1 = crypto.createHash('sha1').update(flacBuffer).digest('hex');
+                // Store under audio/flac/ prefix, preserving original filename base
+                const flacB2Path = `audio/flac/${b2Filename.replace(/\.[^.]+$/, '.flac')}`;
+
+                const flacNode = await getUploadNode();
+                const flacB2Resp = await fetch(flacNode.uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': flacNode.authorizationToken,
+                        'X-Bz-File-Name': encodeURIComponent(flacB2Path),
+                        'Content-Type': 'audio/flac',
+                        'X-Bz-Content-Sha1': flacSha1,
+                        'Content-Length': flacBuffer.length
+                    },
+                    body: flacBuffer
+                });
+                const flacB2Data = await flacB2Resp.json();
+                if (flacB2Resp.ok) {
+                    normalizedB2Url = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(flacB2Path)}`;
+                    // Wrap through Railway proxy so ISP-blocked users can download
+                    normalizedUrl = `${PROXY_SELF}/api/download?url=${encodeURIComponent(normalizedB2Url)}`;
+                    console.log(`✅ FLAC normalizado subido: ${flacB2Path} (${Math.round(flacBuffer.length / 1024)} KB)`);
+                } else {
+                    console.warn(`⚠️ B2 FLAC upload error: ${flacB2Data.message || flacB2Data.code}`);
+                }
+            } catch (flacErr) {
+                // Non-fatal: original track still available
+                console.warn('⚠️ FLAC normalization failed (non-fatal):', flacErr.message);
+            }
+        }
+
+        res.json({
+            success: true,
+            url: finalUrl,
+            previewUrl,
+            fileId: b2Data.fileId,
+            ...(normalizedUrl ? {
+                normalizedUrl,
+                normalizedB2Url,
+                normalizedReady: true,
+                normalizedFormat: 'flac',
+                audioFormatVersion: 2,
+            } : {})
+        });
     } catch (error) {
         console.error("Upload error:", error);
         res.status(500).json({ error: error.message });
     } finally {
-        if (tempInputPath && fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath);
-        if (tempOutputPath && fs.existsSync(tempOutputPath)) fs.unlinkSync(tempOutputPath);
-        if (tempPreviewPath && fs.existsSync(tempPreviewPath)) fs.unlinkSync(tempPreviewPath);
+        for (const p of [tempInputPath, tempOutputPath, tempPreviewPath, tempFlacPath]) {
+            if (p && fs.existsSync(p)) try { fs.unlinkSync(p); } catch { /* ignore */ }
+        }
     }
 });
 

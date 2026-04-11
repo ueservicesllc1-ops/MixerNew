@@ -499,9 +499,17 @@ function Dashboard() {
                     name: track.displayName || 'Pista',
                     originalName: track.originalName || 'file',
                     url: data.url || '',
-                    previewUrl: data.previewUrl || data.url, // Guardamos el link al clip de 20s
+                    previewUrl: data.previewUrl || data.url,
                     b2FileId: data.fileId || '',
-                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2)
+                    sizeMB: (track.blob.size / 1024 / 1024).toFixed(2),
+                    // v2 normalized FLAC — set by server when conversion succeeds
+                    ...(data.normalizedUrl ? {
+                        normalizedUrl: data.normalizedUrl,
+                        normalizedB2Url: data.normalizedB2Url || '',
+                        normalizedReady: true,
+                        normalizedFormat: 'flac',
+                        audioFormatVersion: 2,
+                    } : {})
                 });
             }
 

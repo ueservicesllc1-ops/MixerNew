@@ -67,6 +67,7 @@ export const LocalFileManager = {
     deleteSongLocal: async (songId) => {
         try {
             const keys = await localAudioStore.keys();
+            // Matches both v1 (songId_track) and v2 (songId_track_v2) keys
             const songKeys = keys.filter(k => k.startsWith(`${songId}_`));
 
             for (const key of songKeys) {
@@ -90,6 +91,40 @@ export const LocalFileManager = {
             console.error('[STORAGE] Error eliminando pista local:', error);
             return false;
         }
+    },
+
+    // ── Audio Format v2 (FLAC) — web IndexedDB cache ─────────────────────────
+    // Keys use a _v2 suffix to distinguish from legacy v1 entries.
+
+    saveTrackLocalV2: async (songId, trackId, blob) => {
+        try {
+            const key = `${songId}_${trackId}_v2`;
+            await localAudioStore.setItem(key, blob);
+            console.log(`[STORAGE] FLAC v2 guardado: ${key}`);
+            return true;
+        } catch (error) {
+            console.error('[STORAGE] Error guardando FLAC v2:', error);
+            throw error;
+        }
+    },
+
+    getTrackLocalV2: async (songId, trackId) => {
+        try {
+            const key = `${songId}_${trackId}_v2`;
+            const blob = await localAudioStore.getItem(key);
+            if (blob) console.log(`[STORAGE] FLAC v2 leído desde caché: ${key}`);
+            return blob || null;
+        } catch (error) {
+            console.error('[STORAGE] Error leyendo FLAC v2:', error);
+            return null;
+        }
+    },
+
+    removeTrackLocalV2: async (songId, trackId) => {
+        try {
+            await localAudioStore.removeItem(`${songId}_${trackId}_v2`);
+            return true;
+        } catch { return false; }
     },
 
     /**

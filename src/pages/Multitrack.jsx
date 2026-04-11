@@ -695,15 +695,21 @@ export default function Multitrack() {
                 if (preloadCache.current.has(song.id)) continue;
                 const tracks = (song.tracks || []).filter(tr => tr.name !== '__PreviewMix' && tr.url && tr.url !== 'undefined');
                 if (!tracks.length) continue;
-                // Verificar si TODOS los tracks están en disco
-                const checks = await Promise.all(tracks.map(tr => NativeEngine.isTrackDownloaded(song.id, tr.name)));
+                // Verificar si TODOS los tracks están en disco (v2 FLAC si disponible, v1 MP3 legacy)
+                const checks = await Promise.all(tracks.map(tr =>
+                    tr.normalizedReady === true
+                        ? NativeEngine.isNormalizedDownloaded(song.id, tr.name)
+                        : NativeEngine.isTrackDownloaded(song.id, tr.name)
+                ));
                 if (cancelled) break;
                 if (checks.every(Boolean)) {
                     // Canción completa en disco → construir cache de paths y marcar ready
                     const pathMap = new Map();
                     for (const tr of tracks) {
-                        const path = await NativeEngine.getTrackPath(song.id, tr.name);
-                        pathMap.set(tr.name, { path, audioBuf: null, rawBuf: null });
+                        const trackPath = tr.normalizedReady === true
+                            ? await NativeEngine.getNormalizedPath(song.id, tr.name)
+                            : await NativeEngine.getTrackPath(song.id, tr.name);
+                        pathMap.set(tr.name, { path: trackPath, audioBuf: null, rawBuf: null });
                     }
                     preloadCache.current.set(song.id, pathMap);
                     lruOrder.current.push(song.id);
@@ -878,21 +884,36 @@ export default function Multitrack() {
                         if (isAppNative) {
                             let finalPath = '';
                             let blob = null;
-                            const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                            // v2: prefer FLAC when server-side normalization is complete
+                            const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
 
-                            if (alreadyHasFile) {
-                                // Filesystem es fuente de verdad — no tocar localforage
-                                finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
-                                if (tr.name === '__PreviewMix') {
-                                    blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                            if (useFlac) {
+                                const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                                if (flacCached) {
+                                    finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
+                                } else {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.normalizedUrl)}`);
+                                    if (!res.ok) return;
+                                    blob = await res.blob();
+                                    if (!blob || blob.size < 500) return;
+                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
+                                    await NativeEngine.invalidateLegacyCache(song.id, tr.name);
                                 }
                             } else {
-                                // Descarga via Railway proxy
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                                if (!res.ok) return;
-                                blob = await res.blob();
-                                if (!blob || blob.size < 500) return;
-                                finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                // v1 legacy: MP3
+                                const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                                if (alreadyHasFile) {
+                                    finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                    if (tr.name === '__PreviewMix') {
+                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                                    }
+                                } else {
+                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                    if (!res.ok) return;
+                                    blob = await res.blob();
+                                    if (!blob || blob.size < 500) return;
+                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                }
                             }
 
                             if (tr.name === '__PreviewMix' && blob) {
@@ -908,13 +929,27 @@ export default function Multitrack() {
                                 trackBuffers.set(tr.name, { path: finalPath });
                             }
                         } else {
-                            let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                            // Web path: prefer FLAC v2 when server has normalized the track
+                            const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
+                            let rawBuf = useFlacWeb
+                                ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
+                                : await LocalFileManager.getTrackLocal(song.id, tr.name);
+
                             if (!rawBuf) {
-                                // Descarga via Railway proxy
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                const downloadUrl = useFlacWeb ? tr.normalizedUrl
+                                    : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                                const res = await fetch(downloadUrl);
                                 if (!res.ok) return;
                                 rawBuf = await res.blob();
-                                if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                                if (rawBuf) {
+                                    if (useFlacWeb) {
+                                        await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                                        // Remove stale v1 entry if present
+                                        await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                    } else {
+                                        await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                                    }
+                                }
                             }
 
                             try {
@@ -923,10 +958,11 @@ export default function Multitrack() {
                                     throw new Error("Contenido no válido (demasiado pequeño)");
                                 }
                                 const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
-                                trackBuffers.set(tr.name, { audioBuf }); 
+                                trackBuffers.set(tr.name, { audioBuf });
                             } catch (e) {
                                 console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
-                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
+                                else await LocalFileManager.removeTrackLocal(song.id, tr.name);
                                 trackBuffers.set(tr.name, { error: true });
                             }
                         }
@@ -1021,17 +1057,42 @@ export default function Multitrack() {
                 };
 
                 if (isAppNative) {
-                    const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
-                    if (!alreadyHasFile) {
-                        const blobData = await downloadBlob();
-                        await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
-                        // filesystem es fuente de verdad en nativo — no escribir en localforage
+                    // APK native path: prefer FLAC v2 if available
+                    const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
+                    if (useFlac) {
+                        const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                        if (!flacCached) {
+                            const blob = await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null);
+                            if (blob && blob.size > 500) {
+                                await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
+                                await NativeEngine.invalidateLegacyCache(song.id, tr.name);
+                            }
+                        }
+                    } else {
+                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                        if (!alreadyHasFile) {
+                            const blobData = await downloadBlob();
+                            await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
+                        }
                     }
                 } else {
-                    let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                    // Web path: prefer FLAC v2 if available
+                    const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
+                    let rawBuf = useFlacWeb
+                        ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
+                        : await LocalFileManager.getTrackLocal(song.id, tr.name);
                     if (!rawBuf) {
-                        rawBuf = await downloadBlob();
-                        await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                        rawBuf = useFlacWeb
+                            ? await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null)
+                            : await downloadBlob();
+                        if (rawBuf) {
+                            if (useFlacWeb) {
+                                await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                            } else {
+                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                            }
+                        }
                     }
                 }
             }
@@ -1186,19 +1247,35 @@ export default function Multitrack() {
                         let finalPath = '';
                         let blob = null;
                         try {
-                            const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
-                            if (alreadyHasFile) {
-                                // Archivo ya en disco → ruta directa, filesystem es fuente de verdad
-                                finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
-                                if (tr.name === '__PreviewMix') {
-                                    // Leer directo del filesystem (no localforage)
-                                    blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                            // ── Audio format v2: prefer FLAC when server has normalized the track ──
+                            const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
+
+                            if (useFlac) {
+                                // v2 path: check for .flac cache, download from normalizedUrl
+                                const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                                if (flacCached) {
+                                    finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
+                                } else {
+                                    blob = await fetchBlobNative(tr.normalizedUrl);
+                                    if (blob) {
+                                        finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
+                                        // Free old v1 MP3 cache if present
+                                        await NativeEngine.invalidateLegacyCache(song.id, tr.name);
+                                    }
                                 }
                             } else {
-                                // Primera vez: descarga directa de B2, guarda solo en filesystem
-                                blob = await fetchBlobNative(tr.url);
-                                if (blob) {
-                                    finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                // v1 legacy path: MP3/original
+                                const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                                if (alreadyHasFile) {
+                                    finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                    if (tr.name === '__PreviewMix') {
+                                        blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+                                    }
+                                } else {
+                                    blob = await fetchBlobNative(tr.url);
+                                    if (blob) {
+                                        finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.mp3`);
+                                    }
                                 }
                             }
                         } catch (e) { console.error("Error loading track file native:", tr.name, e); }
@@ -1216,14 +1293,27 @@ export default function Multitrack() {
                         loadedCount++;
                         setNativeLoadProgress({ songId: song.id, loaded: loadedCount, total: downloadableTracks.length });
                     } else {
-                        let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
+                        // Web path: prefer FLAC v2 when server has normalized the track
+                        const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
+                        let rawBuf = useFlacWeb
+                            ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
+                            : await LocalFileManager.getTrackLocal(song.id, tr.name);
+
                         if (!rawBuf) {
-                            // Descarga via Railway proxy
                             try {
-                                const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                                const downloadUrl = useFlacWeb ? tr.normalizedUrl
+                                    : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                                const res = await fetch(downloadUrl);
                                 if (res.ok) rawBuf = await res.blob();
                             } catch { /* ignore */ }
-                            if (rawBuf) await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                            if (rawBuf) {
+                                if (useFlacWeb) {
+                                    await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                                    await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                } else {
+                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                                }
+                            }
                         }
 
                         let audioBuf = null;
@@ -1232,7 +1322,8 @@ export default function Multitrack() {
                                 const arrayBuf = await rawBuf.arrayBuffer();
                                 audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
                             } catch {
-                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
+                                else await LocalFileManager.removeTrackLocal(song.id, tr.name);
                             }
                         }
                         trackBuffers.set(tr.name, { rawBuf, audioBuf });

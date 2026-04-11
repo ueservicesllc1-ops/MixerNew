@@ -13,18 +13,19 @@ using namespace soundtouch;
 #include <thread>
 #include <atomic>
 #include <cstring>
+#include <chrono>
 
 #define TAG     "MixerNative"
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 // ── SOUNDTOUCH NODE ──────────────────────────────────────────────────────────
-// Inserts a SoundTouch pitch-shifting processor into the miniaudio node graph.
-// All sounds are routed through this node before reaching the engine endpoint,
-// enabling tempo-independent pitch shifting on the entire mix output.
+// Per-track pitch-shifting processor inserted into the miniaudio node graph.
+// Each track now has its own SoundTouch instance so seeks flush independently
+// without contaminating sibling tracks through a shared buffer.
 
 struct SoundTouchNodeData {
-    ma_node_base        base;            // Must be first — miniaudio casts this to ma_node*
+    ma_node_base        base;               // Must be first — miniaudio casts this to ma_node*
     SoundTouch          st;
     std::atomic<float>  pendingPitch{0.0f}; // Written by Java thread
     float               activePitch  = 0.0f; // Only touched by audio thread
@@ -38,7 +39,8 @@ static void stNodeProcess(
     auto* d = (SoundTouchNodeData*)pNode;
 
     // 1. Handle flush request (seek/clear happened on Java thread).
-    //    Must run on audio thread to avoid race with putSamples/receiveSamples.
+    //    needsFlush is set TRUE by the Java thread and cleared HERE by the audio
+    //    thread — guaranteeing the flush runs exactly where it must.
     bool doFlush = d->needsFlush.exchange(false, std::memory_order_acq_rel);
 
     // 2. Handle pitch change
@@ -50,18 +52,25 @@ static void stNodeProcess(
     }
 
     if (doFlush) {
+        const ma_uint32 outFrames = *pFrameCountOut;
         d->st.clear();
-        // Output silence for this one buffer (~5ms) so tracks fully settle
+        // Output silence for this one buffer (~5ms) so the track fully settles
         // at the new seek position before we start feeding SoundTouch again.
-        memset(ppFramesOut[0], 0, *pFrameCountOut * 2 * sizeof(float));
+        memset(ppFramesOut[0], 0, outFrames * 2 * sizeof(float));
+        *pFrameCountOut = outFrames;
         return;
     }
 
-    // 3. Bypass when no pitch shift active
+    // 3. Bypass when no pitch shift active — copy input, zero-fill remainder,
+    //    always report full outFrames so the mixer never gets a short buffer.
     if (d->activePitch == 0.0f) {
-        ma_uint32 cnt = (*pFrameCountIn < *pFrameCountOut) ? *pFrameCountIn : *pFrameCountOut;
-        if (cnt > 0) memcpy(ppFramesOut[0], ppFramesIn[0], cnt * 2 * sizeof(float));
-        *pFrameCountOut = cnt;
+        const ma_uint32 outFrames = *pFrameCountOut;
+        const ma_uint32 inFrames  = *pFrameCountIn;
+        const ma_uint32 copy      = (inFrames < outFrames) ? inFrames : outFrames;
+        if (copy > 0) memcpy(ppFramesOut[0], ppFramesIn[0], copy * 2 * sizeof(float));
+        if (copy < outFrames)
+            memset(ppFramesOut[0] + copy * 2, 0, (outFrames - copy) * 2 * sizeof(float));
+        *pFrameCountOut = outFrames;
         return;
     }
 
@@ -86,68 +95,89 @@ static ma_node_vtable stNodeVtable = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── PER-TRACK METER NODE ─────────────────────────────────────────────────────
-// Passthrough node that sits between each ma_sound and the SoundTouch node.
-// Computes RMS amplitude per audio callback and stores it in an atomic float
-// so the Java thread can read it without synchronization overhead.
+// Passthrough node that sits between each ma_sound and its per-track SoundTouch
+// node. Computes RMS amplitude per audio callback and stores it in an atomic
+// float so the Java thread can read it without synchronization overhead.
 
 struct MeterNode {
-    ma_node_base       base;
-    std::atomic<float> level{0.0f};  // RMS with ballistic decay, 0..1
+    ma_node_base         base;
+    std::atomic<float>   level{0.0f};
 };
+
+static ma_uint32 meterBusChannels[1] = { 2 };
 
 static void meterNodeProcess(
     ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn,
     float** ppFramesOut, ma_uint32* pFrameCountOut)
 {
     auto* m = (MeterNode*)pNode;
-    ma_uint32 cnt = (*pFrameCountIn < *pFrameCountOut) ? *pFrameCountIn : *pFrameCountOut;
-    if (cnt > 0 && ppFramesIn[0] && ppFramesOut[0]) {
-        memcpy(ppFramesOut[0], ppFramesIn[0], cnt * 2 * sizeof(float));
-        // Compute RMS of stereo interleaved samples
+    const ma_uint32 outFrames  = *pFrameCountOut;
+    const ma_uint32 inFrames   = *pFrameCountIn;
+    const ma_uint32 copyFrames = (inFrames < outFrames) ? inFrames : outFrames;
+
+    if (ppFramesOut[0]) {
+        if (copyFrames > 0 && ppFramesIn[0]) {
+            memcpy(ppFramesOut[0], ppFramesIn[0], copyFrames * 2 * sizeof(float));
+        }
+        // Zero-fill any remaining output frames so all tracks always deliver the
+        // same frame count to SoundTouch. Without this, a seek-induced short buffer
+        // on one track causes misaligned inputs in the stNode mix → desync.
+        if (copyFrames < outFrames) {
+            memset(ppFramesOut[0] + copyFrames * 2, 0,
+                   (outFrames - copyFrames) * 2 * sizeof(float));
+        }
+    }
+
+    // RMS metering on the copied samples
+    if (copyFrames > 0 && ppFramesIn[0]) {
         float sum = 0.0f;
         const float* src = ppFramesIn[0];
-        for (ma_uint32 i = 0; i < cnt * 2; i++) { sum += src[i] * src[i]; }
-        float rms = sqrtf(sum / (float)(cnt * 2));
-        // Ballistics: fast attack, slow release (~0.92 per callback ≈ 300ms at 48kHz/512 frames)
+        for (ma_uint32 i = 0; i < copyFrames * 2; i++) { sum += src[i] * src[i]; }
+        float rms = sqrtf(sum / (float)(copyFrames * 2));
         float prev = m->level.load(std::memory_order_relaxed);
         float next = (rms > prev) ? rms : (prev * 0.92f);
         m->level.store(next, std::memory_order_relaxed);
     }
-    *pFrameCountOut = cnt;
-}
 
-static ma_uint32 meterBusChannels[1] = { 2 };
+    // Always report full outFrames written — miniaudio expects this to be stable.
+    *pFrameCountOut = outFrames;
+}
 
 static ma_node_vtable meterNodeVtable = {
     meterNodeProcess,
     nullptr,
-    1,    // inputBusCount
-    1,    // outputBusCount
-    0     // flags
+    1,
+    1,
+    0
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── TRACK ─────────────────────────────────────────────────────────────────────
+// Each track owns its full processing chain:
+//   ma_sound → MeterNode → SoundTouchNode → engine endpoint
+// This eliminates the shared-SoundTouch desync: each track's ST buffer is
+// flushed independently, so a seek on track N cannot corrupt track M.
+
 struct Track {
-    std::string id;
-    ma_sound    sound;
-    bool        soundReady  = false;
-    MeterNode   meterNode;
-    bool        meterReady  = false;
-    float       volume      = 1.0f;
-    bool        muted       = false;
-    bool        solo        = false;
+    std::string        id;
+    ma_sound           sound;
+    bool               soundReady  = false;
+    MeterNode          meterNode;
+    bool               meterReady  = false;
+    SoundTouchNodeData stNode;           // Per-track SoundTouch (no longer shared)
+    bool               stNodeReady = false;
+    float              volume      = 1.0f;
+    bool               muted       = false;
+    bool               solo        = false;
 
     void release() {
-        if (meterReady) {
-            ma_node_uninit(&meterNode.base, nullptr);
-            meterReady = false;
-        }
-        if (soundReady) {
-            ma_sound_uninit(&sound);
-            soundReady = false;
-        }
+        // Uninit in reverse attachment order: stNode → meterNode → sound
+        if (stNodeReady)  { ma_node_uninit(&stNode.base,    nullptr); stNodeReady = false; }
+        if (meterReady)   { ma_node_uninit(&meterNode.base, nullptr); meterReady  = false; }
+        if (soundReady)   { ma_sound_uninit(&sound);                  soundReady  = false; }
     }
 };
+// ─────────────────────────────────────────────────────────────────────────────
 
 class MultitrackEngine {
 public:
@@ -162,16 +192,12 @@ public:
     std::string        pendingSongId;
     std::atomic<bool>  preloading{false};
 
-    double  playbackTimeStart = 0.0;
-    ma_uint64 engineTimeStart = 0;
-    bool    playing           = false;
-    float   masterVolume      = 1.0f;
-    float   speedRatio        = 1.0f;
-
-    // ── SOUNDTOUCH PITCH NODE ────────────────────────────────────────────────
-    SoundTouchNodeData stNode;
-    bool               stNodeReady = false;
-    // ────────────────────────────────────────────────────────────────────────
+    double    playbackTimeStart = 0.0;
+    ma_uint64 engineTimeStart   = 0;
+    bool      playing           = false;
+    float     masterVolume      = 1.0f;
+    float     speedRatio        = 1.0f;
+    float     currentPitch      = 0.0f; // Remembered for tracks loaded after setPitch()
 
     static constexpr int kSampleRate = 44100;
 
@@ -182,30 +208,41 @@ public:
         if (ma_engine_init(&cfg, &engine) == MA_SUCCESS) {
             ma_engine_stop(&engine);
             engineReady = true;
-            LOGD("ma_engine_init OK");
+            LOGD("ma_engine_init OK — per-track SoundTouch mode");
+        }
+    }
 
-            // Init SoundTouch pitch node and insert into the node graph
-            stNode.st.setChannels(2);
-            stNode.st.setSampleRate(kSampleRate);
-            stNode.st.setPitchSemiTones(0.0f);
-            stNode.st.setSetting(SETTING_USE_QUICKSEEK, 1);
-            stNode.st.setSetting(SETTING_OVERLAP_MS, 8);
+    // ── Helper: init the per-track SoundTouch node and wire the full chain ──
+    // sound → meterNode → stNode → endpoint
+    // Called from loadTrack() and preloadTrack() after both sound and meter
+    // have been initialized successfully.
+    void initTrackStNode(Track* tPtr, ma_node_graph* pGraph) {
+        tPtr->stNode.st.setChannels(2);
+        tPtr->stNode.st.setSampleRate(kSampleRate);
+        tPtr->stNode.st.setPitchSemiTones(currentPitch);
+        tPtr->stNode.st.setSetting(SETTING_USE_QUICKSEEK, 1);
+        tPtr->stNode.st.setSetting(SETTING_OVERLAP_MS, 8);
+        tPtr->stNode.pendingPitch.store(currentPitch, std::memory_order_relaxed);
+        tPtr->stNode.activePitch  = currentPitch;
+        tPtr->stNode.needsFlush.store(false, std::memory_order_relaxed);
 
-            ma_node_config nodeCfg = ma_node_config_init();
-            nodeCfg.vtable          = &stNodeVtable;
-            nodeCfg.inputBusCount   = 1;
-            nodeCfg.outputBusCount  = 1;
-            nodeCfg.pInputChannels  = stBusChannels;
-            nodeCfg.pOutputChannels = stBusChannels;
+        ma_node_config stCfg        = ma_node_config_init();
+        stCfg.vtable                = &stNodeVtable;
+        stCfg.inputBusCount         = 1;
+        stCfg.outputBusCount        = 1;
+        stCfg.pInputChannels        = stBusChannels;
+        stCfg.pOutputChannels       = stBusChannels;
 
-            ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
-            if (ma_node_init(pGraph, &nodeCfg, nullptr, &stNode.base) == MA_SUCCESS) {
-                ma_node_attach_output_bus(&stNode.base, 0, ma_engine_get_endpoint(&engine), 0);
-                stNodeReady = true;
-                LOGD("SoundTouchNode OK — pitch shifting ready");
-            } else {
-                LOGE("SoundTouchNode init FAILED");
-            }
+        if (ma_node_init(pGraph, &stCfg, nullptr, &tPtr->stNode.base) == MA_SUCCESS) {
+            tPtr->stNodeReady = true;
+            // Chain: meterNode → stNode → endpoint
+            ma_node_attach_output_bus(&tPtr->meterNode.base, 0, &tPtr->stNode.base, 0);
+            ma_node_attach_output_bus(&tPtr->stNode.base, 0, ma_engine_get_endpoint(&engine), 0);
+            LOGD("Per-track stNode OK for %s (pitch=%.1f)", tPtr->id.c_str(), (double)currentPitch);
+        } else {
+            // Fallback: meter → endpoint directly if stNode init fails
+            ma_node_attach_output_bus(&tPtr->meterNode.base, 0, ma_engine_get_endpoint(&engine), 0);
+            LOGE("Per-track stNode FAILED for %s — direct to endpoint", tPtr->id.c_str());
         }
     }
 
@@ -224,11 +261,12 @@ public:
             tPtr->release();
         }
 
-        // MA_SOUND_FLAG_STREAM: abre el archivo sin decodificar → carga instantánea desde disco.
-        // MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT: sin esto, cada ma_sound va al endpoint Y al nodo SoundTouch
-        // a la vez → doble mezcla con latencias distintas = pistas desfasadas al hacer seek/scrub.
-        ma_uint32 sflags = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION;
-        if (stNodeReady) sflags |= MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+        // MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT: prevent sound from attaching to
+        // the engine endpoint directly — we route it through meter → stNode instead.
+        ma_uint32 sflags = MA_SOUND_FLAG_STREAM
+                         | MA_SOUND_FLAG_NO_SPATIALIZATION
+                         | MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+
         ma_result r = ma_sound_init_from_file(&engine, path.c_str(), sflags, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
@@ -236,28 +274,27 @@ public:
             ma_uint64 frame = (ma_uint64)(currentPos * kSampleRate);
             ma_sound_seek_to_pcm_frame(&tPtr->sound, frame);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            // Init per-track meter node and chain: sound → meterNode → stNode → endpoint
-            ma_node_config mCfg = ma_node_config_init();
-            mCfg.vtable          = &meterNodeVtable;
-            mCfg.inputBusCount   = 1;
-            mCfg.outputBusCount  = 1;
-            mCfg.pInputChannels  = meterBusChannels;
-            mCfg.pOutputChannels = meterBusChannels;
+
+            ma_node_config mCfg      = ma_node_config_init();
+            mCfg.vtable              = &meterNodeVtable;
+            mCfg.inputBusCount       = 1;
+            mCfg.outputBusCount      = 1;
+            mCfg.pInputChannels      = meterBusChannels;
+            mCfg.pOutputChannels     = meterBusChannels;
             ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
+
             if (ma_node_init(pGraph, &mCfg, nullptr, &tPtr->meterNode.base) == MA_SUCCESS) {
                 tPtr->meterReady = true;
                 tPtr->meterNode.level.store(0.0f, std::memory_order_relaxed);
+                // Attach sound → meterNode (stNode attachment done inside initTrackStNode)
                 ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &tPtr->meterNode.base, 0);
-                if (stNodeReady) {
-                    ma_node_attach_output_bus(&tPtr->meterNode.base, 0, &stNode.base, 0);
-                }
+                initTrackStNode(tPtr, pGraph);
             } else {
-                // Fallback: route sound directly to stNode if meter init fails
-                if (stNodeReady) {
-                    ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
-                }
+                // Fallback: sound → endpoint directly
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, ma_engine_get_endpoint(&engine), 0);
                 LOGE("MeterNode init FAILED for track %s", id.c_str());
             }
+
             updateMuteSoloInternal();
             LOGD("Track %s cargado (stream) y sincronizado a %.2fs", id.c_str(), currentPos);
         } else {
@@ -274,13 +311,11 @@ public:
         std::lock_guard<std::mutex> lk(pendingMtx);
 
         if (pendingSongId != songId) {
-            // Nueva canción → limpiar buffer pendiente anterior
             for (auto& t : pendingTracks) t.release();
             pendingTracks.clear();
             pendingSongId = songId;
         }
 
-        // Reusar slot si existe, sino agregar
         Track* tPtr = nullptr;
         for (auto& tr : pendingTracks) { if (tr.id == id) { tPtr = &tr; break; } }
         if (!tPtr) {
@@ -291,32 +326,31 @@ public:
             tPtr->release();
         }
 
-        ma_uint32 pflags = MA_SOUND_FLAG_STREAM | MA_SOUND_FLAG_NO_SPATIALIZATION;
-        if (stNodeReady) pflags |= MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+        ma_uint32 pflags = MA_SOUND_FLAG_STREAM
+                         | MA_SOUND_FLAG_NO_SPATIALIZATION
+                         | MA_SOUND_FLAG_NO_DEFAULT_ATTACHMENT;
+
         ma_result r = ma_sound_init_from_file(&engine, path.c_str(), pflags, nullptr, nullptr, &tPtr->sound);
         if (r == MA_SUCCESS) {
             tPtr->soundReady = true;
             ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            // Init per-track meter node and chain: sound → meterNode → stNode → endpoint
-            ma_node_config mCfg = ma_node_config_init();
-            mCfg.vtable          = &meterNodeVtable;
-            mCfg.inputBusCount   = 1;
-            mCfg.outputBusCount  = 1;
-            mCfg.pInputChannels  = meterBusChannels;
-            mCfg.pOutputChannels = meterBusChannels;
+
+            ma_node_config mCfg      = ma_node_config_init();
+            mCfg.vtable              = &meterNodeVtable;
+            mCfg.inputBusCount       = 1;
+            mCfg.outputBusCount      = 1;
+            mCfg.pInputChannels      = meterBusChannels;
+            mCfg.pOutputChannels     = meterBusChannels;
             ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
+
             if (ma_node_init(pGraph, &mCfg, nullptr, &tPtr->meterNode.base) == MA_SUCCESS) {
                 tPtr->meterReady = true;
                 tPtr->meterNode.level.store(0.0f, std::memory_order_relaxed);
                 ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &tPtr->meterNode.base, 0);
-                if (stNodeReady) {
-                    ma_node_attach_output_bus(&tPtr->meterNode.base, 0, &stNode.base, 0);
-                }
+                initTrackStNode(tPtr, pGraph);
             } else {
-                if (stNodeReady) {
-                    ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
-                }
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, ma_engine_get_endpoint(&engine), 0);
                 LOGE("MeterNode init FAILED for preload track %s", id.c_str());
             }
             LOGD("Preload track %s (stream) de cancion %s OK", id.c_str(), songId.c_str());
@@ -327,8 +361,6 @@ public:
 
     /**
      * Swap atómico O(1): convierte los tracks pendientes en activos.
-     * La próxima canción cargada en background pasa a ser la actual instantáneamente.
-     * Retorna true si el swap fue exitoso.
      */
     bool swapToPending(const std::string& songId) {
         std::lock_guard<std::mutex> lkP(pendingMtx);
@@ -338,26 +370,25 @@ public:
         }
 
         std::lock_guard<std::mutex> lkA(mtx);
-        // Liberar tracks actuales
         for (auto& t : tracks) t.release();
         tracks.clear();
 
-        // Swap O(1) - simplemente mover el puntero de la lista
         tracks = std::move(pendingTracks);
         pendingTracks.clear();
         pendingSongId = "";
 
-        // Reset posición
         playbackTimeStart = 0;
         engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         playing = false;
 
-        // Seek todos a 0
         for (auto& t : tracks) {
             if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, 0);
         }
 
-        if (stNodeReady) stNode.needsFlush.store(true, std::memory_order_release);
+        // Signal each per-track stNode to flush — audio thread executes it safely
+        for (auto& t : tracks) {
+            if (t.stNodeReady) t.stNode.needsFlush.store(true, std::memory_order_release);
+        }
 
         LOGD("swapToPending OK: %zu tracks activos", tracks.size());
         return true;
@@ -366,11 +397,12 @@ public:
     void play() {
         if (!engineReady || playing) return;
         std::lock_guard<std::mutex> lk(mtx);
-        
+
+        // Start every track while engine is stopped, then start engine once.
+        for (auto& t : tracks) if (t.soundReady) ma_sound_start(&t.sound);
         ma_engine_start(&engine);
-        ma_uint64 syncFrame = ma_engine_get_time_in_pcm_frames(&engine);
-        engineTimeStart = syncFrame;
-        
+        engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
+
         playing = true;
         updateMuteSoloInternal();
         LOGD("Play() a las %.2fs", playbackTimeStart);
@@ -389,25 +421,48 @@ public:
     void seekAll(double seconds) {
         std::lock_guard<std::mutex> lk(mtx);
 
-        // 1. Stop every sound so the audio thread stops pulling frames from them.
-        //    This prevents the race where some tracks are read at old position
-        //    while others are already at the new position.
+        // 1. Stop all sounds — but KEEP the engine (audio device) running.
+        //    Reason: ma_sound_seek_to_pcm_frame() posts seek jobs to the job queue.
+        //    Those jobs are processed by the audio callback (inline) when the engine
+        //    runs. If the engine is stopped, jobs only run on the resource-manager
+        //    background thread, which is slower and non-deterministic. Keeping the
+        //    engine alive means all seeks are dispatched within the next 1–2 callbacks
+        //    (~5–10 ms), and the ring buffers start pre-filling immediately.
         for (auto& t : tracks) if (t.soundReady) ma_sound_stop(&t.sound);
 
-        // 2. Seek all tracks to the new position (now safe — nothing is reading them)
+        // 2. Seek every track to the EXACT same PCM frame.
         playbackTimeStart = seconds;
-        engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         ma_uint64 frame = (ma_uint64)(seconds * kSampleRate);
         for (auto& t : tracks) if (t.soundReady) ma_sound_seek_to_pcm_frame(&t.sound, frame);
 
-        // 3. Flush SoundTouch so it doesn't play old buffered audio
-        if (stNodeReady) {
-            stNode.needsFlush.store(true, std::memory_order_release);
+        // 3. If the engine was stopped (song paused), start it temporarily so the
+        //    audio callback runs and can process the queued seek jobs.
+        bool wasRunning = playing;
+        if (!wasRunning) {
+            ma_engine_start(&engine);
         }
 
-        // 4. Restart all sounds from the new position (if we were playing)
-        if (playing) {
+        // 4. BARRIER: give the running audio callback + resource manager time to:
+        //    a) process all seek jobs (each ~1–3 ms, handled sequentially in job thread)
+        //    b) pre-fill the first ring-buffer page at the new position for each track
+        //    50 ms is ample for 5–8 MP3 tracks on any Android device.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // 5. Signal per-track SoundTouch nodes to flush stale pitch-shifted samples
+        //    on the NEXT audio callback — never call st.clear() here to avoid races.
+        for (auto& t : tracks) {
+            if (t.stNodeReady) t.stNode.needsFlush.store(true, std::memory_order_release);
+        }
+
+        // 6. Resume or stop cleanly.
+        if (wasRunning) {
+            // Engine already running — restart sounds; they now have pre-filled buffers.
             for (auto& t : tracks) if (t.soundReady) ma_sound_start(&t.sound);
+            engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
+        } else {
+            // Was paused — stop the engine again (we only ran it to process seek jobs).
+            ma_engine_stop(&engine);
+            engineTimeStart = ma_engine_get_time_in_pcm_frames(&engine);
         }
     }
 
@@ -419,7 +474,13 @@ public:
     }
 
     void clearTracks() {
-        if (stNodeReady) stNode.needsFlush.store(true, std::memory_order_release);
+        // Signal flush before releasing so audio thread cleans up cleanly
+        {
+            std::lock_guard<std::mutex> lk(mtx);
+            for (auto& t : tracks) {
+                if (t.stNodeReady) t.stNode.needsFlush.store(true, std::memory_order_release);
+            }
+        }
         std::lock_guard<std::mutex> lk(mtx);
         for (auto& t : tracks) t.release();
         tracks.clear();
@@ -433,7 +494,7 @@ public:
         pendingTracks.clear();
         pendingSongId = "";
     }
-    
+
     void setTrackVolume(const std::string& id, float vol) {
         std::lock_guard<std::mutex> lk(mtx);
         for (auto& t : tracks) { if (t.id == id) { t.volume = vol; if (t.soundReady) ma_sound_set_volume(&t.sound, vol * masterVolume); break; } }
@@ -462,15 +523,15 @@ public:
 
             float finalVol = shouldMute ? 0.0f : t.volume;
             ma_sound_set_volume(&t.sound, finalVol * masterVolume);
-            
-            // Asegurar que esten corriendo si no estan muteados y estamos en play
+
             if (!shouldMute && playing) {
                 ma_sound_start(&t.sound);
             }
         }
     }
-    
+
     void setMasterVolume(float vol) { masterVolume = vol; ma_engine_set_volume(&engine, vol); }
+
     void setSpeed(float ratio) {
         speedRatio = ratio;
         std::lock_guard<std::mutex> lk(mtx);
@@ -478,10 +539,9 @@ public:
             if (t.soundReady) ma_sound_set_pitch(&t.sound, ratio);
         }
     }
+
     int getTrackCount() { std::lock_guard<std::mutex> lk(mtx); return (int)tracks.size(); }
 
-    // Retorna la duración máxima entre todos los tracks cargados (segundos).
-    // ma_sound_get_length_in_seconds lee los headers del archivo incluso en STREAM mode.
     double getDurationInternal() {
         std::lock_guard<std::mutex> lk(mtx);
         double maxDur = 0.0;
@@ -495,17 +555,20 @@ public:
         return maxDur;
     }
 
-    // Tempo-independent pitch shifting via SoundTouch.
+    // Tempo-independent pitch shifting via per-track SoundTouch.
     // semitones: negative = lower pitch, positive = raise pitch (range: -12..+12)
     void setPitch(float semitones) {
-        if (!stNodeReady) return;
-        stNode.pendingPitch.store(semitones, std::memory_order_relaxed);
-        LOGD("setPitch %.1f semitones", (double)semitones);
+        currentPitch = semitones; // Remembered for tracks loaded after this call
+        std::lock_guard<std::mutex> lk(mtx);
+        for (auto& t : tracks) {
+            if (t.stNodeReady) {
+                t.stNode.pendingPitch.store(semitones, std::memory_order_relaxed);
+            }
+        }
+        LOGD("setPitch %.1f semitones → %zu tracks", (double)semitones, tracks.size());
     }
 
     // Returns per-track RMS levels as "id1:0.45,id2:0.22,..." string.
-    // Raw RMS values — JS VUMeter applies its own ×6.5 visual boost,
-    // matching the same scaling used for the web AnalyserNode path.
     std::string getTrackLevels() {
         std::lock_guard<std::mutex> lk(mtx);
         std::string result;
@@ -514,7 +577,6 @@ public:
             if (!t.soundReady || !t.meterReady) continue;
             if (!result.empty()) result += ',';
             float raw = t.meterNode.level.load(std::memory_order_relaxed);
-            // No pre-scaling here — VUMeter.jsx applies ×6.5 boost on both web and native
             if (raw > 1.0f) raw = 1.0f;
             char buf[64];
             snprintf(buf, sizeof(buf), "%.3f", raw);
