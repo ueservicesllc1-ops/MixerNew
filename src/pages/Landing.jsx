@@ -116,7 +116,19 @@ export default function Landing() {
             try {
                 const snap = await getDocs(query(collection(db, 'banners'), orderBy('createdAt', 'desc')));
                 if (!snap.empty) {
-                    const fetched = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const proxy = 'https://mixernew-production.up.railway.app';
+                    const proxyImg = (url) => {
+                        if (!url) return url;
+                        if (url.includes('backblazeb2.com') || url.includes('f005.')) {
+                            return `${proxy}/api/download?url=${encodeURIComponent(url)}`;
+                        }
+                        return url;
+                    };
+                    const fetched = snap.docs.map(doc => {
+                        const d = doc.data();
+                        const rawImg = d.image || d.imageUrl || d.url || d.photoUrl || '';
+                        return { id: doc.id, ...d, image: proxyImg(rawImg) };
+                    });
                     setHeroSlides(fetched);
                 }
             } catch (e) {
