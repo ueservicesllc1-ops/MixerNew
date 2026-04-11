@@ -22,6 +22,8 @@ export default function Landing() {
     const [errorMsg, setErrorMsg] = useState('');
     const [showLoginPanel, setShowLoginPanel] = useState(false);
     const [showPwaModal, setShowPwaModal] = useState(false);
+    const [pwaNoPrompt, setPwaNoPrompt] = useState(false);
+    const pwaPromptRef = React.useRef(window._pwaInstallPrompt || null);
     const [scrolled, setScrolled] = useState(false);
     const [isAnnual, setIsAnnual] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -47,6 +49,17 @@ export default function Landing() {
         }, 6000);
         return () => clearInterval(timer);
     }, [heroSlides.length]);
+
+    useEffect(() => {
+        // Capture beforeinstallprompt in this component (may fire after React mounts)
+        const handler = (e) => {
+            e.preventDefault();
+            pwaPromptRef.current = e;
+            window._pwaInstallPrompt = e;
+        };
+        window.addEventListener('beforeinstallprompt', handler);
+        return () => window.removeEventListener('beforeinstallprompt', handler);
+    }, []);
 
     useEffect(() => {
         const savedCart = localStorage.getItem('zion_cart');
@@ -1040,17 +1053,23 @@ export default function Landing() {
                         <h2 style={{ margin: '0 0 10px', fontSize: '1.6rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Instalar Zion Stage</h2>
                         <p style={{ margin: '0 0 36px', color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.6 }}>Instala el mezclador como app en tu escritorio de Windows y úsalo offline con tus canciones descargadas.</p>
 
+                        {pwaNoPrompt && (
+                            <div style={{ marginBottom: '20px', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.3)', borderRadius: '12px', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <span style={{ fontSize: '1.4rem' }}>⊕</span>
+                                <span style={{ fontSize: '0.85rem', color: '#93c5fd', lineHeight: 1.5, textAlign: 'left' }}>Haz clic en el ícono <strong>⊕</strong> que aparece al final de la barra de dirección de Chrome para instalar.</span>
+                            </div>
+                        )}
                         <button
                             onClick={async () => {
-                                if (window._pwaInstallPrompt) {
+                                const prompt = pwaPromptRef.current;
+                                if (prompt) {
                                     setShowPwaModal(false);
-                                    window._pwaInstallPrompt.prompt();
-                                    const { outcome } = await window._pwaInstallPrompt.userChoice;
-                                    if (outcome === 'accepted') window._pwaInstallPrompt = null;
+                                    setPwaNoPrompt(false);
+                                    prompt.prompt();
+                                    const { outcome } = await prompt.userChoice;
+                                    if (outcome === 'accepted') pwaPromptRef.current = null;
                                 } else {
-                                    setShowPwaModal(false);
-                                    // Navigate to the app so Chrome registers the SW and offers install
-                                    window.open('https://zionstage.live/multitrack', '_blank');
+                                    setPwaNoPrompt(true);
                                 }
                             }}
                             style={{ width: '100%', padding: '16px', borderRadius: '50px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', fontWeight: '800', fontSize: '1.05rem', cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,120,212,0.45)', transition: 'opacity 0.2s' }}
