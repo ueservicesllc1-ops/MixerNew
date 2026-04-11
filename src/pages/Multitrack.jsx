@@ -278,6 +278,7 @@ export default function Multitrack() {
     const [appUpdateOffer, setAppUpdateOffer] = useState(null);
     const [showPwaInstallBanner, setShowPwaInstallBanner] = useState(false);
     const [showPwaInstallHint, setShowPwaInstallHint] = useState(false);
+    const [pwaHintCountdown, setPwaHintCountdown] = useState(5);
 
     useEffect(() => {
         const params = new URLSearchParams(location.search || '');
@@ -311,7 +312,18 @@ export default function Multitrack() {
                 return;
             }
         }
+        setPwaHintCountdown(5);
         setShowPwaInstallHint(true);
+        let secs = 5;
+        const cd = setInterval(() => {
+            secs -= 1;
+            setPwaHintCountdown(secs);
+            if (secs <= 0) {
+                clearInterval(cd);
+                setShowPwaInstallBanner(false);
+                setShowPwaInstallHint(false);
+            }
+        }, 1000);
     };
 
     // Intercept console.log/error to show on-screen (for debugging without USB)
@@ -1946,8 +1958,9 @@ export default function Multitrack() {
                         Instalar ahora
                     </button>
                     {showPwaInstallHint && (
-                        <span style={{ fontSize: '0.86rem', color: '#dbeafe', fontWeight: 700 }}>
-                            Presiona <span style={{ color: '#bfdbfe' }}>Open in app / Instalar app</span> <span style={{ marginLeft: 6 }}>→</span> arriba a la derecha
+                        <span style={{ fontSize: '0.86rem', color: '#dbeafe', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            Presiona <span style={{ color: '#bfdbfe' }}>Open in app / Instalar app</span> <span>→</span> arriba a la derecha
+                            <span style={{ background: 'rgba(255,255,255,0.12)', borderRadius: '8px', padding: '2px 10px', color: '#f8fafc', fontWeight: 900 }}>{pwaHintCountdown}s</span>
                         </span>
                     )}
                     <button
