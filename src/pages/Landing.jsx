@@ -21,7 +21,6 @@ export default function Landing() {
     const [isLogin, setIsLogin] = useState(true);
     const [errorMsg, setErrorMsg] = useState('');
     const [showLoginPanel, setShowLoginPanel] = useState(false);
-    const [showPwaModal, setShowPwaModal] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [isAnnual, setIsAnnual] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -438,7 +437,7 @@ export default function Landing() {
                                 if (window._pwaInstallPrompt) {
                                     window._pwaInstallPrompt.prompt();
                                 } else {
-                                    setShowPwaModal(true);
+                                    window.location.reload();
                                 }
                             }}
                             style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
@@ -610,7 +609,8 @@ export default function Landing() {
                                         const { outcome } = await window._pwaInstallPrompt.userChoice;
                                         if (outcome === 'accepted') window._pwaInstallPrompt = null;
                                     } else {
-                                        setShowPwaModal(true);
+                                        // Prompt not ready yet — reload so the browser registers the SW and fires beforeinstallprompt
+                                        window.location.reload();
                                     }
                                 }}
                                 style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
@@ -1040,42 +1040,6 @@ export default function Landing() {
             </section >
 
             <Footer />
-
-            {/* PWA INSTALL MODAL */}
-            {showPwaModal && (
-                <div onClick={() => setShowPwaModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', zIndex: 9000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(145deg,#0f172a,#1e293b)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '24px', padding: '40px 36px', maxWidth: '440px', width: '100%', color: 'white', boxShadow: '0 40px 80px rgba(0,0,0,0.8)', textAlign: 'center', position: 'relative' }}>
-                        <button onClick={() => setShowPwaModal(false)} style={{ position: 'absolute', top: '16px', right: '18px', background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.4rem', cursor: 'pointer', lineHeight: 1 }}>×</button>
-
-                        {/* Windows logo */}
-                        <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                        </div>
-
-                        <h2 style={{ margin: '0 0 8px', fontSize: '1.4rem', fontWeight: '800' }}>Instalar en Windows</h2>
-                        <p style={{ margin: '0 0 28px', color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.6 }}>Zion Stage funciona como app nativa en Windows. Sigue estos pasos en Chrome o Edge:</p>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left', marginBottom: '28px' }}>
-                            {[
-                                { num: '1', icon: '🌐', text: 'Abre zionstage.live en Chrome o Edge' },
-                                { num: '2', icon: '⊕', text: 'Haz clic en el ícono de instalar en la barra de dirección (parte derecha)' },
-                                { num: '3', icon: '✅', text: 'Selecciona "Instalar Zion Stage" y confirma' },
-                            ].map(s => (
-                                <div key={s.num} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px', background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '12px 14px' }}>
-                                    <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: '800', flexShrink: 0 }}>{s.num}</div>
-                                    <span style={{ fontSize: '0.88rem', color: '#e2e8f0', lineHeight: 1.5 }}>{s.icon} {s.text}</span>
-                                </div>
-                            ))}
-                        </div>
-
-                        <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '0 0 20px' }}>Una vez instalada, abre desde el escritorio y funciona offline con tus canciones descargadas.</p>
-
-                        <button onClick={() => setShowPwaModal(false)} style={{ width: '100%', padding: '13px', borderRadius: '50px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer' }}>
-                            Entendido
-                        </button>
-                    </div>
-                </div>
-            )}
 
             {/* PREVIEW MODAL (Horizontal Studio Design) - Compact Version */}
             {
