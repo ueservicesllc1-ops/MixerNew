@@ -1,5 +1,5 @@
 // Zion Stage Service Worker — caches app shell for offline use
-const CACHE = 'zion-stage-v3';
+const CACHE = 'zion-stage-v4';
 const SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', e => {
