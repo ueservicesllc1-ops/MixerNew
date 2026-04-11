@@ -297,7 +297,7 @@ export default function Multitrack() {
     const [padActive, setPadActive] = useState(false);
     const [padKey, setPadKey] = useState('C');
     const [padPitch, setPadPitch] = useState(0);
-    const [padVolume] = useState(0.8);
+    const [padVolume, setPadVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
     const [padSolo, setPadSolo] = useState(false); // (El modo Solo ser├¡a m├ís complejo de integrar contra el otro motor, por ahora sirve visual)
 
@@ -2559,9 +2559,17 @@ export default function Multitrack() {
                                 <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '35px', fontSize: '0.85rem' }}>{k}</button>
                             ))}
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '10px' }}>
-                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '45px', height: '32px' }}>M</button>
-                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '45px', height: '32px' }}>S</button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px' }}>
+                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '32px', height: '32px' }}>M</button>
+                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '32px', height: '32px' }}>S</button>
+                            <span style={{ fontSize: '0.65rem', color: '#aaa', marginLeft: '4px' }}>VOL</span>
+                            <input
+                                type="range" min="0" max="1" step="0.01"
+                                value={padVolume}
+                                onChange={e => setPadVolume(parseFloat(e.target.value))}
+                                style={{ flex: 1, accentColor: '#00bcd4', height: '4px' }}
+                            />
+                            <span style={{ fontSize: '0.65rem', color: '#aaa', minWidth: '26px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
                         </div>
                     </div>
                 </aside>
@@ -2815,9 +2823,19 @@ export default function Multitrack() {
                             <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '60px', fontSize: '1.1rem' }}>{k}</button>
                         ))}
                     </div>
-                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginBottom: '16px' }}>
                         <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '60px', height: '40px' }}>M</button>
                         <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '60px', height: '40px' }}>S</button>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 4px' }}>
+                        <span style={{ fontSize: '0.8rem', color: '#aaa', whiteSpace: 'nowrap' }}>VOL PAD</span>
+                        <input
+                            type="range" min="0" max="1" step="0.01"
+                            value={padVolume}
+                            onChange={e => setPadVolume(parseFloat(e.target.value))}
+                            style={{ flex: 1, accentColor: '#00bcd4', height: '6px' }}
+                        />
+                        <span style={{ fontSize: '0.8rem', color: '#00bcd4', minWidth: '38px', textAlign: 'right', fontWeight: 600 }}>{Math.round(padVolume * 100)}%</span>
                     </div>
                 </div>
             </div>
