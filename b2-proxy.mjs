@@ -165,10 +165,21 @@ const handleDownload = async (req, res) => {
             throw new Error(`B2 Error ${response.status}`);
         }
 
-        res.set({
-            'Content-Type': response.headers.get('content-type') || 'audio/mpeg',
+        const contentType = response.headers.get('content-type') || 'audio/mpeg';
+        const isApk = url.includes('.apk') || contentType.includes('android');
+        const headers = {
+            'Content-Type': isApk ? 'application/vnd.android.package-archive' : contentType,
             'Access-Control-Allow-Origin': '*'
-        });
+        };
+        if (response.headers.get('content-length')) {
+            headers['Content-Length'] = response.headers.get('content-length');
+        }
+        if (isApk) {
+            // Force browser/device to download instead of trying to render
+            const fileName = url.split('/').pop().split('?')[0] || 'zion-stage.apk';
+            headers['Content-Disposition'] = `attachment; filename="${fileName}"`;
+        }
+        res.set(headers);
 
         // node-fetch v3 usa web streams, necesitamos transformarlos para Express (Node streams)
         if (response.body && response.body.pipe) {

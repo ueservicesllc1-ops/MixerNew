@@ -4,8 +4,27 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import FormData from 'form-data';
 import fetch from 'node-fetch';
-import { db } from './src/firebase-node.js';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin SDK using either:
+// - FIREBASE_SERVICE_ACCOUNT (base64-encoded JSON) OR
+// - GOOGLE_APPLICATION_CREDENTIALS (path to JSON file)
+let dbAdmin = null;
+try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const saJson = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8');
+        const sa = JSON.parse(saJson);
+        if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(sa) });
+        dbAdmin = admin.firestore();
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
+        dbAdmin = admin.firestore();
+    } else {
+        console.warn('No Firebase admin credentials provided; Firestore writes will be skipped.');
+    }
+} catch (e) {
+    console.warn('Failed initializing Firebase admin:', e && e.message ? e.message : e);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '.');
@@ -69,7 +88,12 @@ async function uploadApk() {
     }
 
     console.log(`✅ Success! APK uploaded to B2.`);
-    console.log(`🔗 URL: ${data.url}\n`);
+    console.log(`🔗 B2 URL: ${data.url}\n`);
+
+    // Route downloads through our Railway proxy so users behind firewalls
+    // that block f005.backblazeb2.com can still download the APK.
+    const proxyDownloadUrl = `${proxyUrl}/api/download?url=${encodeURIComponent(data.url)}`;
+    console.log(`🔗 Proxy URL: ${proxyDownloadUrl}\n`);
 
     const releaseNotes =
         process.env.RELEASE_NOTES ||
@@ -78,7 +102,8 @@ async function uploadApk() {
     const pending = {
         versionName: versionLabel,
         versionCode: versionCode ?? undefined,
-        downloadUrl: data.url,
+        downloadUrl: proxyDownloadUrl,
+        b2Url: data.url,
         fileId: data.fileId ?? undefined,
         fileSize: stats.size,
         releaseNotes,
@@ -129,16 +154,20 @@ async function uploadApk() {
     // Firestore opcional (si falla permisos, la subida igual fue OK)
     try {
         console.log(`\n📝 Firestore (opcional)...`);
-        await addDoc(collection(db, 'app_versions'), {
-            versionName: pending.versionName,
-            versionCode: pending.versionCode ?? null,
-            downloadUrl: pending.downloadUrl,
-            fileId: pending.fileId ?? null,
-            fileSize: pending.fileSize,
-            releaseNotes: pending.releaseNotes,
-            createdAt: serverTimestamp()
-        });
-        console.log(`✅ Firestore OK.`);
+        if (dbAdmin) {
+            await dbAdmin.collection('app_versions').add({
+                versionName: pending.versionName,
+                versionCode: pending.versionCode ?? null,
+                downloadUrl: pending.downloadUrl,
+                fileId: pending.fileId ?? null,
+                fileSize: pending.fileSize,
+                releaseNotes: pending.releaseNotes,
+                createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+            console.log(`✅ Firestore OK.`);
+        } else {
+            console.log('⏭️ Firestore omitido: no hay credenciales admin disponibles.');
+        }
     } catch (e) {
         console.log(`⏭️ Firestore omitido: ${e.message}`);
     }
