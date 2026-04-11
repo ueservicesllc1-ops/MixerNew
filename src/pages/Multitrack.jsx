@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
@@ -202,6 +202,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
 
 export default function Multitrack() {
     const navigate = useNavigate();
+    const location = useLocation();
     const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
@@ -275,6 +276,43 @@ export default function Multitrack() {
 
     /** APK nativo: aviso si en Firestore hay una versión más nueva que la embebida en el bundle. */
     const [appUpdateOffer, setAppUpdateOffer] = useState(null);
+    const [showPwaInstallBanner, setShowPwaInstallBanner] = useState(false);
+    const [showPwaInstallHint, setShowPwaInstallHint] = useState(false);
+
+    useEffect(() => {
+        const params = new URLSearchParams(location.search || '');
+        const fromInstallFlow = params.get('installPwa') === '1' || localStorage.getItem('mixer_pwa_install_flow') === '1';
+        if (!fromInstallFlow) return;
+        localStorage.removeItem('mixer_pwa_install_flow');
+        if (params.get('installPwa') === '1') navigate('/multitrack', { replace: true });
+
+        // Don't show banner if already running as installed PWA
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        if (isStandalone) return;
+
+        setShowPwaInstallBanner(true);
+        setShowPwaInstallHint(false);
+
+        // Auto-dismiss after 5s if browser hasn't offered the install prompt
+        const timer = setTimeout(() => {
+            if (!window._pwaInstallPrompt) setShowPwaInstallBanner(false);
+        }, 5000);
+        return () => clearTimeout(timer);
+    }, [location.search, navigate]);
+
+    const handleDesktopPwaInstall = async () => {
+        const prompt = window._pwaInstallPrompt;
+        if (prompt) {
+            prompt.prompt();
+            const { outcome } = await prompt.userChoice;
+            if (outcome === 'accepted') {
+                window._pwaInstallPrompt = null;
+                setShowPwaInstallBanner(false);
+                return;
+            }
+        }
+        setShowPwaInstallHint(true);
+    };
 
     // Intercept console.log/error to show on-screen (for debugging without USB)
     useEffect(() => {
@@ -1862,6 +1900,71 @@ export default function Multitrack() {
                         onMouseLeave={e => { e.target.style.borderColor = '#ffffff22'; e.target.style.color = '#ffffff66'; }}
                     >
                         Saltar
+                    </button>
+                </div>
+            )}
+
+            {showPwaInstallBanner && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: appUpdateOffer ? 56 : 8,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        zIndex: 199999,
+                        background: 'linear-gradient(135deg, #0f172a, #1e3a8a)',
+                        border: '1px solid rgba(96,165,250,0.55)',
+                        borderRadius: '16px',
+                        boxShadow: '0 18px 45px rgba(2,6,23,0.75)',
+                        padding: '14px 16px',
+                        width: 'min(940px, calc(100vw - 20px))',
+                        color: '#f8fafc',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        flexWrap: 'wrap'
+                    }}
+                >
+                    <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '28px', flexShrink: 0 }} />
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.2px' }}>
+                        Instalar en escritorio
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleDesktopPwaInstall}
+                        style={{
+                            background: '#00d2d3',
+                            color: '#0f172a',
+                            border: 'none',
+                            padding: '8px 14px',
+                            borderRadius: '10px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            fontSize: '0.85rem'
+                        }}
+                    >
+                        Instalar ahora
+                    </button>
+                    {showPwaInstallHint && (
+                        <span style={{ fontSize: '0.86rem', color: '#dbeafe', fontWeight: 700 }}>
+                            Presiona <span style={{ color: '#bfdbfe' }}>Open in app / Instalar app</span> <span style={{ marginLeft: 6 }}>→</span> arriba a la derecha
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setShowPwaInstallBanner(false)}
+                        style={{
+                            marginLeft: 'auto',
+                            background: 'transparent',
+                            color: '#93c5fd',
+                            border: '1px solid rgba(147,197,253,0.4)',
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            cursor: 'pointer',
+                            fontSize: '0.8rem'
+                        }}
+                    >
+                        Cerrar
                     </button>
                 </div>
             )}
