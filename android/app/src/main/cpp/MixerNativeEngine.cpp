@@ -213,8 +213,9 @@ public:
                 for (char c : t.id) { h = (h ^ (unsigned char)c) * 16777619u; }
                 double phase = (double)(engineFrames % 22050u) / 22050.0 * 6.283185307179586
                     + (double)(h % 628) / 100.0;
-                float wobble = (float)(0.5 + 0.5 * std::sin(phase)) * 0.22f;
-                level = finalVol * masterVolume * (0.28f + wobble);
+                // Piso bajo + variación suave (evita VU siempre a media escala en el UI que hace *6.5 en web)
+                float wobble = (float)(0.5 + 0.5 * std::sin(phase)) * 0.12f;
+                level = finalVol * masterVolume * (0.02f + wobble);
                 if (level > 1.f) level = 1.f;
             }
             if (!first) out += ',';

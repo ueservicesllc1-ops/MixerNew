@@ -218,6 +218,57 @@ export default function Multitrack() {
         return 'https://mixernew-production.up.railway.app';
     });
 
+    /** Descarga binaria vía proxy. Si `url` ya es `/api/download?url=...` (p. ej. normalizedUrl), no la envuelve otra vez. */
+    const fetchBlobNative = useCallback(async (url) => {
+        if (!url) return null;
+        const u = String(url).trim();
+        const alreadyProxied = u.includes('/api/download?url=');
+        const reqUrl = alreadyProxied ? u : `${proxyUrl}/api/download?url=${encodeURIComponent(u)}`;
+        const r2 = await fetch(reqUrl);
+        if (!r2.ok) return null;
+        return await r2.blob();
+    }, [proxyUrl]);
+
+    /**
+     * Si todas las pistas ya están en el disco del dispositivo, arma el mismo Map que preload
+     * sin red. Incluye fallback MP3 cuando Firestore pide FLAC pero solo hay .mp3 local.
+     */
+    const tryBuildNativeTrackMapFromDisk = useCallback(async (song) => {
+        if (!isAppNative) return null;
+        const tracksData = (song.tracks || []).filter(tr => tr.url && tr.url !== 'undefined');
+        if (!tracksData.length) return null;
+        for (const tr of tracksData) {
+            const wantFlac = tr.normalizedReady === true && tr.normalizedUrl;
+            let ok = false;
+            if (wantFlac) {
+                if (await NativeEngine.isNormalizedDownloaded(song.id, tr.name)) ok = true;
+                else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) ok = true;
+            } else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) ok = true;
+            if (!ok) return null;
+        }
+        const pathMap = new Map();
+        for (const tr of tracksData) {
+            const wantFlac = tr.normalizedReady === true && tr.normalizedUrl;
+            let finalPath = '';
+            let blob = null;
+            if (wantFlac && (await NativeEngine.isNormalizedDownloaded(song.id, tr.name))) {
+                finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
+            } else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) {
+                finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                if (tr.name === '__PreviewMix') blob = await NativeEngine.readTrackBlob(song.id, tr.name);
+            }
+            let audioBuf = null;
+            if (tr.name === '__PreviewMix' && blob) {
+                try {
+                    const ab = await blob.arrayBuffer();
+                    audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+                } catch { /* ignore */ }
+            }
+            pathMap.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
+        }
+        return pathMap;
+    }, []);
+
     // Setlist States
     const [isSetlistMenuOpen, setIsSetlistMenuOpen] = useState(false);
     const [isCurrentListOpen, setIsCurrentListOpen] = useState(false);
@@ -891,10 +942,11 @@ export default function Multitrack() {
                                 const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
                                 if (flacCached) {
                                     finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
+                                } else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) {
+                                    finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                    if (tr.name === '__PreviewMix') blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 } else {
-                                    const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.normalizedUrl)}`);
-                                    if (!res.ok) return;
-                                    blob = await res.blob();
+                                    blob = await fetchBlobNative(tr.normalizedUrl);
                                     if (!blob || blob.size < 500) return;
                                     finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
                                     await NativeEngine.invalidateLegacyCache(song.id, tr.name);
@@ -1178,8 +1230,20 @@ export default function Multitrack() {
         // pero la UI ya cambi├│)
         await audioEngine.init();
 
+        const isAppNativeLoad = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        // Nativo: si no está en RAM pero los archivos ya están en disco, hidratar cache (misma rapidez que antes)
+        let cachedBuffers = preloadCache.current.get(song.id);
+        if (isAppNativeLoad && (!cachedBuffers || cachedBuffers.size === 0)) {
+            const diskMap = await tryBuildNativeTrackMapFromDisk(song);
+            if (diskMap && diskMap.size > 0) {
+                preloadCache.current.set(song.id, diskMap);
+                touchLRU(song.id);
+                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                cachedBuffers = diskMap;
+            }
+        }
+
         // ΓöÇΓöÇ VERIFICAR SI YA EST├ü EN RAM O DISCO LOCAL ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-        const cachedBuffers = preloadCache.current.get(song.id);
         if (cachedBuffers && cachedBuffers.size > 0) {
             touchLRU(song.id);
 
@@ -1215,17 +1279,7 @@ export default function Multitrack() {
             return;
         }
 
-        const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
-
-        /**
-         * Descarga blob via Railway proxy.
-         */
-        const fetchBlobNative = async (url) => {
-            const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(url)}`);
-            if (!r2.ok) return null;
-            return await r2.blob();
-        };
 
         try {
             evictOldestIfNeeded();
@@ -1235,7 +1289,7 @@ export default function Multitrack() {
             // Inicializar barra de progreso de descarga en nativo
             const downloadableTracks = tracksData.filter(tr => tr.url && tr.url !== 'undefined');
             let loadedCount = 0;
-            if (isAppNative) setNativeLoadProgress({ songId: song.id, loaded: 0, total: downloadableTracks.length });
+            if (isAppNativeLoad) setNativeLoadProgress({ songId: song.id, loaded: 0, total: downloadableTracks.length });
 
             // Descarga/Lectura en batches para evitar picos de RAM
             for (let i = 0; i < tracksData.length; i += 3) {
@@ -1243,7 +1297,7 @@ export default function Multitrack() {
                 await Promise.all(batchChunk.map(async (tr) => {
                     if (!tr.url || tr.url === 'undefined') return;
 
-                    if (isAppNative) {
+                    if (isAppNativeLoad) {
                         let finalPath = '';
                         let blob = null;
                         try {
@@ -1255,6 +1309,10 @@ export default function Multitrack() {
                                 const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
                                 if (flacCached) {
                                     finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
+                                } else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) {
+                                    // Rápido: reutilizar MP3 local si aún no hay FLAC (evita esperar la red)
+                                    finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
+                                    if (tr.name === '__PreviewMix') blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 } else {
                                     blob = await fetchBlobNative(tr.normalizedUrl);
                                     if (blob) {
@@ -1330,7 +1388,7 @@ export default function Multitrack() {
                     }
                 }));
             }
-            if (isAppNative) setNativeLoadProgress(null);
+            if (isAppNativeLoad) setNativeLoadProgress(null);
 
             preloadCache.current.set(song.id, trackBuffers);
             touchLRU(song.id);
@@ -1365,7 +1423,7 @@ export default function Multitrack() {
             setAudioReady(prev => prev + 1);
 
             // ── PRE-CARGAR LA SIGUIENTE CANCIÓN DEL SETLIST EN C++ BACKGROUND ──
-            if (isAppNative && activeSetlist?.songs) {
+            if (isAppNativeLoad && activeSetlist?.songs) {
                 const allSongs = activeSetlist.songs;
                 const currentIdx = allSongs.findIndex(s => s.id === song.id);
                 const nextSong = allSongs[currentIdx + 1];

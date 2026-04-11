@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { audioEngine } from '../AudioEngine';
 import { Volume2, VolumeX } from 'lucide-react';
 
@@ -34,7 +35,9 @@ function VUMeter({ trackId, muted }) {
     useEffect(() => {
         const poll = () => {
             const raw = audioEngine.getTrackLevel(trackId);
-            levelRef.current = Math.min(1, raw * 6.5); // Exact same boost
+            // Web: analizador da picos bajos → boost alto. Nativo: niveles ya vienen escalados (~0–0.2).
+            const boost = Capacitor.isNativePlatform() ? 3.2 : 6.5;
+            levelRef.current = Math.min(1, raw * boost);
             
             draw();
             rafRef.current = requestAnimationFrame(poll);

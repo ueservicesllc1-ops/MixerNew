@@ -1,7 +1,7 @@
 {
-  "versionName": "1.8.33",
-  "versionCode": 84,
-  "downloadUrl": "https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.33-1775949649053.apk",
-  "releaseNotes": "1.8.33 — VU LEDs (nivel estimado, mismo motor estable).",
-  "updatedAt": "2026-04-11T23:20:59.950Z"
+  "versionName": "1.8.34",
+  "versionCode": 85,
+  "downloadUrl": "https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.34-1775951558086.apk",
+  "releaseNotes": "1.8.34 — Carga rápida desde disco + fallback MP3; VU escalado (nativo).",
+  "updatedAt": "2026-04-11T23:52:50.159Z"
 }
