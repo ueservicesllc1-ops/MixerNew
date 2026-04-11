@@ -437,6 +437,15 @@ class AudioEngine {
                 console.warn("[AudioEngine] No se puede reproducir pista sin buffer.");
                 continue;
             }
+            // Stop any leftover source to prevent double playback
+            if (track.source) {
+                try { track.source.stop(); } catch(_) {}
+                track.source = null;
+            }
+            // Reset gain to 1 before starting (may have been faded to 0 by stop())
+            if (track.gain) track.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+            if (track.gain) track.gain.gain.setTargetAtTime(track.muted ? 0 : track.volume, this.ctx.currentTime, 0.01);
+
             const src = this.ctx.createBufferSource();
             src.buffer = track.buffer;
 
@@ -479,7 +488,9 @@ class AudioEngine {
         } else {
             const elapsed = this.ctx.currentTime - this._playStartTime;
             this.pausePosition = this.pausePosition + elapsed * this.tempoRatio;
-            for (const [, t] of this.tracks.entries()) { if (t.source) t.source.stop(); }
+            for (const [, t] of this.tracks.entries()) {
+                if (t.source) { try { t.source.stop(); } catch(_) {} t.source = null; }
+            }
         }
         this.isPlaying = false;
         if (this._updater) cancelAnimationFrame(this._updater);
@@ -565,11 +576,15 @@ class AudioEngine {
             for (const [, t] of this.tracks.entries()) { 
                 if (t.source) {
                     try {
-                        // Anti-pop fade out
+                        // Short anti-pop fade then stop
                         const stopTime = this.ctx.currentTime + 0.05;
-                        t.gainNode.gain.linearRampToValueAtTime(0, stopTime);
+                        if (t.gain) t.gain.gain.linearRampToValueAtTime(0, stopTime);
                         t.source.stop(stopTime);
-                    } catch(e) {}
+                    } catch(e) {
+                        // If scheduled stop fails, force-stop immediately
+                        try { t.source.stop(); } catch(_) {}
+                    }
+                    t.source = null;
                 } 
             }
         }
