@@ -2534,9 +2534,9 @@ export default function Multitrack() {
                                 <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
                             </div>
                         </div>
-                        <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                        <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)', gap: '5px' }}>
                             {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '35px', fontSize: '0.85rem' }}>{k}</button>
+                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '28px', fontSize: '0.75rem' }}>{k}</button>
                             ))}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>

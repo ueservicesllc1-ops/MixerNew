@@ -981,8 +981,8 @@ body.dark-mode .channel-btn.s.active {
 }
 
 .pads-panel {
-  height: 180px;
-  /* Original Fixed Height */
+  height: 120px;
+  /* 2 rows × 6 cols key grid fits in 120px */
   background: var(--track-bg);
   border-radius: 12px;
   padding: 15px;
@@ -1203,7 +1203,7 @@ body.dark-mode .pads-panel {
 .setlist-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
 .setlist-item-card {
@@ -1273,7 +1273,7 @@ body.dark-mode .right-panel-item {
 
 /* INNER SETLIST SONGS */
 .setlist-song-item {
-  padding: 12px 14px;
+  padding: 8px 12px;
   background: white;
   border-radius: 10px;
   cursor: pointer;
