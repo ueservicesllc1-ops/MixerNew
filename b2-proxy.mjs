@@ -895,21 +895,46 @@ app.get('/api/search-lacuerda', async (req, res) => {
 // CONFIGURACIÓN DE FRONTEND Y SPA (DEBE IR AL FINAL)
 if (fs.existsSync(distPath)) {
     console.log("📂 Carpeta 'dist' detectada. Sirviendo aplicación...");
-    app.use(express.static(distPath));
+    // Serve static assets with long cache — except index.html which must always be fresh
+    app.use(express.static(distPath, {
+        setHeaders(res, filePath) {
+            if (filePath.endsWith('index.html')) {
+                // Always revalidate the entry point so new JS hashes are picked up immediately
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+            } else {
+                // Hashed assets (JS/CSS) can be cached 1 year — they never change content
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+        }
+    }));
 } else {
     console.warn("⚠️ Carpeta 'dist' NO encontrada.");
 }
 
 // Solución definitiva para SPA: Middleware al final de la cadena
 app.use((req, res, next) => {
-    // Si la ruta empieza con /api/ y llegó hasta aquí, es que no existe. 404.
+    // API routes that reached here → 404 JSON
     if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: `Ruta de API no encontrada: ${req.path}` });
     }
 
-    // Para el resto (rutas de React), servimos index.html
+    // Static asset requests (.js, .css, .png, etc.) that weren't found → real 404
+    // This avoids returning index.html with MIME text/html when a browser tries to
+    // load a JS module from a stale cached index.html pointing to old build hashes.
+    const ext = path.extname(req.path).toLowerCase();
+    const staticExts = ['.js', '.css', '.png', '.jpg', '.webp', '.svg', '.woff2', '.woff', '.ico', '.json', '.map'];
+    if (ext && staticExts.includes(ext)) {
+        return res.status(404).send('Not found');
+    }
+
+    // Everything else (SPA routes) → serve index.html fresh
     const indexPath = path.join(distPath, 'index.html');
     if (fs.existsSync(indexPath)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
         res.sendFile(indexPath);
     } else {
         res.status(404).send("Error: Frontend no compilado.");
