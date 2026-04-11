@@ -649,8 +649,8 @@ export default function Landing() {
                                     }}
                                 >
                                     <img
-                                        src={slide.image}
-                                        alt={slide.title}
+                                        src={slide.image || slide.imageUrl || slide.url || slide.photoUrl || ''}
+                                        alt={slide.title || ''}
                                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     />
                                     <div style={{
