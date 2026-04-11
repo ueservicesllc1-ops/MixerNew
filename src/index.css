@@ -982,7 +982,7 @@ body.dark-mode .channel-btn.s.active {
 
 .pads-panel {
   height: 120px;
-  /* 2 rows × 6 cols key grid fits in 120px */
+  /* 2 rows × 6 cols key grid */
   background: var(--track-bg);
   border-radius: 12px;
   padding: 15px;
