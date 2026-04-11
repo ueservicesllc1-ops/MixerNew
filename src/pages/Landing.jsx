@@ -21,6 +21,7 @@ export default function Landing() {
     const [isLogin, setIsLogin] = useState(true);
     const [errorMsg, setErrorMsg] = useState('');
     const [showLoginPanel, setShowLoginPanel] = useState(false);
+    const [pwaToast, setPwaToast] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [isAnnual, setIsAnnual] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -437,7 +438,8 @@ export default function Landing() {
                                 if (window._pwaInstallPrompt) {
                                     window._pwaInstallPrompt.prompt();
                                 } else {
-                                    window.location.reload();
+                                    setPwaToast(true);
+                                    setTimeout(() => setPwaToast(false), 6000);
                                 }
                             }}
                             style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
@@ -609,8 +611,8 @@ export default function Landing() {
                                         const { outcome } = await window._pwaInstallPrompt.userChoice;
                                         if (outcome === 'accepted') window._pwaInstallPrompt = null;
                                     } else {
-                                        // Prompt not ready yet — reload so the browser registers the SW and fires beforeinstallprompt
-                                        window.location.reload();
+                                        setPwaToast(true);
+                                        setTimeout(() => setPwaToast(false), 6000);
                                     }
                                 }}
                                 style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
@@ -1040,6 +1042,18 @@ export default function Landing() {
             </section >
 
             <Footer />
+
+            {/* PWA INSTALL TOAST */}
+            {pwaToast && (
+                <div style={{ position: 'fixed', bottom: '32px', left: '50%', transform: 'translateX(-50%)', background: '#1e293b', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '14px', padding: '16px 24px', color: 'white', zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '420px', width: '90%' }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#60a5fa" style={{ flexShrink: 0 }}><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                    <div>
+                        <div style={{ fontWeight: '700', fontSize: '0.9rem', marginBottom: '4px' }}>Instalar en Windows</div>
+                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>Haz clic en el ícono <strong style={{ color: '#60a5fa' }}>⊕</strong> que aparece en la barra de dirección de Chrome/Edge para instalar la app.</div>
+                    </div>
+                    <button onClick={() => setPwaToast(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem', flexShrink: 0, lineHeight: 1 }}>×</button>
+                </div>
+            )}
 
             {/* PREVIEW MODAL (Horizontal Studio Design) - Compact Version */}
             {
