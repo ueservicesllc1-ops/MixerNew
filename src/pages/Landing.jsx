@@ -586,7 +586,7 @@ export default function Landing() {
                                     onClick={() => window.open(latestApp.downloadUrl, '_blank')}
                                     style={{ padding: '10px 24px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
                                 >
-                                    <img src="/android-logo.png" alt="Android" style={{ width: '16px' }} onError={(e) => e.target.style.display = 'none'} />
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-label="Android"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24A9.822 9.822 0 0 0 12 8c-1.53 0-2.97.38-4.47 1.0L5.65 5.67a.644.644 0 0 0-.84-.22c-.3.16-.42.54-.26.85l1.84 3.18C3.93 10.91 2.5 12.97 2.5 15.25c0 .22.02.44.05.65h18.9c.03-.21.05-.43.05-.65 0-2.28-1.43-4.34-3.9-5.77zM9 13.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm6 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
                                     Descargar App {latestApp.versionName}
                                 </button>
                             </div>
