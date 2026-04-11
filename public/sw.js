@@ -1,5 +1,5 @@
 // Zion Stage Service Worker — caches app shell for offline use
-const CACHE = 'zion-stage-v1';
+const CACHE = 'zion-stage-v3';
 const SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', e => {
@@ -17,16 +17,13 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-    // Only cache GET requests for same-origin navigation (app shell)
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
-    // Pass through API and B2 requests — never cache audio blobs here
     if (url.pathname.startsWith('/api/') || url.hostname.includes('backblaze') || url.hostname.includes('railway')) return;
 
     e.respondWith(
         fetch(e.request)
             .then(res => {
-                // Cache fresh HTML/JS/CSS responses
                 if (res && res.status === 200 && (
                     e.request.destination === 'document' ||
                     e.request.destination === 'script' ||
