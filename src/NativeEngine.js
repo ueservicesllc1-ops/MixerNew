@@ -253,4 +253,14 @@ export const NativeEngine = {
         try { await MultitrackPlugin.setPitch({ semitones }); }
         catch (err) { console.warn('[NativeEngine] setPitch error', err); }
     },
+
+    // Returns raw "id1:0.45,id2:0.22,..." level string from C++ MeterNodes.
+    getTrackLevels: async () => {
+        try {
+            const { levels } = await MultitrackPlugin.getTrackLevels();
+            return levels || '';
+        } catch (err) {
+            return '';
+        }
+    },
 };

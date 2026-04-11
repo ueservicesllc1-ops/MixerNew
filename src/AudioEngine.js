@@ -47,6 +47,10 @@ class AudioEngine {
         this._playStartPos = 0;
         this._sessionId = 0;
 
+        // Native VU meter: levels polled from C++ MeterNodes at ~20fps
+        this._nativeLevels = new Map();
+        this._levelPollInterval = null;
+
         if (!IS_NATIVE) {
             this._initWebAudio();
         }
@@ -304,10 +308,7 @@ class AudioEngine {
         if (IS_NATIVE) {
             const m = this._trackMeta.get(id);
             if (!m || m.muted) return 0;
-            // More organic "living" meter behavior using sine waves
-            const time = performance.now() / 150;
-            const variance = Math.sin(time + (parseInt(id.slice(-1)) || 0)) * 0.2 + 0.8;
-            return (0.4 * variance) * (m.volume || 1);
+            return this._nativeLevels.get(id) ?? 0;
         } else {
             const t = this.tracks.get(id);
             if (!t || !t.analyser) return 0;
@@ -321,6 +322,34 @@ class AudioEngine {
             }
             return max * t.volume;
         }
+    }
+
+    _startNativeLevelPoll(native) {
+        if (this._levelPollInterval) clearInterval(this._levelPollInterval);
+        this._levelPollInterval = setInterval(async () => {
+            if (!this.isPlaying) return;
+            try {
+                const raw = await native.getTrackLevels();
+                if (raw) {
+                    raw.split(',').forEach(entry => {
+                        const colon = entry.indexOf(':');
+                        if (colon > 0) {
+                            const id  = entry.slice(0, colon);
+                            const val = parseFloat(entry.slice(colon + 1)) || 0;
+                            this._nativeLevels.set(id, val);
+                        }
+                    });
+                }
+            } catch (_) {}
+        }, 50); // ~20fps
+    }
+
+    _stopNativeLevelPoll() {
+        if (this._levelPollInterval) {
+            clearInterval(this._levelPollInterval);
+            this._levelPollInterval = null;
+        }
+        this._nativeLevels.clear();
     }
 
     removeTrack(id) {
@@ -404,6 +433,9 @@ class AudioEngine {
             this.progress = this.pausePosition;
             this.isPlaying = true;
             this._startRAF(sessionId);
+
+            // Start polling real RMS levels from C++ MeterNodes at ~20fps
+            this._startNativeLevelPoll(native);
             return;
         }
 
@@ -485,6 +517,7 @@ class AudioEngine {
                 this.pausePosition = jsBaselinePos;
             }
             await native.pause();
+            this._stopNativeLevelPoll();
         } else {
             const elapsed = this.ctx.currentTime - this._playStartTime;
             this.pausePosition = this.pausePosition + elapsed * this.tempoRatio;
@@ -572,6 +605,7 @@ class AudioEngine {
         if (IS_NATIVE) {
             const native = await getNative();
             await native.stop();
+            this._stopNativeLevelPoll();
         } else {
             for (const [, t] of this.tracks.entries()) { 
                 if (t.source) {

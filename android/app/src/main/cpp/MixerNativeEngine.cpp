@@ -85,15 +85,63 @@ static ma_node_vtable stNodeVtable = {
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── PER-TRACK METER NODE ─────────────────────────────────────────────────────
+// Passthrough node that sits between each ma_sound and the SoundTouch node.
+// Computes RMS amplitude per audio callback and stores it in an atomic float
+// so the Java thread can read it without synchronization overhead.
+
+struct MeterNode {
+    ma_node_base       base;
+    std::atomic<float> level{0.0f};  // RMS with ballistic decay, 0..1
+};
+
+static void meterNodeProcess(
+    ma_node* pNode, const float** ppFramesIn, ma_uint32* pFrameCountIn,
+    float** ppFramesOut, ma_uint32* pFrameCountOut)
+{
+    auto* m = (MeterNode*)pNode;
+    ma_uint32 cnt = (*pFrameCountIn < *pFrameCountOut) ? *pFrameCountIn : *pFrameCountOut;
+    if (cnt > 0 && ppFramesIn[0] && ppFramesOut[0]) {
+        memcpy(ppFramesOut[0], ppFramesIn[0], cnt * 2 * sizeof(float));
+        // Compute RMS of stereo interleaved samples
+        float sum = 0.0f;
+        const float* src = ppFramesIn[0];
+        for (ma_uint32 i = 0; i < cnt * 2; i++) { sum += src[i] * src[i]; }
+        float rms = sqrtf(sum / (float)(cnt * 2));
+        // Ballistics: fast attack, slow release (~0.92 per callback ≈ 300ms at 48kHz/512 frames)
+        float prev = m->level.load(std::memory_order_relaxed);
+        float next = (rms > prev) ? rms : (prev * 0.92f);
+        m->level.store(next, std::memory_order_relaxed);
+    }
+    *pFrameCountOut = cnt;
+}
+
+static ma_uint32 meterBusChannels[1] = { 2 };
+
+static ma_node_vtable meterNodeVtable = {
+    meterNodeProcess,
+    nullptr,
+    1,    // inputBusCount
+    1,    // outputBusCount
+    0     // flags
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 struct Track {
     std::string id;
     ma_sound    sound;
-    bool        soundReady = false;
-    float       volume     = 1.0f;
-    bool        muted      = false;
-    bool        solo       = false;
+    bool        soundReady  = false;
+    MeterNode   meterNode;
+    bool        meterReady  = false;
+    float       volume      = 1.0f;
+    bool        muted       = false;
+    bool        solo        = false;
 
     void release() {
+        if (meterReady) {
+            ma_node_uninit(&meterNode.base, nullptr);
+            meterReady = false;
+        }
         if (soundReady) {
             ma_sound_uninit(&sound);
             soundReady = false;
@@ -188,9 +236,27 @@ public:
             ma_uint64 frame = (ma_uint64)(currentPos * kSampleRate);
             ma_sound_seek_to_pcm_frame(&tPtr->sound, frame);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            // Route through SoundTouch pitch node
-            if (stNodeReady) {
-                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+            // Init per-track meter node and chain: sound → meterNode → stNode → endpoint
+            ma_node_config mCfg = ma_node_config_init();
+            mCfg.vtable          = &meterNodeVtable;
+            mCfg.inputBusCount   = 1;
+            mCfg.outputBusCount  = 1;
+            mCfg.pInputChannels  = meterBusChannels;
+            mCfg.pOutputChannels = meterBusChannels;
+            ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
+            if (ma_node_init(pGraph, &mCfg, nullptr, &tPtr->meterNode.base) == MA_SUCCESS) {
+                tPtr->meterReady = true;
+                tPtr->meterNode.level.store(0.0f, std::memory_order_relaxed);
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &tPtr->meterNode.base, 0);
+                if (stNodeReady) {
+                    ma_node_attach_output_bus(&tPtr->meterNode.base, 0, &stNode.base, 0);
+                }
+            } else {
+                // Fallback: route sound directly to stNode if meter init fails
+                if (stNodeReady) {
+                    ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+                }
+                LOGE("MeterNode init FAILED for track %s", id.c_str());
             }
             updateMuteSoloInternal();
             LOGD("Track %s cargado (stream) y sincronizado a %.2fs", id.c_str(), currentPos);
@@ -232,9 +298,26 @@ public:
             tPtr->soundReady = true;
             ma_sound_seek_to_pcm_frame(&tPtr->sound, 0);
             ma_sound_set_volume(&tPtr->sound, tPtr->volume * masterVolume);
-            // Route through SoundTouch pitch node (preloaded tracks also need it when active)
-            if (stNodeReady) {
-                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+            // Init per-track meter node and chain: sound → meterNode → stNode → endpoint
+            ma_node_config mCfg = ma_node_config_init();
+            mCfg.vtable          = &meterNodeVtable;
+            mCfg.inputBusCount   = 1;
+            mCfg.outputBusCount  = 1;
+            mCfg.pInputChannels  = meterBusChannels;
+            mCfg.pOutputChannels = meterBusChannels;
+            ma_node_graph* pGraph = ma_engine_get_node_graph(&engine);
+            if (ma_node_init(pGraph, &mCfg, nullptr, &tPtr->meterNode.base) == MA_SUCCESS) {
+                tPtr->meterReady = true;
+                tPtr->meterNode.level.store(0.0f, std::memory_order_relaxed);
+                ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &tPtr->meterNode.base, 0);
+                if (stNodeReady) {
+                    ma_node_attach_output_bus(&tPtr->meterNode.base, 0, &stNode.base, 0);
+                }
+            } else {
+                if (stNodeReady) {
+                    ma_node_attach_output_bus((ma_node*)&tPtr->sound, 0, &stNode.base, 0);
+                }
+                LOGE("MeterNode init FAILED for preload track %s", id.c_str());
             }
             LOGD("Preload track %s (stream) de cancion %s OK", id.c_str(), songId.c_str());
         } else {
@@ -419,6 +502,28 @@ public:
         stNode.pendingPitch.store(semitones, std::memory_order_relaxed);
         LOGD("setPitch %.1f semitones", (double)semitones);
     }
+
+    // Returns per-track RMS levels as "id1:0.45,id2:0.22,..." string.
+    // Levels are pre-scaled ×8 and clamped to [0,1] for the JS VU meter.
+    std::string getTrackLevels() {
+        std::lock_guard<std::mutex> lk(mtx);
+        std::string result;
+        result.reserve(tracks.size() * 20);
+        for (auto& t : tracks) {
+            if (!t.soundReady || !t.meterReady) continue;
+            if (!result.empty()) result += ',';
+            float raw = t.meterNode.level.load(std::memory_order_relaxed);
+            float scaled = raw * 8.0f;
+            if (scaled > 1.0f) scaled = 1.0f;
+            // Format as "id:value" with 3 decimal places
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%.3f", scaled);
+            result += t.id;
+            result += ':';
+            result += buf;
+        }
+        return result;
+    }
 };
 
 static MultitrackEngine* gEngine = nullptr;
@@ -471,5 +576,10 @@ extern "C" {
     }
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetPitch(JNIEnv*, jobject, jfloat semitones) {
         if (gEngine) gEngine->setPitch((float)semitones);
+    }
+    JNIEXPORT jstring JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackLevels(JNIEnv* env, jobject) {
+        if (!gEngine) return env->NewStringUTF("");
+        std::string levels = gEngine->getTrackLevels();
+        return env->NewStringUTF(levels.c_str());
     }
 }

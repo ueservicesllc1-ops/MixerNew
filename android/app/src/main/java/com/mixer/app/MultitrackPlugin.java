@@ -38,6 +38,8 @@ public class MultitrackPlugin extends Plugin {
     public native void    nativeClearPending();
     // Pitch shifting (SoundTouch — no afecta el tempo)
     public native void    nativeSetPitch(float semitones);
+    // Per-track VU meter levels
+    public native String  nativeGetTrackLevels();
 
     @Override
     public void load() {
@@ -229,5 +231,13 @@ public class MultitrackPlugin extends Plugin {
         Float semitones = call.getFloat("semitones", 0f);
         if (nativeLibLoaded) nativeSetPitch(semitones);
         call.resolve();
+    }
+
+    @PluginMethod
+    public void getTrackLevels(PluginCall call) {
+        String levels = nativeLibLoaded ? nativeGetTrackLevels() : "";
+        JSObject ret = new JSObject();
+        ret.put("levels", levels != null ? levels : "");
+        call.resolve(ret);
     }
 }
