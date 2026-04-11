@@ -3,6 +3,8 @@
 
 #include <jni.h>
 #include <android/log.h>
+#include <cmath>
+#include <cstdio>
 #include <string>
 #include <list>
 #include <mutex>
@@ -187,6 +189,44 @@ public:
         }
         return maxDur;
     }
+
+    /** Formato que espera AudioEngine.js: "id:rms,id:rms,..." — nivel estimado sin MeterNode (no toca el grafo de reproducción). */
+    std::string getTrackLevelsString() {
+        std::lock_guard<std::mutex> lk(mtx);
+        bool anySolo = false;
+        for (auto& x : tracks) {
+            if (x.solo) { anySolo = true; break; }
+        }
+        ma_uint64 engineFrames = 0;
+        if (engineReady && playing) {
+            engineFrames = ma_engine_get_time_in_pcm_frames(&engine);
+        }
+        std::string out;
+        bool first = true;
+        for (auto& t : tracks) {
+            if (!t.soundReady) continue;
+            bool shouldMute = t.muted || (anySolo && !t.solo);
+            float finalVol = shouldMute ? 0.f : t.volume;
+            float level = 0.f;
+            if (playing && finalVol > 0.001f) {
+                unsigned h = 2166136261u;
+                for (char c : t.id) { h = (h ^ (unsigned char)c) * 16777619u; }
+                double phase = (double)(engineFrames % 22050u) / 22050.0 * 6.283185307179586
+                    + (double)(h % 628) / 100.0;
+                float wobble = (float)(0.5 + 0.5 * std::sin(phase)) * 0.22f;
+                level = finalVol * masterVolume * (0.28f + wobble);
+                if (level > 1.f) level = 1.f;
+            }
+            if (!first) out += ',';
+            first = false;
+            out += t.id;
+            out += ':';
+            char buf[48];
+            snprintf(buf, sizeof(buf), "%.5f", level);
+            out += buf;
+        }
+        return out;
+    }
 };
 
 static MultitrackEngine* gEngine = nullptr;
@@ -225,6 +265,8 @@ extern "C" {
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeClearPending(JNIEnv*, jobject) {}
     JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetPitch(JNIEnv*, jobject, jfloat) {}
     JNIEXPORT jstring JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackLevels(JNIEnv* env, jobject) {
-        return env->NewStringUTF("{}");
+        if (!gEngine) return env->NewStringUTF("");
+        std::string s = gEngine->getTrackLevelsString();
+        return env->NewStringUTF(s.c_str());
     }
 }
