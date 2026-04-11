@@ -2,7 +2,7 @@
   "name": "Zion Stage — Pro Worship Mixer",
   "short_name": "Zion Stage",
   "description": "Mezclador profesional de pistas de adoración",
-  "start_url": "/",
+  "start_url": "/multitrack",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",

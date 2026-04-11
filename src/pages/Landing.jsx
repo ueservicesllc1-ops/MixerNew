@@ -21,7 +21,7 @@ export default function Landing() {
     const [isLogin, setIsLogin] = useState(true);
     const [errorMsg, setErrorMsg] = useState('');
     const [showLoginPanel, setShowLoginPanel] = useState(false);
-    const [pwaToast, setPwaToast] = useState(false);
+    const [showPwaModal, setShowPwaModal] = useState(false);
     const [scrolled, setScrolled] = useState(false);
     const [isAnnual, setIsAnnual] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
@@ -434,14 +434,7 @@ export default function Landing() {
                             </span>
                         )}
                         <span
-                            onClick={async () => {
-                                if (window._pwaInstallPrompt) {
-                                    window._pwaInstallPrompt.prompt();
-                                } else {
-                                    setPwaToast(true);
-                                    setTimeout(() => setPwaToast(false), 6000);
-                                }
-                            }}
+                            onClick={() => setShowPwaModal(true)}
                             style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
                             onMouseEnter={e => e.target.style.color = '#fff'}
                             onMouseLeave={e => e.target.style.color = '#60a5fa'}
@@ -605,16 +598,7 @@ export default function Landing() {
                                 </button>
                             )}
                             <button
-                                onClick={async () => {
-                                    if (window._pwaInstallPrompt) {
-                                        window._pwaInstallPrompt.prompt();
-                                        const { outcome } = await window._pwaInstallPrompt.userChoice;
-                                        if (outcome === 'accepted') window._pwaInstallPrompt = null;
-                                    } else {
-                                        setPwaToast(true);
-                                        setTimeout(() => setPwaToast(false), 6000);
-                                    }
-                                }}
+                                onClick={() => setShowPwaModal(true)}
                                 style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
                             >
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
@@ -1043,15 +1027,39 @@ export default function Landing() {
 
             <Footer />
 
-            {/* PWA INSTALL TOAST */}
-            {pwaToast && (
-                <div style={{ position: 'fixed', bottom: '32px', left: '50%', transform: 'translateX(-50%)', background: '#1e293b', border: '1px solid rgba(96,165,250,0.4)', borderRadius: '14px', padding: '16px 24px', color: 'white', zIndex: 9999, boxShadow: '0 8px 32px rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', gap: '14px', maxWidth: '420px', width: '90%' }}>
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="#60a5fa" style={{ flexShrink: 0 }}><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                    <div>
-                        <div style={{ fontWeight: '700', fontSize: '0.9rem', marginBottom: '4px' }}>Instalar en Windows</div>
-                        <div style={{ fontSize: '0.8rem', color: '#94a3b8', lineHeight: 1.5 }}>Haz clic en el ícono <strong style={{ color: '#60a5fa' }}>⊕</strong> que aparece en la barra de dirección de Chrome/Edge para instalar la app.</div>
+            {/* PWA INSTALL MODAL */}
+            {showPwaModal && (
+                <div onClick={() => setShowPwaModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(16px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div onClick={e => e.stopPropagation()} style={{ background: 'linear-gradient(160deg,#0f172a 0%,#1e293b 100%)', border: '1px solid rgba(96,165,250,0.2)', borderRadius: '28px', padding: '48px 40px', width: '460px', maxWidth: '92vw', color: 'white', boxShadow: '0 40px 80px rgba(0,0,0,0.7)', textAlign: 'center', position: 'relative' }}>
+                        <button onClick={() => setShowPwaModal(false)} style={{ position: 'absolute', top: '18px', right: '20px', background: 'rgba(255,255,255,0.06)', border: 'none', color: '#94a3b8', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>
+
+                        <div style={{ width: '72px', height: '72px', borderRadius: '20px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', boxShadow: '0 8px 24px rgba(0,120,212,0.4)' }}>
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="white"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                        </div>
+
+                        <h2 style={{ margin: '0 0 10px', fontSize: '1.6rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Instalar Zion Stage</h2>
+                        <p style={{ margin: '0 0 36px', color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.6 }}>Instala el mezclador como app en tu escritorio de Windows y úsalo offline con tus canciones descargadas.</p>
+
+                        <button
+                            onClick={async () => {
+                                if (window._pwaInstallPrompt) {
+                                    setShowPwaModal(false);
+                                    window._pwaInstallPrompt.prompt();
+                                    const { outcome } = await window._pwaInstallPrompt.userChoice;
+                                    if (outcome === 'accepted') window._pwaInstallPrompt = null;
+                                } else {
+                                    setShowPwaModal(false);
+                                    // Navigate to the app so Chrome registers the SW and offers install
+                                    window.open('https://zionstage.live/multitrack', '_blank');
+                                }
+                            }}
+                            style={{ width: '100%', padding: '16px', borderRadius: '50px', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', fontWeight: '800', fontSize: '1.05rem', cursor: 'pointer', boxShadow: '0 6px 20px rgba(0,120,212,0.45)', transition: 'opacity 0.2s' }}
+                            onMouseEnter={e => e.currentTarget.style.opacity = '0.88'}
+                            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                        >
+                            Instalar
+                        </button>
                     </div>
-                    <button onClick={() => setPwaToast(false)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '1.2rem', flexShrink: 0, lineHeight: 1 }}>×</button>
                 </div>
             )}
 
