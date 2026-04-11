@@ -423,15 +423,29 @@ export default function Landing() {
                             </span>
                         ))}
                         {latestApp && (
-                             <span
+                            <span
                                 onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
-                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#00d2d3', fontWeight: 'bold' }}
+                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#3ddc84', fontWeight: 'bold' }}
                                 onMouseEnter={e => e.target.style.color = '#fff'}
-                                onMouseLeave={e => e.target.style.color = '#00d2d3'}
+                                onMouseLeave={e => e.target.style.color = '#3ddc84'}
                             >
-                                Descargar App
+                                ↓ Android
                             </span>
                         )}
+                        <span
+                            onClick={async () => {
+                                if (window._pwaInstallPrompt) {
+                                    window._pwaInstallPrompt.prompt();
+                                } else {
+                                    alert('Abre en Chrome/Edge y haz clic en ⊕ en la barra de dirección para instalar.');
+                                }
+                            }}
+                            style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
+                            onMouseEnter={e => e.target.style.color = '#fff'}
+                            onMouseLeave={e => e.target.style.color = '#60a5fa'}
+                        >
+                            ↓ Windows
+                        </span>
                         <span
                             onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
                             style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
@@ -578,17 +592,32 @@ export default function Landing() {
                                 <Play size={18} fill="currentColor" /> Ver cómo funciona
                             </button>
                         </div>
-                        {latestApp && (
-                            <div style={{ marginTop: '20px' }}>
-                                <button 
+                        <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            {latestApp && (
+                                <button
                                     onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
-                                    style={{ padding: '10px 24px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '50px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px' }}
+                                    style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#3ddc84,#2a9d5c)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(61,220,132,0.35)' }}
                                 >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-label="Android"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24A9.822 9.822 0 0 0 12 8c-1.53 0-2.97.38-4.47 1.0L5.65 5.67a.644.644 0 0 0-.84-.22c-.3.16-.42.54-.26.85l1.84 3.18C3.93 10.91 2.5 12.97 2.5 15.25c0 .22.02.44.05.65h18.9c.03-.21.05-.43.05-.65 0-2.28-1.43-4.34-3.9-5.77zM9 13.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm6 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-                                    Descargar App {latestApp.versionName}
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24A9.822 9.822 0 0 0 12 8c-1.53 0-2.97.38-4.47 1L5.65 5.67a.644.644 0 0 0-.84-.22c-.3.16-.42.54-.26.85l1.84 3.18C3.93 10.91 2.5 12.97 2.5 15.25c0 .22.02.44.05.65h18.9c.03-.21.05-.43.05-.65 0-2.28-1.43-4.34-3.9-5.77zM9 13.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm6 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+                                    Descargar Android {latestApp.versionName}
                                 </button>
-                            </div>
-                        )}
+                            )}
+                            <button
+                                onClick={async () => {
+                                    if (window._pwaInstallPrompt) {
+                                        window._pwaInstallPrompt.prompt();
+                                        const { outcome } = await window._pwaInstallPrompt.userChoice;
+                                        if (outcome === 'accepted') window._pwaInstallPrompt = null;
+                                    } else {
+                                        alert('Para instalar en Windows:\n1. Abre esta página en Chrome o Edge\n2. Haz clic en el ícono ⊕ en la barra de dirección\n3. Selecciona "Instalar Zion Stage"');
+                                    }
+                                }}
+                                style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                                Instalar Windows (PWA)
+                            </button>
+                        </div>
                     </div>
 
                     {/* HERO CAROUSEL BANNER */}

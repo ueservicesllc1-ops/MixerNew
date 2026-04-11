@@ -4,6 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/png" href="/logo2.png?v=2" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0f172a" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zion Stage — Pro Worship Mixer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,6 +18,17 @@
 <body>
   <div id="root" translate="no"></div>
   <script type="module" src="/src/main.jsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+    }
+    // Capture PWA install prompt so the Windows install button can trigger it
+    window._pwaInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();
+      window._pwaInstallPrompt = e;
+    });
+  </script>
 </body>
 
 </html>
