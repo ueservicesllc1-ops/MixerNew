@@ -504,7 +504,8 @@ public:
     }
 
     // Returns per-track RMS levels as "id1:0.45,id2:0.22,..." string.
-    // Levels are pre-scaled ×8 and clamped to [0,1] for the JS VU meter.
+    // Raw RMS values — JS VUMeter applies its own ×6.5 visual boost,
+    // matching the same scaling used for the web AnalyserNode path.
     std::string getTrackLevels() {
         std::lock_guard<std::mutex> lk(mtx);
         std::string result;
@@ -513,11 +514,10 @@ public:
             if (!t.soundReady || !t.meterReady) continue;
             if (!result.empty()) result += ',';
             float raw = t.meterNode.level.load(std::memory_order_relaxed);
-            float scaled = raw * 8.0f;
-            if (scaled > 1.0f) scaled = 1.0f;
-            // Format as "id:value" with 3 decimal places
+            // No pre-scaling here — VUMeter.jsx applies ×6.5 boost on both web and native
+            if (raw > 1.0f) raw = 1.0f;
             char buf[64];
-            snprintf(buf, sizeof(buf), "%.3f", scaled);
+            snprintf(buf, sizeof(buf), "%.3f", raw);
             result += t.id;
             result += ':';
             result += buf;
