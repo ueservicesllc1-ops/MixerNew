@@ -839,9 +839,12 @@ export default function Multitrack() {
                             } else {
                                 // Descarga directa de B2, guarda solo en filesystem
                                 try {
-                                    const r = await fetch(tr.url, { cache: 'no-store' });
+                                    const ac = new AbortController();
+                                    const t = setTimeout(() => ac.abort(), 6000);
+                                    const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
+                                    clearTimeout(t);
                                     if (r.ok) { blob = await r.blob(); if (blob.size < 500) blob = null; }
-                                } catch { /* fall through */ }
+                                } catch { /* fall through to proxy */ }
                                 if (!blob) {
                                     const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                                     if (!res.ok) return;
@@ -868,9 +871,12 @@ export default function Multitrack() {
                             if (!rawBuf) {
                                 // Directo de B2 primero (funciona en web y nativo), luego proxy fallback
                                 try {
-                                    const r = await fetch(tr.url, { cache: 'no-store' });
+                                    const ac = new AbortController();
+                                    const t = setTimeout(() => ac.abort(), 6000);
+                                    const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
+                                    clearTimeout(t);
                                     if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
-                                } catch { /* fall through */ }
+                                } catch { /* fall through to proxy */ }
                                 if (!rawBuf) {
                                     const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                                     if (!res.ok) return;
@@ -979,9 +985,12 @@ export default function Multitrack() {
                  */
                 const downloadBlob = async () => {
                     try {
-                        const r = await fetch(tr.url, { cache: 'no-store' });
+                        const ac = new AbortController();
+                        const t = setTimeout(() => ac.abort(), 6000);
+                        const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
+                        clearTimeout(t);
                         if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
-                    } catch { /* fall through */ }
+                    } catch { /* fall through to proxy */ }
                     const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                     if (!r2.ok) throw new Error(`Error ${r2.status} descargando ${tr.name}`);
                     return await r2.blob();
@@ -1130,9 +1139,12 @@ export default function Multitrack() {
          */
         const fetchBlobNative = async (url) => {
             try {
-                const r = await fetch(url, { cache: 'no-store' });
+                const ac = new AbortController();
+                const t = setTimeout(() => ac.abort(), 6000);
+                const r = await fetch(url, { cache: 'no-store', signal: ac.signal });
+                clearTimeout(t);
                 if (r.ok) { const b = await r.blob(); if (b.size > 500) return b; }
-            } catch { /* fall through */ }
+            } catch { /* fall through to proxy */ }
             const r2 = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(url)}`);
             if (!r2.ok) return null;
             return await r2.blob();
@@ -1191,10 +1203,13 @@ export default function Multitrack() {
                         let rawBuf = await LocalFileManager.getTrackLocal(song.id, tr.name);
                         if (!rawBuf) {
                             try {
-                                // Directo de B2 (sin proxy) — B2 público manda CORS headers
-                                const r = await fetch(tr.url, { cache: 'no-store' });
+                                // Directo de B2 con timeout — si el ISP lo bloquea cae al proxy rápido
+                                const ac = new AbortController();
+                                const t = setTimeout(() => ac.abort(), 6000);
+                                const r = await fetch(tr.url, { cache: 'no-store', signal: ac.signal });
+                                clearTimeout(t);
                                 if (r.ok) { rawBuf = await r.blob(); if (rawBuf.size < 500) rawBuf = null; }
-                            } catch { /* fall through */ }
+                            } catch { /* fall through to proxy */ }
                             if (!rawBuf) {
                                 try {
                                     const res = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
