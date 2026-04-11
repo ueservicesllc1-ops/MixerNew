@@ -154,9 +154,7 @@ export default function Store() {
             const getProxyUrl = (url) => {
                 if (!url) return '';
                 if (url.startsWith('/') || url.includes('localhost')) return url;
-                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const baseProxy = isLocal ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
-                return `${baseProxy}/api/download?url=${encodeURIComponent(url)}`;
+                return `https://mixernew-production.up.railway.app/api/download?url=${encodeURIComponent(url)}`;
             };
 
             const tracksToLoad = rawTracks.map(t => ({ ...t, proxyUrl: getProxyUrl(t.url) }));
