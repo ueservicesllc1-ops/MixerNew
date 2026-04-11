@@ -1713,7 +1713,7 @@ body.dark-mode .drawer-overlay {
 }
 
 .pad-title-section {
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .pad-title {

@@ -2548,7 +2548,7 @@ export default function Multitrack() {
                                 <h4 className="pad-title">Ambient Pads</h4>
                                 <div className="pad-subtitle" style={{ fontSize: '0.7rem' }}>Fundamental Pads</div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, maxWidth: '110px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, margin: '0 12px' }}>
                                 <input
                                     type="range" min="0" max="1" step="0.01"
                                     value={padVolume}
@@ -2814,7 +2814,7 @@ export default function Multitrack() {
                             <h3 className="pad-title">Fundamental Ambient Pads</h3>
                             <div className="pad-subtitle">Loop Community</div>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '140px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, margin: '0 16px' }}>
                             <input
                                 type="range" min="0" max="1" step="0.01"
                                 value={padVolume}
