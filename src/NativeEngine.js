@@ -1,21 +1,41 @@
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
+import { NextGenMixerBridge } from './NextGenNativeEngine.js';
 
-const MultitrackPlugin = registerPlugin('MixerBridge', {
-    web: () => import('./MultitrackPluginWeb').then(m => new m.MultitrackPluginWeb()),
-});
+const IS_NATIVE =
+    typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
 
-// Logs for debugging
-setTimeout(async () => {
-    try {
-        const { value } = await MultitrackPlugin.echo({ value: 'CONEXION' });
-        console.log('[NativeEngine] Puente OK:', value);
-        const status = await MultitrackPlugin.checkStatus();
-        console.log('[NativeEngine] C++:', status.info);
-    } catch (e) {
-        console.error('[NativeEngine] Puente Fallo:', e);
+let _snapCache = { t: 0, s: {} };
+const SNAPSHOT_TTL_MS = 80;
+
+async function nextGenSnapshot() {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    if (now - _snapCache.t < SNAPSHOT_TTL_MS && _snapCache.s && Object.keys(_snapCache.s).length) {
+        return _snapCache.s;
     }
-}, 2000);
+    try {
+        const { json } = await NextGenMixerBridge.getSnapshot();
+        if (!json || typeof json !== 'string') {
+            _snapCache = { t: now, s: {} };
+            return {};
+        }
+        const s = JSON.parse(json);
+        _snapCache = { t: now, s };
+        return s;
+    } catch {
+        return {};
+    }
+}
+
+setTimeout(async () => {
+    if (!IS_NATIVE) return;
+    try {
+        const s = await nextGenSnapshot();
+        console.log('[NativeEngine] NextGen engine:', s.engine || 'NextGen', 'tracks:', s.trackCount);
+    } catch (e) {
+        console.warn('[NativeEngine] NextGen probe:', e);
+    }
+}, 2500);
 
 /**
  * UTILITY: Get absolute path of a file in persistent storage
@@ -35,6 +55,16 @@ let cacheInitialized = false;
 /**
  * UTILITY: Check if file exists
  */
+function isStatMissingFileError(err) {
+    const code = err?.code;
+    const msg = String(err?.message ?? '');
+    return (
+        code === 'OS-PLUG-FILE-0008' ||
+        msg.includes('does not exist') ||
+        msg.includes('not exist')
+    );
+}
+
 async function fileExists(filename) {
     if (fileCache.has(filename)) return true;
 
@@ -45,8 +75,10 @@ async function fileExists(filename) {
         });
         fileCache.add(filename);
         return true;
-    } catch {
-        console.warn('[NativeEngine] fileExists error: unknown');
+    } catch (err) {
+        if (!isStatMissingFileError(err)) {
+            console.warn('[NativeEngine] fileExists:', filename, err);
+        }
         return false;
     }
 }
@@ -89,24 +121,50 @@ export const NativeEngine = {
     },
 
     /**
-     * Saves a Blob (downloaded from B2) directly to phone storage.
+     * Saves a Blob to app DATA without one giant base64 bridge payload (OOM / proceso matado).
+     * Escribe en trozos con writeFile + appendFile y cede el hilo entre trozos.
      */
     saveTrackBlob: async (blob, filename) => {
-        const base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-                const result = reader.result;
-                resolve(result.substring(result.indexOf(',') + 1));
-            };
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(blob);
-        });
+        const buf = await blob.arrayBuffer();
+        const u8 = new Uint8Array(buf);
+        const len = u8.length;
+        if (len === 0) throw new Error('[NativeEngine] saveTrackBlob: empty blob');
 
-        await Filesystem.writeFile({
-            path: filename,
-            data: base64,
-            directory: Directory.Data,
-        });
+        // ~192 KiB raw → base64 ~256 KiB por round-trip (antes: pistas enteras de varios MB en un solo writeFile).
+        const CHUNK = 192 * 1024;
+
+        const toB64 = (bytes) => {
+            let binary = '';
+            const step = 0x8000;
+            for (let i = 0; i < bytes.length; i += step) {
+                binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + step, bytes.length)));
+            }
+            return btoa(binary);
+        };
+
+        let offset = 0;
+        let first = true;
+        while (offset < len) {
+            const end = Math.min(offset + CHUNK, len);
+            const piece = u8.subarray(offset, end);
+            const b64 = toB64(piece);
+            if (first) {
+                await Filesystem.writeFile({
+                    path: filename,
+                    data: b64,
+                    directory: Directory.Data,
+                });
+                first = false;
+            } else {
+                await Filesystem.appendFile({
+                    path: filename,
+                    data: b64,
+                    directory: Directory.Data,
+                });
+            }
+            offset = end;
+            await new Promise((r) => setTimeout(r, 0));
+        }
 
         fileCache.add(filename);
         return await getFilePath(filename);
@@ -118,21 +176,37 @@ export const NativeEngine = {
      */
     readTrackBlob: async (songId, trackName) => {
         const filename = `${songId}_${trackName}.mp3`;
-        try {
-            const { data } = await Filesystem.readFile({ path: filename, directory: Directory.Data });
+        const blobFromBase64 = (data) => {
             const binaryString = atob(data);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
             return new Blob([bytes.buffer], { type: 'audio/mpeg' });
+        };
+        try {
+            const { uri } = await Filesystem.getUri({
+                path: filename,
+                directory: Directory.Data,
+            });
+            const url = Capacitor.convertFileSrc(uri);
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`readTrackBlob fetch ${res.status}`);
+            return await res.blob();
         } catch (e) {
-            console.warn('[NativeEngine] readTrackBlob failed:', trackName, e);
-            return null;
+            try {
+                const { data } = await Filesystem.readFile({ path: filename, directory: Directory.Data });
+                return blobFromBase64(data);
+            } catch (e2) {
+                console.warn('[NativeEngine] readTrackBlob failed:', trackName, e2);
+                return null;
+            }
         }
     },
 
+    /** @deprecated Prefer loadTracks batch — NextGen loads whole session at once. */
     loadSingleTrack: async (id, path) => {
         try {
-            await MultitrackPlugin.loadTracks({ tracks: [{ id, path }] });
+            console.log('[NEXTGEN_UI] load song (single)', id);
+            await NextGenMixerBridge.loadSongSession({ tracks: [{ id, path }] });
         } catch (err) {
             console.error('[NativeEngine] loadSingleTrack error:', err);
         }
@@ -140,129 +214,138 @@ export const NativeEngine = {
 
     getTrackCount: async () => {
         try {
-            const { count } = await MultitrackPlugin.getTrackCount();
-            return count;
-        } catch (err) { 
-            console.warn('[NativeEngine] getTrackCount error', err); 
-            return 0; 
+            const s = await nextGenSnapshot();
+            if (typeof s.trackCount === 'number') return s.trackCount;
+            if (Array.isArray(s.tracks)) return s.tracks.length;
+            return 0;
+        } catch (err) {
+            console.warn('[NativeEngine] getTrackCount error', err);
+            return 0;
         }
     },
 
     loadTracks: async (tracks) => {
         try {
-            await MultitrackPlugin.clearTracks();
-            await MultitrackPlugin.loadTracks({ tracks });
-            console.log(`[NativeEngine] Pistas cargadas en C++: ${tracks.length}`);
+            console.log('[NEXTGEN_UI] load song', tracks?.length ?? 0);
+            await NextGenMixerBridge.loadSongSession({ tracks });
         } catch (err) {
             console.error('[NativeEngine] loadTracks error:', err);
         }
     },
 
-    /**
-     * Pre-carga las pistas de la SIGUIENTE canción en un buffer paralelo del C++.
-     * No interrumpe la reproducción actual. Lento (decodifica en background thread).
-     */
-    preloadTracks: async (songId, tracks) => {
-        try {
-            await MultitrackPlugin.preloadTracks({ songId, tracks });
-            console.log(`[NativeEngine] Pre-carga completada: ${songId} (${tracks.length} pistas)`);
-        } catch (err) {
-            console.warn('[NativeEngine] preloadTracks error:', err);
-        }
+    /** Legacy preload queue — not used by NextGen (no-op). */
+    preloadTracks: async () => {
+        console.log('[NEXTGEN_UI] preload disabled (NextGen)');
     },
 
-    /**
-     * Swap atómico O(1): la canción pre-cargada pasa a ser la activa.
-     * Retorna true si el swap fue exitoso (la canción estaba pre-cargada).
-     */
-    swapToPending: async (songId) => {
-        try {
-            const { swapped } = await MultitrackPlugin.swapToPending({ songId });
-            console.log(`[NativeEngine] swapToPending ${songId}: ${swapped}`);
-            return !!swapped;
-        } catch (err) {
-            console.warn('[NativeEngine] swapToPending error:', err);
-            return false;
-        }
+    /** Legacy swap — not used by NextGen. */
+    swapToPending: async () => {
+        console.log('[NEXTGEN_UI] swap disabled (NextGen)');
+        return false;
     },
 
-    clearPending: async () => {
-        try { await MultitrackPlugin.clearPending(); } catch { /* ignore */ }
-    },
+    clearPending: async () => {},
 
     play: async () => {
-        try { await MultitrackPlugin.play(); } catch (err) { console.warn('play error', err); }
+        try {
+            console.log('[NEXTGEN_UI] play');
+            await NextGenMixerBridge.play();
+        } catch (err) {
+            console.warn('play error', err);
+        }
     },
 
     pause: async () => {
-        try { await MultitrackPlugin.pause(); } catch (err) { console.warn('pause error', err); }
+        try {
+            console.log('[NEXTGEN_UI] pause');
+            await NextGenMixerBridge.pause();
+        } catch (err) {
+            console.warn('pause error', err);
+        }
     },
 
     stop: async () => {
-        try { await MultitrackPlugin.stop(); } catch (err) { console.warn('stop error', err); }
+        try {
+            console.log('[NEXTGEN_UI] stop');
+            await NextGenMixerBridge.stop();
+        } catch (err) {
+            console.warn('stop error', err);
+        }
+    },
+
+    clearTracks: async () => {
+        try {
+            await NextGenMixerBridge.stop();
+        } catch (err) {
+            console.warn('[NativeEngine] clearTracks error', err);
+        }
     },
 
     seek: async (seconds) => {
-        try { await MultitrackPlugin.seek({ seconds }); } catch (err) { console.warn('seek error', err); }
+        try {
+            console.log('[NEXTGEN_UI] seek', seconds);
+            await NextGenMixerBridge.seek({ seconds });
+        } catch (err) {
+            console.warn('seek error', err);
+        }
     },
 
-    setMasterVolume: async (volume) => {
-        try { await MultitrackPlugin.setVolume({ volume }); } catch (err) { console.warn('setVolume error', err); }
+    setMasterVolume: async () => {
+        /* NextGen mixer has per-stem gain only — master UI is a no-op on native for now */
     },
 
     setTrackVolume: async (id, volume) => {
-        try { await MultitrackPlugin.setTrackVolume({ id, volume }); } catch (err) { console.warn('setTrackVol error', err); }
+        try {
+            console.log('[NEXTGEN_UI] volume change', id, volume);
+            await NextGenMixerBridge.setTrackVolume({ id, volume });
+        } catch (err) {
+            console.warn('setTrackVol error', err);
+        }
     },
 
     setTrackMute: async (id, muted) => {
-        try { await MultitrackPlugin.setTrackMute({ id, muted }); } catch (err) { console.warn('mute error', err); }
+        try {
+            console.log('[NEXTGEN_UI] mute', id, muted);
+            await NextGenMixerBridge.setTrackMute({ id, muted });
+        } catch (err) {
+            console.warn('mute error', err);
+        }
     },
-    setTrackSolo: async (id, solo) => {
-        try { await MultitrackPlugin.setTrackSolo({ id, solo }); } catch (err) { console.warn('solo error', err); }
+    setTrackSolo: async () => {
+        /* NextGen Phase 2 has no solo — UI may still call this */
     },
 
-    setSpeed: async (speed) => {
-        try { await MultitrackPlugin.setSpeed({ speed }); } catch (err) { console.warn('speed error', err); }
+    setSpeed: async () => {
+        /* NextGen: tempo not exposed yet */
     },
 
     getPosition: async () => {
         try {
-            const { position } = await MultitrackPlugin.getPosition();
-            return position;
+            const s = await nextGenSnapshot();
+            const p = s.positionSec;
+            return typeof p === 'number' && Number.isFinite(p) ? p : 0;
         } catch (err) {
             console.warn('[NativeEngine] getPosition error', err);
             return 0;
         }
     },
 
-    // Duración real del audio cargado en el motor C++ (segundos).
-    // Usa ma_sound_get_length_in_seconds — funciona incluso con MA_SOUND_FLAG_STREAM.
     getDuration: async () => {
         try {
-            const { duration } = await MultitrackPlugin.getDuration();
-            return duration || 0;
+            const s = await nextGenSnapshot();
+            const d = s.durationSec;
+            return typeof d === 'number' && Number.isFinite(d) ? d : 0;
         } catch (err) {
             console.warn('[NativeEngine] getDuration error', err);
             return 0;
         }
     },
 
-    // Pitch shifting (SoundTouch — tempo-independent).
-    // semitones: -12..+12 (0 = bypass, no processing overhead)
-    setPitch: async (semitones) => {
-        try { await MultitrackPlugin.setPitch({ semitones }); }
-        catch (err) { console.warn('[NativeEngine] setPitch error', err); }
+    setPitch: async () => {
+        /* NextGen: pitch not exposed */
     },
 
-    // Returns raw "id1:0.45,id2:0.22,..." level string from C++ MeterNodes.
-    getTrackLevels: async () => {
-        try {
-            const { levels } = await MultitrackPlugin.getTrackLevels();
-            return levels || '';
-        } catch (err) {
-            return '';
-        }
-    },
+    getTrackLevels: async () => '',
 
     // ── Audio Format v2 (FLAC) helpers ───────────────────────────────────────
     // Tracks marked normalizedReady===true are stored on device as .flac files.

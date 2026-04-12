@@ -7,7 +7,9 @@ file(GLOB SOUNDTOUCH_SRCS soundtouch/*.cpp)
 add_library(
         multitrack-native-engine
         SHARED
+        MiniaudioImplementation.cpp
         MixerNativeEngine.cpp
+        NextGenMultitrackEngine.cpp
         ${SOUNDTOUCH_SRCS}
 )
 
@@ -15,7 +17,6 @@ target_compile_options(multitrack-native-engine PRIVATE
         -O2
         -fexceptions
         -frtti
-        -DMINIAUDIO_IMPLEMENTATION
         -DSOUNDTOUCH_FLOAT_SAMPLES=1
         -DSOUNDTOUCH_DISABLE_X86_OPTIMIZATIONS=1
         -DST_NO_EXCEPTION_HANDLING=1

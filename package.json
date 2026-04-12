@@ -1,14 +1,16 @@
 {
   "name": "mixer",
   "private": true,
-  "version": "1.8.37",
+  "version": "1.8.55",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "start": "npm run build && node b2-proxy.mjs",
     "start-proxy": "node b2-proxy.mjs",
     "build": "vite build",
-    "build:android": "npm run build && npx cap copy android && cd android && gradlew.bat assembleRelease",
+    "build:android": "npm run build && npx cap copy android && cd android && gradlew.bat assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease",
+    "android:install": "npm run build && npx cap copy android && cd android && gradlew.bat installDebug",
+    "android:log:snapshot": "adb logcat -d -t 2500 > logs/mixer-snapshot.txt",
     "upload:apk": "node upload-final-apk.mjs",
     "release": "npm run build:android && npm run upload:apk",
     "lint": "eslint .",

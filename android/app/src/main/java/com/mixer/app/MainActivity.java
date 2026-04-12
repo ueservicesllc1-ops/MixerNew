@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Registration MUST happen before or during initialization
         registerPlugin(MultitrackPlugin.class);
+        registerPlugin(NextGenMixerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

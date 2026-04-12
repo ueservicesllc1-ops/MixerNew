@@ -20,6 +20,7 @@ import './index.css'
 const Dashboard  = lazy(() => import('./pages/Dashboard'))
 const Multitrack = lazy(() => import('./pages/Multitrack'))
 const Academy    = lazy(() => import('./pages/Academy'))
+const NextGenTest = lazy(() => import('./pages/NextGenTest'))
 
 const PageLoader = () => (
   <div style={{
@@ -78,6 +79,8 @@ function App() {
           />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/multitrack" element={<Multitrack />} />
+          {/* Isolated NextGen native engine manual test — not part of production multitrack flow */}
+          <Route path="/nextgen-test" element={<NextGenTest />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="/store" element={<Store />} />
           <Route path="/privacy" element={<Privacy />} />

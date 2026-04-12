@@ -9,7 +9,7 @@ function formatTime(s) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export default function WaveformCanvas({ songId, tracks, duration, hasPreview }) {
+export default function WaveformCanvas({ songId, tracks, duration, hasPreview, suppressHeavyWork }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const lastDragSecRef = useRef(0);
@@ -44,6 +44,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
     // Periodically try to analyze buffers if not loaded yet
     useEffect(() => {
         if (!songId) return;
+        if (suppressHeavyWork) return;
 
         const pickBufferFromEngine = () => {
             // Web: decoded buffers live on audioEngine.tracks. Native: only _trackMeta has optional buffer (tracks Map stays empty).
@@ -98,9 +99,19 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
         const updateWaveform = async () => {
             let bufferToUse = pickBufferFromEngine();
 
-            // Native: leer __PreviewMix directo del filesystem (fuente de verdad)
-            if (!bufferToUse && isNative && audioEngine.ctx) {
+            // Native: __PreviewMix desde disco + decodeAudioData — muy pesado (OOM / cierre si corre
+            // justo tras loadTracks). Diferir con idle + pausa; no duplicar con Multitrack.
+            if (!bufferToUse && isNative && audioEngine.ctx && !suppressHeavyWork) {
                 try {
+                    await new Promise((r) => setTimeout(r, 0));
+                    await new Promise((r) => {
+                        if (typeof requestIdleCallback !== 'undefined') {
+                            requestIdleCallback(() => r(), { timeout: 60000 });
+                        } else {
+                            setTimeout(r, 5000);
+                        }
+                    });
+                    await new Promise((r) => setTimeout(r, 1500));
                     const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
                     if (raw) {
                         const ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
@@ -115,11 +126,70 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview })
         };
 
         if (!peaks) {
-            const timer = setInterval(updateWaveform, 2000);
-            updateWaveform();
-            return () => clearInterval(timer);
+            if (!isNative) {
+                const timer = setInterval(updateWaveform, 2000);
+                updateWaveform();
+                return () => clearInterval(timer);
+            }
+
+            // Nativo: no disparar al montar (coincide con swap/GC). Solo cuando la barra entra en vista
+            // o un fallback tardío; una sola pasada fuerte, sin intervalos cada 2s.
+            let cancelled = false;
+            let io = null;
+            let fallbackTimer = null;
+            let ran = false;
+
+            const runOnce = () => {
+                if (cancelled || ran) return;
+                ran = true;
+                void updateWaveform();
+            };
+
+            const arm = () => {
+                if (typeof requestIdleCallback !== 'undefined') {
+                    requestIdleCallback(
+                        () => {
+                            setTimeout(() => {
+                                if (!cancelled) runOnce();
+                            }, 2500);
+                        },
+                        { timeout: 45000 }
+                    );
+                } else {
+                    setTimeout(runOnce, 12000);
+                }
+            };
+
+            const el = containerRef.current;
+            if (el && typeof IntersectionObserver !== 'undefined') {
+                io = new IntersectionObserver(
+                    (entries) => {
+                        if (entries.some((e) => e.isIntersecting && e.intersectionRatio > 0)) {
+                            if (fallbackTimer) {
+                                clearTimeout(fallbackTimer);
+                                fallbackTimer = null;
+                            }
+                            arm();
+                            if (io) io.disconnect();
+                        }
+                    },
+                    { root: null, rootMargin: '120px', threshold: [0, 0.05] }
+                );
+                io.observe(el);
+            }
+
+            fallbackTimer = setTimeout(() => {
+                fallbackTimer = null;
+                arm();
+            }, 22000);
+
+            return () => {
+                cancelled = true;
+                if (io) io.disconnect();
+                if (fallbackTimer) clearTimeout(fallbackTimer);
+            };
         }
-    }, [songId, tracks, peaks, isNative]);
+    }, [songId, tracks, peaks, isNative, suppressHeavyWork]);
 
     const isDraggingRef = useRef(false);
 

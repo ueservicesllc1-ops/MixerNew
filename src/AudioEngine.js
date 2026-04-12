@@ -51,6 +51,9 @@ class AudioEngine {
         this._nativeLevels = new Map();
         this._levelPollInterval = null;
 
+        /** When true, no getPosition/getTrackLevels bridge calls (song change prep on low-RAM devices). */
+        this._songPreparationActive = false;
+
         if (!IS_NATIVE) {
             this._initWebAudio();
         }
@@ -86,9 +89,8 @@ class AudioEngine {
     async addTracksBatch(tracksArray) {
         this.resetTiming();
         if (IS_NATIVE) {
-            // Extraer songId del primer trackId (formato: "songId_trackName")
-            const firstId = tracksArray[0]?.id || '';
-            const songId  = firstId.includes('_') ? firstId.substring(0, firstId.indexOf('_')) : '';
+            // Nueva carga reemplaza la canción anterior: no dejar IDs viejos en meta JS.
+            this._trackMeta.clear();
 
             const batch = [];
             for (const t of tracksArray) {
@@ -106,20 +108,7 @@ class AudioEngine {
 
             const n = await getNative();
 
-            // ── FAST PATH: intentar swap con pre-cargado ──────────────────────
-            if (songId && batch.length > 0) {
-                const swapped = await n.swapToPending(songId);
-                if (swapped) {
-                    console.log(`[AudioEngine] ⚡ Swap instantáneo: ${songId}`);
-                    try {
-                        const dur = await n.getDuration();
-                        if (dur > 1) this._durationHint = dur;
-                    } catch { /* ignorar */ }
-                    return;
-                }
-            }
-
-            // ── SLOW PATH: carga normal (clearTracks + loadTracks) ────────────
+            // Solo clearTracks + loadTracks (swapToPending desactivado para estabilidad).
             if (batch.length > 0) {
                 await n.loadTracks(batch);
                 // Pedir duración real al motor C++ y guardar como hint para la UI
@@ -324,11 +313,50 @@ class AudioEngine {
         }
     }
 
+    /**
+     * Suspenda RAF + VU polling sin borrar niveles (p. ej. mientras se prepara otra canción).
+     */
+    _suspendNativePollingForPreparation() {
+        if (this._levelPollInterval) {
+            clearInterval(this._levelPollInterval);
+            this._levelPollInterval = null;
+            console.log('[POLL] skipped getTrackLevels because preparing');
+        }
+        if (this._updater) {
+            cancelAnimationFrame(this._updater);
+            this._updater = null;
+            console.log('[POLL] skipped getPosition because preparing (RAF suspended)');
+        }
+    }
+
+    /**
+     * Nativo: pausa/reanuda getPosition (RAF) y getTrackLevels (interval) durante preparación de tema.
+     */
+    setSongPreparationActive(preparing) {
+        if (!IS_NATIVE) return;
+        const was = this._songPreparationActive;
+        this._songPreparationActive = !!preparing;
+        if (this._songPreparationActive) {
+            if (!was) console.log('[POLL] paused for song preparation');
+            this._suspendNativePollingForPreparation();
+        } else {
+            if (was) console.log('[POLL] resumed after preparation');
+            if (this.isPlaying) {
+                getNative().then((native) => {
+                    if (!this.isPlaying || this._songPreparationActive) return;
+                    this._startRAF(this._sessionId);
+                    this._startNativeLevelPoll(native);
+                });
+            }
+        }
+    }
+
     _startNativeLevelPoll(native) {
         if (this._levelPollInterval) clearInterval(this._levelPollInterval);
         this._levelPollInterval = setInterval(async () => {
-            if (!this.isPlaying) return;
+            if (!this.isPlaying || this._songPreparationActive) return;
             try {
+                if (this._songPreparationActive) return;
                 const raw = await native.getTrackLevels();
                 if (raw) {
                     raw.split(',').forEach(entry => {
@@ -497,7 +525,11 @@ class AudioEngine {
             const native = await getNative();
             // Android authoritative baseline: trust native engine position first.
             let pos = 0;
-            try {
+            if (this._songPreparationActive) {
+                console.log('[POLL] skipped getPosition because preparing');
+                const elapsed = (performance.now() - this._playStartWall) / 1000;
+                pos = this._playStartPos + elapsed;
+            } else try {
                 pos = await native.getPosition();
             } catch (e) {
                 pos = 0;
@@ -571,16 +603,7 @@ class AudioEngine {
      */
     async preloadNextSong(songId, tracks) {
         if (!IS_NATIVE) return;
-        const batch = tracks.filter(t => t.path).map(t => ({ id: t.id, path: t.path }));
-        if (!batch.length) return;
-        try {
-            const n = await getNative();
-            // Lanzar sin await — corre en background thread del C++, no bloquea
-            n.preloadTracks(songId, batch).catch(e => console.warn('[AudioEngine] preload bg error:', e));
-            console.log(`[AudioEngine] 🔄 Pre-cargando en background: ${songId} (${batch.length} pistas)`);
-        } catch (e) {
-            console.warn('[AudioEngine] preloadNextSong error:', e);
-        }
+        console.log('[NEXTGEN_UI] preload disabled (NextGen)', songId, tracks?.length ?? 0);
     }
 
     // ── DRAG SYNC METHODS ──────────────────────────────────────────
@@ -675,7 +698,8 @@ class AudioEngine {
     _startRAF(sessionId) {
         const update = async () => {
             if (!this.isPlaying || sessionId !== this._sessionId) return;
-            
+            if (IS_NATIVE && this._songPreparationActive) return;
+
             try {
                 let currentPos = 0;
                 if (IS_NATIVE) {

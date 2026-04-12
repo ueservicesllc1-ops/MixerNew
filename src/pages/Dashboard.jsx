@@ -13,6 +13,10 @@ import {
     Star, CheckCircle2 as CheckIcon, FileText
 } from 'lucide-react';
 
+function isFirestoreDocMissing(err) {
+    return err?.code === 'not-found';
+}
+
 const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
 
 const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
@@ -755,7 +759,15 @@ function Dashboard() {
         try {
             await updateDoc(doc(db, 'setlists', editingSetlistData.id), { songs: updatedSongs });
             setEditingSetlistData({ ...editingSetlistData, songs: updatedSongs });
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            if (isFirestoreDocMissing(e)) {
+                alert('Este setlist ya no existe en la nube. Cerrá el editor y actualizá la lista.');
+                setIsEditSetlistModalOpen(false);
+                setEditingSetlistData(null);
+                return;
+            }
+            console.error(e);
+        }
     };
 
     const handleRemoveSongFromSetlist = async (index) => {
@@ -765,7 +777,15 @@ function Dashboard() {
         try {
             await updateDoc(doc(db, 'setlists', editingSetlistData.id), { songs: updatedSongs });
             setEditingSetlistData({ ...editingSetlistData, songs: updatedSongs });
-        } catch (e) { console.error(e); }
+        } catch (e) {
+            if (isFirestoreDocMissing(e)) {
+                alert('Este setlist ya no existe en la nube. Cerrá el editor y actualizá la lista.');
+                setIsEditSetlistModalOpen(false);
+                setEditingSetlistData(null);
+                return;
+            }
+            console.error(e);
+        }
     };
 
     const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
