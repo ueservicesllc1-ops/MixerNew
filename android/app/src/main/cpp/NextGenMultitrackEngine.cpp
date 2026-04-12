@@ -2,12 +2,14 @@
 
 #include "NextGenMultitrackEngine.h"
 
+#include "SoundTouch.h"
 #include "miniaudio.h"
 
 #include <android/log.h>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <future>
@@ -21,6 +23,11 @@
 #define NGD(...) __android_log_print(ANDROID_LOG_DEBUG, NG_TAG, __VA_ARGS__)
 #define NGE(...) __android_log_print(ANDROID_LOG_ERROR, NG_TAG, __VA_ARGS__)
 #define NGLOGI(msg) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN", "%s", msg)
+#define NGR(...) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN_ROUTE", __VA_ARGS__)
+#define NGSOLO(...) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN_SOLO", __VA_ARGS__)
+#define NGMIX(...) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN_MIX", __VA_ARGS__)
+#define NGPITCH(...) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN_PITCH", __VA_ARGS__)
+#define NGTEMPO(...) __android_log_print(ANDROID_LOG_INFO, "NEXTGEN_TEMPO", __VA_ARGS__)
 
 namespace {
 void logNextGenInfoMsgMs(const char* lineAfterTag, int64_t msSinceSeekStart) {
@@ -42,6 +49,34 @@ namespace {
 
 constexpr ma_uint32 kChannels = 2;
 constexpr ma_uint32 kSampleRate = (ma_uint32)NextGenMultitrackEngine::kDefaultSampleRate;
+
+/// Live split: click + guía → one earpiece, band → the other. Flip for stage routing.
+static constexpr bool clickGuideOnLeft = true;
+
+static bool utf8ContainsKeywordInsensitive(const std::string& hay, const char* needleLowerAscii) {
+    const size_t n = std::strlen(needleLowerAscii);
+    if (n == 0 || hay.size() < n) return false;
+    for (size_t i = 0; i + n <= hay.size(); ++i) {
+        bool ok = true;
+        for (size_t j = 0; j < n; ++j) {
+            const unsigned char hc = static_cast<unsigned char>(hay[i + j]);
+            const unsigned char nc = static_cast<unsigned char>(needleLowerAscii[j]);
+            if (std::tolower(hc) != static_cast<int>(nc)) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok) return true;
+    }
+    return false;
+}
+
+/** Click / guía / guide stems → one output side; everything else → the other (see clickGuideOnLeft). */
+static bool classifyStemClickOrGuide(const std::string& id, const std::string& path) {
+    const std::string blob = id + " " + path;
+    return utf8ContainsKeywordInsensitive(blob, "click") || utf8ContainsKeywordInsensitive(blob, "guia") ||
+           utf8ContainsKeywordInsensitive(blob, "guide");
+}
 
 } // namespace
 
@@ -66,8 +101,11 @@ struct StemChannel {
     bool decoderOk = false;
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false};
+    std::atomic<bool> solo{false};
     std::atomic<bool> ended{false};
     ma_uint64 lengthFrames = 0;
+    /// Set at load: click/guía/guide → split side; other stems → opposite (see onAudio routing).
+    bool routeClickGuide = false;
     /// Diagnostic: log at most one partial-read line per stem after each seek (reset in seekSeconds).
     bool loggedPartialAfterSeek = false;
 };
@@ -95,6 +133,127 @@ struct NextGenMultitrackEngine::Impl {
     std::atomic<bool> diag_logged_audio_gated_{false};
     /// After ungate, log once on first all-stems full block (audible clean mix).
     std::atomic<bool> diag_pending_first_audible_{false};
+
+    /// Post-mix SoundTouch: pitch + tempo, whole song. LGPL, float samples.
+    soundtouch::SoundTouch pitch_st_;
+    std::atomic<float> pitch_semitones_{0.f};
+    std::atomic<float> tempo_ratio_{1.f};
+    std::atomic<float> pitch_applied_st_{0.f};
+    std::atomic<float> tempo_applied_{1.f};
+    std::atomic<bool> pitch_clear_pending_{false};
+    std::atomic<bool> tempo_clear_pending_{false};
+    std::atomic<int> pitch_log_mode_{0}; // 0 init, 1 bypass, 2 processing
+    std::atomic<int> tempo_log_mode_{0};
+
+    /// Post–SoundTouch master fader [0, 1]
+    std::atomic<float> master_volume_{1.f};
+
+    static constexpr float kTempoRatioMin = 0.8f;
+    static constexpr float kTempoRatioMax = 1.2f;
+
+    void initPostMixProcessorLocked() {
+        pitch_st_.clear();
+        pitch_st_.setSampleRate(kSampleRate);
+        pitch_st_.setChannels(kChannels);
+        pitch_st_.setPitchSemiTones(0.0);
+        pitch_st_.setTempo(1.0);
+        pitch_semitones_.store(0.f);
+        tempo_ratio_.store(1.f);
+        pitch_applied_st_.store(0.f);
+        tempo_applied_.store(1.f);
+        pitch_log_mode_.store(0);
+        tempo_log_mode_.store(0);
+    }
+
+    void applyPostMixSoundTouch(float* pOut, ma_uint32 frameCount) {
+        const float pTarget = pitch_semitones_.load(std::memory_order_relaxed);
+        const float tTarget = tempo_ratio_.load(std::memory_order_relaxed);
+        const bool pitchBypass = std::abs(pTarget) < 0.01f;
+        const bool tempoBypass = std::abs(tTarget - 1.0f) < 0.001f;
+
+        const bool pClear = pitch_clear_pending_.exchange(false);
+        const bool tClear = tempo_clear_pending_.exchange(false);
+        if (pClear || tClear) {
+            pitch_st_.clear();
+            pitch_applied_st_.store(1e6f);
+            tempo_applied_.store(1e6f);
+        }
+
+        if (pitchBypass && tempoBypass) {
+            pitch_applied_st_.store(0.f);
+            tempo_applied_.store(1.f);
+            const int prevP = pitch_log_mode_.exchange(1);
+            if (prevP != 1) {
+                NGPITCH("[NEXTGEN_PITCH] bypass (pitch = 0)");
+            }
+            const int prevT = tempo_log_mode_.exchange(1);
+            if (prevT != 1) {
+                NGTEMPO("[NEXTGEN_TEMPO] bypass (tempo = 1.0)");
+            }
+            return;
+        }
+
+        if (!pitchBypass) {
+            const int prev = pitch_log_mode_.exchange(2);
+            if (prev != 2) {
+                NGPITCH("[NEXTGEN_PITCH] processing active");
+            }
+        } else {
+            pitch_log_mode_.store(1);
+        }
+
+        if (!tempoBypass) {
+            const int prev = tempo_log_mode_.exchange(2);
+            if (prev != 2) {
+                NGTEMPO("[NEXTGEN_TEMPO] processing active");
+            }
+        } else {
+            tempo_log_mode_.store(1);
+        }
+
+        if (!pitchBypass) {
+            if (std::abs(pTarget - pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
+                pitch_st_.setPitchSemiTones((double)pTarget);
+                pitch_applied_st_.store(pTarget);
+            }
+        } else {
+            if (std::abs(pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
+                pitch_st_.setPitchSemiTones(0.0);
+                pitch_applied_st_.store(0.f);
+            }
+        }
+
+        if (!tempoBypass) {
+            if (std::abs(tTarget - tempo_applied_.load(std::memory_order_relaxed)) > 1e-4f) {
+                pitch_st_.setTempo((double)tTarget);
+                tempo_applied_.store(tTarget);
+            }
+        } else {
+            if (std::abs(tempo_applied_.load(std::memory_order_relaxed) - 1.f) > 1e-4f) {
+                pitch_st_.setTempo(1.0);
+                tempo_applied_.store(1.f);
+            }
+        }
+
+        pitch_st_.putSamples(pOut, frameCount);
+        ma_uint32 got = 0;
+        while (got < frameCount) {
+            const uint n = pitch_st_.receiveSamples(pOut + (size_t)got * kChannels, frameCount - got);
+            if (n == 0) break;
+            got += n;
+        }
+        if (got < frameCount) {
+            std::memset(pOut + (size_t)got * kChannels, 0,
+                        (size_t)(frameCount - got) * kChannels * sizeof(float));
+        }
+        const size_t samples = (size_t)frameCount * kChannels;
+        for (size_t i = 0; i < samples; ++i) {
+            float x = pOut[i];
+            if (x > 1.f) x = 1.f;
+            else if (x < -1.f) x = -1.f;
+            pOut[i] = x;
+        }
+    }
 
     void stopDevice() {
         if (deviceInitialized) {
@@ -178,6 +337,14 @@ struct NextGenMultitrackEngine::Impl {
         bool sawActiveStem = false;
         bool blockAllStemsFullRead = true;
 
+        bool anySolo = false;
+        for (const auto& up : stems_) {
+            if (up && up->decoderOk && up->solo.load(std::memory_order_relaxed)) {
+                anySolo = true;
+                break;
+            }
+        }
+
         // Stems vector is stable while device runs (only replaced after stop+lock in loadSongSession).
         for (auto& up : stems_) {
             StemChannel* stem = up.get();
@@ -201,12 +368,42 @@ struct NextGenMultitrackEngine::Impl {
                 }
             }
 
-            const float g = stem->muted.load(std::memory_order_relaxed)
-                                ? 0.f
-                                : stem->volume.load(std::memory_order_relaxed);
-            const ma_uint64 toMix = framesRead * kChannels;
-            for (ma_uint64 i = 0; i < toMix; ++i) {
-                pOut[i] += mix_temp_[i] * g;
+            const bool muted = stem->muted.load(std::memory_order_relaxed);
+            const bool soloFlag = stem->solo.load(std::memory_order_relaxed);
+            const float vol = stem->volume.load(std::memory_order_relaxed);
+            float g = 0.f;
+            if (anySolo) {
+                if (!soloFlag) {
+                    g = 0.f;
+                } else if (muted) {
+                    g = 0.f;
+                } else {
+                    g = vol;
+                }
+            } else {
+                g = muted ? 0.f : vol;
+            }
+            // Split-stereo live routing: read stereo per stem as today; downmix to mono then write to ONE
+            // output channel only (no dual-channel bleed). Transport/seek/decoders unchanged.
+            const ma_uint32 nFrames = (ma_uint32)framesRead;
+            for (ma_uint32 f = 0; f < nFrames; ++f) {
+                const float L = mix_temp_[(size_t)f * 2];
+                const float R = mix_temp_[(size_t)f * 2 + 1];
+                const float m = 0.5f * (L + R);
+                const size_t base = (size_t)f * 2;
+                if (stem->routeClickGuide) {
+                    if (clickGuideOnLeft) {
+                        pOut[base + 0] += m * g;
+                    } else {
+                        pOut[base + 1] += m * g;
+                    }
+                } else {
+                    if (clickGuideOnLeft) {
+                        pOut[base + 1] += m * g;
+                    } else {
+                        pOut[base + 0] += m * g;
+                    }
+                }
             }
 
             // Short read usually means EOF for file-backed decoders.
@@ -227,6 +424,13 @@ struct NextGenMultitrackEngine::Impl {
             pOut[i] = x;
         }
 
+        applyPostMixSoundTouch(pOut, frameCount);
+
+        const float master = master_volume_.load(std::memory_order_relaxed);
+        for (size_t i = 0; i < samples; ++i) {
+            pOut[i] *= master;
+        }
+
         playhead_frames.fetch_add(frameCount, std::memory_order_relaxed);
     }
 
@@ -237,6 +441,7 @@ struct NextGenMultitrackEngine::Impl {
             std::lock_guard<std::mutex> lock(snapshot_mtx_);
             uninitDevice();
             clearStems();
+            initPostMixProcessorLocked();
 
             for (const auto& d : stems) {
                 auto ch = std::make_unique<StemChannel>();
@@ -244,7 +449,9 @@ struct NextGenMultitrackEngine::Impl {
                 ch->path = d.path;
                 ch->volume.store(d.volume);
                 ch->muted.store(d.muted);
+                ch->solo.store(false);
                 ch->ended.store(false);
+                ch->routeClickGuide = classifyStemClickOrGuide(ch->id, ch->path);
 
                 ma_decoder_config decCfg = ma_decoder_config_init(ma_format_f32, kChannels, kSampleRate);
                 NGD("decoder init: id=%s path=%s", ch->id.c_str(), ch->path.c_str());
@@ -260,6 +467,11 @@ struct NextGenMultitrackEngine::Impl {
                     if (len > duration_frames) duration_frames = len;
                 }
                 NGD("decoder OK: id=%s lenFrames=%llu", ch->id.c_str(), (unsigned long long)ch->lengthFrames);
+                if (ch->routeClickGuide) {
+                    NGR("[NEXTGEN_ROUTE] click/guide stem -> %s", clickGuideOnLeft ? "LEFT" : "RIGHT");
+                } else {
+                    NGR("[NEXTGEN_ROUTE] band stem -> %s", clickGuideOnLeft ? "RIGHT" : "LEFT");
+                }
                 stems_.push_back(std::move(ch));
             }
 
@@ -374,6 +586,10 @@ struct NextGenMultitrackEngine::Impl {
         }
 
         playhead_frames.store(frame);
+        pitch_st_.clear();
+        pitch_applied_st_.store(1e6f);
+        tempo_applied_.store(1e6f);
+
         const auto msAfterDecoders =
             std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - tSeekWallStart).count();
         logNextGenInfoMsgMs("seek decoders repositioned", (int64_t)msAfterDecoders);
@@ -417,14 +633,74 @@ struct NextGenMultitrackEngine::Impl {
         }
     }
 
+    void logSoloRoutingState() {
+        bool anySolo = false;
+        for (const auto& up : stems_) {
+            if (up && up->decoderOk && up->solo.load(std::memory_order_relaxed)) {
+                anySolo = true;
+                break;
+            }
+        }
+        NGSOLO("[NEXTGEN_SOLO] solo mode active = %s", anySolo ? "true" : "false");
+        if (anySolo) {
+            for (const auto& up : stems_) {
+                if (!up || !up->decoderOk) continue;
+                if (!up->solo.load(std::memory_order_relaxed)) {
+                    NGMIX("[NEXTGEN_MIX] track suppressed by solo logic %s", up->id.c_str());
+                }
+            }
+        }
+    }
+
     void setTrackMute(const std::string& id, bool muted) {
         for (auto& up : stems_) {
             if (up && up->id == id) {
                 up->muted.store(muted);
                 NGD("setTrackMute %s -> %d", id.c_str(), muted ? 1 : 0);
+                if (muted) {
+                    NGMIX("[NEXTGEN_MIX] track suppressed by mute %s", id.c_str());
+                }
                 return;
             }
         }
+    }
+
+    void setTrackSolo(const std::string& id, bool solo) {
+        for (auto& up : stems_) {
+            if (up && up->id == id) {
+                up->solo.store(solo);
+                NGSOLO("[NEXTGEN_SOLO] set solo %s=%s", id.c_str(), solo ? "true" : "false");
+                logSoloRoutingState();
+                return;
+            }
+        }
+    }
+
+    void setPitchSemiTones(float semitones) {
+        if (semitones < -3.f) semitones = -3.f;
+        if (semitones > 3.f) semitones = 3.f;
+        pitch_semitones_.store(semitones);
+        NGPITCH("[NEXTGEN_PITCH] set pitch %.2f semitones", semitones);
+        if (std::abs(semitones) < 0.01f) {
+            pitch_clear_pending_.store(true);
+        }
+    }
+
+    void setTempoRatio(float ratio) {
+        if (ratio < kTempoRatioMin) ratio = kTempoRatioMin;
+        if (ratio > kTempoRatioMax) ratio = kTempoRatioMax;
+        tempo_ratio_.store(ratio);
+        NGTEMPO("[NEXTGEN_TEMPO] set tempo ratio %.4f", ratio);
+        if (std::abs(ratio - 1.0f) < 0.001f) {
+            tempo_clear_pending_.store(true);
+        }
+    }
+
+    void setMasterVolume(float v) {
+        if (v < 0.f) v = 0.f;
+        if (v > 1.f) v = 1.f;
+        master_volume_.store(v);
+        NGD("setMasterVolume %.3f", v);
     }
 
     std::string getSnapshotJson() const {
@@ -443,6 +719,9 @@ struct NextGenMultitrackEngine::Impl {
         oss.precision(6);
         oss << "{\"engine\":\"NextGen\",\"transport\":\"" << stateStr << "\",";
         oss << "\"positionSec\":" << posSec << ",\"durationSec\":" << durSec << ",";
+        oss << "\"pitchSemiTones\":" << (double)pitch_semitones_.load(std::memory_order_relaxed) << ",";
+        oss << "\"tempoRatio\":" << (double)tempo_ratio_.load(std::memory_order_relaxed) << ",";
+        oss << "\"masterVolume\":" << (double)master_volume_.load(std::memory_order_relaxed) << ",";
         oss << "\"sampleRate\":" << (int)kSampleRate << ",\"trackCount\":" << stems_.size() << ",";
         oss << "\"tracks\":[";
         for (size_t i = 0; i < stems_.size(); ++i) {
@@ -451,6 +730,7 @@ struct NextGenMultitrackEngine::Impl {
             oss << "{\"id\":\"" << jsonEscape(t.id) << "\",";
             oss << "\"path\":\"" << jsonEscape(t.path) << "\",";
             oss << "\"volume\":" << (double)t.volume.load() << ",\"muted\":" << (t.muted.load() ? "true" : "false");
+            oss << ",\"solo\":" << (t.solo.load() ? "true" : "false");
             oss << ",\"ended\":" << (t.ended.load() ? "true" : "false") << "}";
         }
         oss << "]}";
@@ -481,6 +761,14 @@ void NextGenMultitrackEngine::seekSeconds(double seconds) { impl_->seekSeconds(s
 void NextGenMultitrackEngine::setTrackVolume(const std::string& id, float volume) { impl_->setTrackVolume(id, volume); }
 
 void NextGenMultitrackEngine::setTrackMute(const std::string& id, bool muted) { impl_->setTrackMute(id, muted); }
+
+void NextGenMultitrackEngine::setTrackSolo(const std::string& id, bool solo) { impl_->setTrackSolo(id, solo); }
+
+void NextGenMultitrackEngine::setPitchSemiTones(float semitones) { impl_->setPitchSemiTones(semitones); }
+
+void NextGenMultitrackEngine::setTempoRatio(float ratio) { impl_->setTempoRatio(ratio); }
+
+void NextGenMultitrackEngine::setMasterVolume(float volume) { impl_->setMasterVolume(volume); }
 
 std::string NextGenMultitrackEngine::getSnapshotJson() const { return impl_->getSnapshotJson(); }
 
@@ -567,6 +855,26 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackMute(
     const char* id = env->GetStringUTFChars(jid, nullptr);
     gNextGen->setTrackMute(id ? id : "", muted == JNI_TRUE);
     env->ReleaseStringUTFChars(jid, id);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackSolo(JNIEnv* env, jobject, jstring jid,
+                                                                               jboolean solo) {
+    if (!gNextGen || !jid) return;
+    const char* id = env->GetStringUTFChars(jid, nullptr);
+    gNextGen->setTrackSolo(id ? id : "", solo == JNI_TRUE);
+    env->ReleaseStringUTFChars(jid, id);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetPitchSemiTones(JNIEnv*, jobject, jfloat semitones) {
+    if (gNextGen) gNextGen->setPitchSemiTones(semitones);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTempoRatio(JNIEnv*, jobject, jfloat ratio) {
+    if (gNextGen) gNextGen->setTempoRatio(ratio);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetMasterVolume(JNIEnv*, jobject, jfloat volume) {
+    if (gNextGen) gNextGen->setMasterVolume(volume);
 }
 
 JNIEXPORT jstring JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeGetSnapshotJson(JNIEnv* env, jobject) {

@@ -3,6 +3,8 @@
  * Optimized for Native Storage: Direct file loading, minimum RAM usage.
  */
 
+import { NextGenMixerBridge } from './NextGenNativeEngine.js';
+
 let _nativeEngine = null;
 async function getNative() {
     if (!_nativeEngine) {
@@ -220,8 +222,14 @@ class AudioEngine {
 
     // -- Volume / Mute --
     setMasterVolume(vol) {
-        if (IS_NATIVE) { getNative().then(n => n.setMasterVolume(vol)); }
-        else { this.masterGain.gain.setTargetAtTime(vol, this.ctx.currentTime, 0.015); }
+        const v = typeof vol === 'number' && Number.isFinite(vol) ? Math.max(0, Math.min(1, vol)) : 1;
+        if (IS_NATIVE) {
+            void NextGenMixerBridge.setMasterVolume({ volume: v }).catch((err) => {
+                console.warn('[AudioEngine] setMasterVolume (NextGen) failed', err);
+            });
+        } else {
+            this.masterGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.015);
+        }
     }
 
     setTrackVolume(id, vol) {
@@ -422,8 +430,11 @@ class AudioEngine {
         }
 
         this.tempoRatio = ratio;
-        if (IS_NATIVE) { 
-            getNative().then(n => n.setSpeed && n.setSpeed(ratio)); 
+        if (IS_NATIVE) {
+            const r = typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : 1;
+            void NextGenMixerBridge.setTempoRatio({ ratio: r }).catch((err) => {
+                console.warn('[AudioEngine] setTempo (NextGen) failed', err);
+            });
         } else {
             for (const [, track] of this.tracks.entries()) {
                 if (track.source && track.source.playbackRate) {
@@ -434,10 +445,14 @@ class AudioEngine {
         }
     }
     
-    setPitch(semitones) { 
-        this.pitchSemitones = semitones; 
+    setPitch(semitones) {
+        const s = typeof semitones === 'number' && Number.isFinite(semitones) ? semitones : 0;
+        this.pitchSemitones = s;
         if (IS_NATIVE) {
-            getNative().then(n => n.setPitch && n.setPitch(semitones));
+            // Call Capacitor bridge directly — do not rely on getNative().setPitch (stale bundles / import order).
+            void NextGenMixerBridge.setPitchSemiTones({ semitones: s }).catch((err) => {
+                console.warn('[AudioEngine] setPitch (NextGen) failed', err);
+            });
         } else {
             this._updateWorkletParams();
         }

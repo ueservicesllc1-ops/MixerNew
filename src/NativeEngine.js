@@ -290,8 +290,13 @@ export const NativeEngine = {
         }
     },
 
-    setMasterVolume: async () => {
-        /* NextGen mixer has per-stem gain only — master UI is a no-op on native for now */
+    setMasterVolume: async (volume) => {
+        try {
+            const v = typeof volume === 'number' && Number.isFinite(volume) ? volume : 1;
+            await NextGenMixerBridge.setMasterVolume({ volume: v });
+        } catch (err) {
+            console.warn('setMasterVolume error', err);
+        }
     },
 
     setTrackVolume: async (id, volume) => {
@@ -311,12 +316,22 @@ export const NativeEngine = {
             console.warn('mute error', err);
         }
     },
-    setTrackSolo: async () => {
-        /* NextGen Phase 2 has no solo — UI may still call this */
+    setTrackSolo: async (id, solo) => {
+        try {
+            console.log('[NEXTGEN_UI] solo', id, solo);
+            await NextGenMixerBridge.setTrackSolo({ id, solo });
+        } catch (err) {
+            console.warn('solo error', err);
+        }
     },
 
-    setSpeed: async () => {
-        /* NextGen: tempo not exposed yet */
+    setSpeed: async (ratio) => {
+        try {
+            const r = typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : 1;
+            await NextGenMixerBridge.setTempoRatio({ ratio: r });
+        } catch (err) {
+            console.warn('setSpeed/tempo error', err);
+        }
     },
 
     getPosition: async () => {
@@ -341,8 +356,13 @@ export const NativeEngine = {
         }
     },
 
-    setPitch: async () => {
-        /* NextGen: pitch not exposed */
+    setPitch: async (semitones) => {
+        try {
+            const s = typeof semitones === 'number' ? semitones : 0;
+            await NextGenMixerBridge.setPitchSemiTones({ semitones: s });
+        } catch (err) {
+            console.warn('setPitch error', err);
+        }
     },
 
     getTrackLevels: async () => '',

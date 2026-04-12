@@ -1,6 +1,22 @@
 const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const flats = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
+/**
+ * Musical key as stored on Firestore / UI: top-level `key`, or nested `metadata.key`,
+ * `metadata.tono`, etc. (trimmed string or empty).
+ */
+export function getSongMusicalKey(song) {
+    if (!song || typeof song !== 'object') return '';
+    const m = song.metadata;
+    const nested =
+        m && typeof m === 'object'
+            ? m.key ?? m.tono ?? m.musicalKey ?? m.tonalidad ?? ''
+            : '';
+    const raw = song.key ?? song.tono ?? song.musicalKey ?? nested ?? '';
+    const s = typeof raw === 'string' ? raw.trim() : raw != null ? String(raw).trim() : '';
+    return s;
+}
+
 export const transposeChord = (chord, semitones) => {
     // Regex to match the base note and its accidental (e.g., C, C#, Bb)
     const chordRegex = /^([A-G][#b]?)(.*)/;

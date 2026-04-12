@@ -30,6 +30,22 @@ export class NextGenMixerPluginWeb extends WebPlugin {
         return;
     }
 
+    async setTrackSolo() {
+        return;
+    }
+
+    async setPitchSemiTones() {
+        return;
+    }
+
+    async setTempoRatio() {
+        return;
+    }
+
+    async setMasterVolume() {
+        return;
+    }
+
     async getSnapshot() {
         return { json: '{}' };
     }

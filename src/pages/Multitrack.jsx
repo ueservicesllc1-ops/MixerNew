@@ -6,7 +6,8 @@ import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
-import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, documentId } from 'firebase/firestore'
+import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { getSongMusicalKey } from '../utils/transposer.js'
 
 /** updateDoc sin documento → code `not-found` (SDK puede decir que no existe el documento / fila). */
 function isFirestoreDocMissing(err) {
@@ -119,9 +120,17 @@ async function computeNativeSongFormatPlan(song) {
     };
 }
 
-/** Límite catálogo Global: antes era onSnapshot(sin límite) → miles de docs con tracks[] → OOM en tablet. */
-const WEB_GLOBAL_CATALOG_MAX = 500;
-const NATIVE_GLOBAL_CATALOG_MAX = 120;
+/** Límite docs Global VIP (`isGlobal`) por query. La UI solo muestra entradas con `tracks.length > 0`. */
+const WEB_GLOBAL_CATALOG_MAX = 600;
+const NATIVE_GLOBAL_CATALOG_MAX = 400;
+
+function sortGlobalCatalogNewestFirst(songs) {
+    return [...songs].sort((a, b) => {
+        const ta = a.createdAt?.toMillis?.() ?? 0;
+        const tb = b.createdAt?.toMillis?.() ?? 0;
+        return tb - ta;
+    });
+}
 
 function parseSemverParts(s) {
     const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
@@ -174,6 +183,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     currentUser, isAppNative,
     globalCatalogLoading,
     downloadProgress, onDownloadAdd,
+    globalCatalogDocCount,
 }) {
     const baseSongs = React.useMemo(() => {
         const base = libraryTab === 'mine'
@@ -254,8 +264,16 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                         </div>
                                     )}
                                 </>
+                            ) : libraryTab === 'global' && globalCatalogDocCount > 0 ? (
+                                <div style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#555' }}>
+                                    Hay {globalCatalogDocCount} tema(s) en el catálogo Global VIP, pero ninguno trae{' '}
+                                    <strong>pistas multitrack</strong> en Firestore. Solo se listan canciones con al menos una pista.
+                                </div>
                             ) : (
-                                <div style={{ fontSize: '0.9rem' }}>No hay canciones globales todavía.</div>
+                                <div style={{ fontSize: '0.9rem', lineHeight: 1.45, color: '#555' }}>
+                                    No hay canciones Global VIP con pistas. Las publicadas en el marketplace aparecen aquí cuando tienen{' '}
+                                    <code style={{ fontSize: '0.85rem' }}>isGlobal</code> y archivos en <code style={{ fontSize: '0.85rem' }}>tracks</code>.
+                                </div>
                             )}
                         </div>
                     ) : (
@@ -263,6 +281,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                             {baseSongs.map(song => {
                                 const isDownloading = downloadProgress.songId === song.id;
                                 const isOtherUser = song.userId !== currentUser?.uid;
+                                const listSongKey = getSongMusicalKey(song);
                                 return (
                                     <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
                                         <div>
@@ -270,7 +289,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                             <div style={{ fontSize: '0.75rem', color: '#888' }}>
                                                 {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
                                                 {song.artist && `${song.artist} • `}
-                                                {song.key && `${song.key} • `}
+                                                {listSongKey && `${listSongKey} • `}
                                                 {song.tempo && `${song.tempo} BPM`}
                                             </div>
                                             {isDownloading && (
@@ -431,6 +450,8 @@ export default function Multitrack() {
     const [viewedSongId, setViewedSongId] = useState(null);
     /** Nativo: mientras prepara una canción, evita letras/acordes y ondas pesadas en paralelo. */
     const [nativePrepareBusy, setNativePrepareBusy] = useState(false);
+    /** APK: __PreviewMix puede existir en disco sin estar en tracks del setlist. */
+    const [previewMixOnDisk, setPreviewMixOnDisk] = useState(false);
     const [quickTextSearch, setQuickTextSearch] = useState('');
     const [isSearchingTexts, setIsSearchingTexts] = useState(false);
 
@@ -440,6 +461,20 @@ export default function Multitrack() {
         window.addEventListener('keydown', handleEsc);
         return () => window.removeEventListener('keydown', handleEsc);
     }, []);
+
+    useEffect(() => {
+        if (!isAppNative || !activeSongId) {
+            setPreviewMixOnDisk(false);
+            return undefined;
+        }
+        let cancelled = false;
+        NativeEngine.isTrackDownloaded(activeSongId, PREVIEW_TRACK_NAME).then((ok) => {
+            if (!cancelled) setPreviewMixOnDisk(!!ok);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [activeSongId]);
 
     // Login Details
     const [showLoginModal, setShowLoginModal] = useState(false);
@@ -909,19 +944,18 @@ export default function Multitrack() {
                     setLibrarySongs(songs);
                 });
 
-                // Global/VIP: en APK no escuchar toda la colección (OOM). Se carga acotada al abrir pestaña Global (useEffect).
-                // En web: listener acotado para no meter miles de documentos en RAM.
+                // Global VIP: solo docs con isGlobal (marketplace / catálogo publicado). La UI filtra las que tienen tracks[].
                 let unsubGlobal = () => {};
                 if (!isAppNative) {
                     const qGlobal = query(
                         collection(db, 'songs'),
-                        orderBy(documentId()),
+                        where('isGlobal', '==', true),
                         limit(WEB_GLOBAL_CATALOG_MAX)
                     );
                     unsubGlobal = onSnapshot(qGlobal, (snap) => {
                         const songs = [];
                         snap.forEach(d => songs.push({ id: d.id, ...d.data() }));
-                        setGlobalSongs(songs);
+                        setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
                     });
                 }
 
@@ -996,13 +1030,13 @@ export default function Multitrack() {
             try {
                 const q = query(
                     collection(db, 'songs'),
-                    orderBy(documentId()),
+                    where('isGlobal', '==', true),
                     limit(NATIVE_GLOBAL_CATALOG_MAX)
                 );
                 const snap = await getDocs(q);
                 const songs = [];
                 snap.forEach(d => songs.push({ id: d.id, ...d.data() }));
-                if (!cancelled) setGlobalSongs(songs);
+                if (!cancelled) setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
             } catch (e) {
                 console.error('[Global catalog]', e);
                 if (!cancelled) setGlobalSongs([]);
@@ -1780,7 +1814,10 @@ export default function Multitrack() {
     // Pitch / Key control (┬▒6 semitones via SoundTouch)
     const [pitchOffset, setPitchOffset] = useState(0);
     const handlePitchChange = (delta) => {
-        const newOffset = Math.max(-12, Math.min(12, pitchOffset + delta));
+        // NextGen native (SoundTouch) clamps to ±3 semitones — keep UI in sync so +/- is audible.
+        const min = isAppNative ? -3 : -12;
+        const max = isAppNative ? 3 : 12;
+        const newOffset = Math.max(min, Math.min(max, pitchOffset + delta));
         setPitchOffset(newOffset);
         audioEngine.setPitch(newOffset);
     };
@@ -1789,6 +1826,10 @@ export default function Multitrack() {
         audioEngine.setPitch(0);
     };
 
+    useEffect(() => {
+        setPitchOffset(0);
+        audioEngine.setPitch(0);
+    }, [activeSongId]);
 
     // Format time (e.g. 02:03)
     const formatTime = (secs) => {
@@ -1797,12 +1838,16 @@ export default function Multitrack() {
         return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    // Derive active song metadata - prioritize live library data over setlist snapshots
+    // Canción activa: mezclar entrada del setlist con el doc vivo de Firestore (librería / global)
+    // para no perder `key`, `tempo`, etc. si el array del setlist está desactualizado o es mínimo.
+    const fromSetlist = (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
     const liveSong = librarySongs.find(s => s.id === activeSongId)
         || globalSongs.find(s => s.id === activeSongId);
+    const activeSong = liveSong
+        ? { ...fromSetlist, ...liveSong }
+        : fromSetlist;
 
-    // Final active song object
-    const activeSong = liveSong || (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
+    const songKeyForUi = getSongMusicalKey(activeSong);
 
     const onNextGenPlaybackSnapshot = useCallback(({ positionSec, durationSec }) => {
         progressRef.current = positionSec;
@@ -2399,27 +2444,76 @@ export default function Multitrack() {
                     </button>
                 </div>
 
-                {/* MASTER VOLUME SLIDER */}
-                <div className="master-fader-mini" style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '0 10px',
-                    minWidth: window.innerWidth < 800 ? '110px' : '200px',
-                    height: '38px',
-                    flexShrink: 1,
-                    whiteSpace: 'nowrap'
-                }}>
-                    <span className="desktop-only" style={{ display: window.innerWidth < 1000 ? 'none' : 'block', color: 'white', fontSize: '0.65rem', fontWeight: '900', letterSpacing: '0.1em', whiteSpace: 'nowrap', opacity: 0.9 }}>MASTER</span>
-                    <input
-                        type="range"
-                        min="0" max="1" step="0.01"
-                        value={masterVolume}
-                        onChange={handleMasterVolume}
-                        onInput={handleMasterVolume}
-                        style={{ flex: 1, accentColor: 'white', cursor: 'pointer', height: '4px' }}
-                    />
-                    <span style={{ color: 'white', fontSize: '0.75rem', fontWeight: '900', paddingLeft: '4px' }}>{Math.round(masterVolume * 100)}%</span>
+                {/* MASTER VOLUME SLIDER — % fijo junto al rail para que no quede fuera en tablets */}
+                <div
+                    className="master-fader-mini"
+                    style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '0 6px',
+                        height: '38px',
+                        flex: '1 1 0',
+                        minWidth: 0,
+                        maxWidth: 'min(240px, 32vw)',
+                    }}
+                >
+                    <span
+                        className="desktop-only"
+                        style={{
+                            display: window.innerWidth < 1000 ? 'none' : 'block',
+                            color: 'white',
+                            fontSize: '0.65rem',
+                            fontWeight: '900',
+                            letterSpacing: '0.1em',
+                            whiteSpace: 'nowrap',
+                            opacity: 0.9,
+                            flex: '0 0 auto',
+                        }}
+                    >
+                        MASTER
+                    </span>
+                    <div
+                        style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            flex: '1 1 0',
+                            minWidth: 0,
+                        }}
+                    >
+                        <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={masterVolume}
+                            onChange={handleMasterVolume}
+                            onInput={handleMasterVolume}
+                            aria-label="Volumen master"
+                            style={{
+                                flex: '1 1 0',
+                                minWidth: 0,
+                                width: '100%',
+                                accentColor: 'white',
+                                cursor: 'pointer',
+                                height: '4px',
+                            }}
+                        />
+                        <span
+                            style={{
+                                flex: '0 0 2.65rem',
+                                width: '2.65rem',
+                                textAlign: 'right',
+                                color: 'white',
+                                fontSize: '0.72rem',
+                                fontWeight: '900',
+                                fontVariantNumeric: 'tabular-nums',
+                            }}
+                        >
+                            {Math.round(masterVolume * 100)}%
+                        </span>
+                    </div>
                 </div>
 
                 <div className="controls-group">
@@ -2463,7 +2557,7 @@ export default function Multitrack() {
                             className="control-value"
                             style={{ minWidth: '45px', color: pitchOffset !== 0 ? '#f39c12' : 'inherit' }}
                         >
-                            {transposeKey(activeSong?.key, pitchOffset) || activeSong?.key || '--'}
+                            {transposeKey(songKeyForUi, pitchOffset) || songKeyForUi || '--'}
                             {pitchOffset !== 0 && <span style={{ fontSize: '0.6rem', color: '#f39c12', marginLeft: '2px' }}>({pitchOffset > 0 ? `+${pitchOffset}` : pitchOffset})</span>}
                         </span>
                         <button onClick={() => handlePitchChange(+1)} className="square-btn">+</button>
@@ -2515,7 +2609,7 @@ export default function Multitrack() {
                             display: 'flex',
                             flexDirection: 'column',
                             minHeight: 0,
-                            padding: '0 8px',
+                            padding: '0 4px',
                         }}
                     >
                         {nativeLoadProgress?.songId === activeSongId && nativeLoadProgress.phase ? (
@@ -2560,6 +2654,10 @@ export default function Multitrack() {
                                     nativeUi
                                     disabled={nativePrepareBusy}
                                     onSnapshot={onNextGenPlaybackSnapshot}
+                                    hasPreviewMix={
+                                        !!(activeSong?.tracks?.some((t) => t.name === PREVIEW_TRACK_NAME)
+                                            || previewMixOnDisk)
+                                    }
                                 />
                             </div>
                         ) : (
@@ -3473,6 +3571,7 @@ export default function Multitrack() {
                 globalCatalogLoading={globalCatalogLoading}
                 downloadProgress={downloadProgress}
                 onDownloadAdd={handleDownloadAndAdd}
+                globalCatalogDocCount={globalSongs.length}
             />
             {/* PARTITURA FULLSCREEN OVERLAY */}
             {pvFullscreen && selectedPartitura && (
@@ -3528,6 +3627,8 @@ const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isAct
         transition,
         isDragging
     } = useSortable({ id: song.id });
+
+    const rowSongKey = getSongMusicalKey(song);
 
     useEffect(() => {
         const ph = loadProgress?.phase;
@@ -3612,7 +3713,7 @@ const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isAct
             </div>
             <div className="song-item-meta" style={{ marginLeft: '24px' }}>
                 {song.artist && `${song.artist} • `}
-                {song.key && `${song.key} • `}
+                {rowSongKey && `${rowSongKey} • `}
                 {song.tempo && `${song.tempo} BPM`}
             </div>
             {pStatus === 'loading' && loadProgress && loadProgress.total > 0 && isActive && loadProgress.phase === 'downloading' && (
