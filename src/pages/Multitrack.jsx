@@ -230,8 +230,8 @@ export default function Multitrack() {
     }, [proxyUrl]);
 
     /**
-     * Si todas las pistas ya están en el disco del dispositivo, arma el mismo Map que preload
-     * sin red. Incluye fallback MP3 cuando Firestore pide FLAC pero solo hay .mp3 local.
+     * Nativo: si cada pista ya está en disco, arma el Map para el motor.
+     * v2 FLAC: `*.flac` cuando Firestore trae normalizedReady; si no hay FLAC aún, acepta `*.mp3` local.
      */
     const tryBuildNativeTrackMapFromDisk = useCallback(async (song) => {
         if (!isAppNative) return null;
@@ -257,16 +257,23 @@ export default function Multitrack() {
                 finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                 if (tr.name === '__PreviewMix') blob = await NativeEngine.readTrackBlob(song.id, tr.name);
             }
-            let audioBuf = null;
-            if (tr.name === '__PreviewMix' && blob) {
-                try {
-                    const ab = await blob.arrayBuffer();
-                    audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                } catch { /* ignore */ }
-            }
-            pathMap.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
+            pathMap.set(tr.name, { path: finalPath, audioBuf: null, rawBuf: blob });
         }
         return pathMap;
+    }, []);
+
+    /** Nativo: decodifica __PreviewMix después de que C++ ya cargó las pistas (no bloquea la “lista”). */
+    const finalizeNativePreviewWaveform = useCallback(async (songId) => {
+        if (!isAppNative) return;
+        const m = preloadCache.current.get(songId);
+        if (!m) return;
+        const pv = m.get('__PreviewMix');
+        if (!pv?.rawBuf || pv.audioBuf) return;
+        try {
+            const ab = await pv.rawBuf.arrayBuffer();
+            const audioBuf = await audioEngine.ctx.decodeAudioData(ab);
+            m.set('__PreviewMix', { ...pv, audioBuf });
+        } catch { /* ignore */ }
     }, []);
 
     // Setlist States
@@ -746,18 +753,21 @@ export default function Multitrack() {
                 if (preloadCache.current.has(song.id)) continue;
                 const tracks = (song.tracks || []).filter(tr => tr.name !== '__PreviewMix' && tr.url && tr.url !== 'undefined');
                 if (!tracks.length) continue;
-                // Verificar si TODOS los tracks están en disco (v2 FLAC si disponible, v1 MP3 legacy)
-                const checks = await Promise.all(tracks.map(tr =>
-                    tr.normalizedReady === true
-                        ? NativeEngine.isNormalizedDownloaded(song.id, tr.name)
-                        : NativeEngine.isTrackDownloaded(song.id, tr.name)
-                ));
+                const checks = await Promise.all(tracks.map(async (tr) => {
+                    const wantFlac = tr.normalizedReady === true && tr.normalizedUrl;
+                    if (wantFlac) {
+                        const hasFlac = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                        const hasMp3 = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                        return hasFlac || hasMp3;
+                    }
+                    return NativeEngine.isTrackDownloaded(song.id, tr.name);
+                }));
                 if (cancelled) break;
                 if (checks.every(Boolean)) {
-                    // Canción completa en disco → construir cache de paths y marcar ready
                     const pathMap = new Map();
                     for (const tr of tracks) {
-                        const trackPath = tr.normalizedReady === true
+                        const wantFlac = tr.normalizedReady === true && tr.normalizedUrl;
+                        const trackPath = wantFlac && (await NativeEngine.isNormalizedDownloaded(song.id, tr.name))
                             ? await NativeEngine.getNormalizedPath(song.id, tr.name)
                             : await NativeEngine.getTrackPath(song.id, tr.name);
                         pathMap.set(tr.name, { path: trackPath, audioBuf: null, rawBuf: null });
@@ -935,9 +945,7 @@ export default function Multitrack() {
                         if (isAppNative) {
                             let finalPath = '';
                             let blob = null;
-                            // v2: prefer FLAC when server-side normalization is complete
                             const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
-
                             if (useFlac) {
                                 const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
                                 if (flacCached) {
@@ -952,7 +960,6 @@ export default function Multitrack() {
                                     await NativeEngine.invalidateLegacyCache(song.id, tr.name);
                                 }
                             } else {
-                                // v1 legacy: MP3
                                 const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
                                 if (alreadyHasFile) {
                                     finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
@@ -1109,7 +1116,6 @@ export default function Multitrack() {
                 };
 
                 if (isAppNative) {
-                    // APK native path: prefer FLAC v2 if available
                     const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
                     if (useFlac) {
                         const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
@@ -1238,7 +1244,6 @@ export default function Multitrack() {
             if (diskMap && diskMap.size > 0) {
                 preloadCache.current.set(song.id, diskMap);
                 touchLRU(song.id);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
                 cachedBuffers = diskMap;
             }
         }
@@ -1263,6 +1268,7 @@ export default function Multitrack() {
             }
 
             await audioEngine.addTracksBatch(batch);
+            await finalizeNativePreviewWaveform(song.id);
             setTracks(newTracks);
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
             setAudioReady(prev => prev + 1);
@@ -1301,28 +1307,22 @@ export default function Multitrack() {
                         let finalPath = '';
                         let blob = null;
                         try {
-                            // ── Audio format v2: prefer FLAC when server has normalized the track ──
                             const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
-
                             if (useFlac) {
-                                // v2 path: check for .flac cache, download from normalizedUrl
                                 const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
                                 if (flacCached) {
                                     finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
                                 } else if (await NativeEngine.isTrackDownloaded(song.id, tr.name)) {
-                                    // Rápido: reutilizar MP3 local si aún no hay FLAC (evita esperar la red)
                                     finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                                     if (tr.name === '__PreviewMix') blob = await NativeEngine.readTrackBlob(song.id, tr.name);
                                 } else {
                                     blob = await fetchBlobNative(tr.normalizedUrl);
                                     if (blob) {
                                         finalPath = await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
-                                        // Free old v1 MP3 cache if present
                                         await NativeEngine.invalidateLegacyCache(song.id, tr.name);
                                     }
                                 }
                             } else {
-                                // v1 legacy path: MP3/original
                                 const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
                                 if (alreadyHasFile) {
                                     finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
@@ -1338,15 +1338,8 @@ export default function Multitrack() {
                             }
                         } catch (e) { console.error("Error loading track file native:", tr.name, e); }
 
-                        let audioBuf = null;
-                        if (tr.name === '__PreviewMix' && blob) {
-                            try {
-                                const ab = await blob.arrayBuffer();
-                                audioBuf = await audioEngine.ctx.decodeAudioData(ab);
-                            } catch {
-                                console.warn("[native] __PreviewMix decode failed, waveform will regenerate");
-                            }
-                        }
+                        // __PreviewMix: no decodeAudioData aquí (bloqueaba segundos antes del motor); finalizeNativePreviewWaveform
+                        const audioBuf = null;
                         trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
                         loadedCount++;
                         setNativeLoadProgress({ songId: song.id, loaded: loadedCount, total: downloadableTracks.length });
@@ -1392,7 +1385,7 @@ export default function Multitrack() {
 
             preloadCache.current.set(song.id, trackBuffers);
             touchLRU(song.id);
-            setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+            // "ready" solo después de loadTracks en C++ (antes se ponía aquí y la UI mentía 4–6s)
 
             const batchMove = [];
             const newTracksList = [];
@@ -1419,7 +1412,15 @@ export default function Multitrack() {
                 else if (song.duration > 1) audioEngine._durationHint = song.duration;
             }
 
+            await finalizeNativePreviewWaveform(song.id);
+            if (!(audioEngine._durationHint > 1)) {
+                const previewEntry2 = trackBuffers.get('__PreviewMix');
+                const bufDur2 = previewEntry2?.audioBuf?.duration;
+                if (bufDur2 > 1) audioEngine._durationHint = bufDur2;
+            }
+
             setTracks(newTracksList);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
             setAudioReady(prev => prev + 1);
 
             // ── PRE-CARGAR LA SIGUIENTE CANCIÓN DEL SETLIST EN C++ BACKGROUND ──
