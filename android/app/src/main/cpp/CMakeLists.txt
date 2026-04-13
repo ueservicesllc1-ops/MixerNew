@@ -10,6 +10,7 @@ add_library(
         MiniaudioImplementation.cpp
         MixerNativeEngine.cpp
         NextGenMultitrackEngine.cpp
+        NextGenTempoLab.cpp
         ${SOUNDTOUCH_SRCS}
 )
 

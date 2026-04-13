@@ -48,11 +48,15 @@ public:
     /** Global pitch shift in semitones [-3, +3], independent of tempo (SoundTouch post-mix). */
     void setPitchSemiTones(float semitones);
 
-    /** Global tempo ratio [0.8, 1.2]; 1.0 = normal. Pitch unchanged (SoundTouch post-mix). */
+    /** Global tempo ratio — stable build: no-op; snapshot always reports 1.0. See setPitchSemiTones for pitch. */
     void setTempoRatio(float ratio);
 
     /** Master output gain [0, 1] applied after mix + SoundTouch. */
     void setMasterVolume(float volume);
+
+    /** Tempo lab hooks — stable build: no-ops (realtime tempo disabled). */
+    void tempoLabSetActive(bool on);
+    void tempoLabSetRatio(float ratio);
 
     std::string getSnapshotJson() const;
 

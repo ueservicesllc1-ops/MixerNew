@@ -1,6 +1,7 @@
 // NextGenMultitrackEngine.cpp — Phase 2: ma_decoder per stem, one ma_device, mix in callback.
 
 #include "NextGenMultitrackEngine.h"
+#include "NextGenTempoLab.h"
 
 #include "SoundTouch.h"
 #include "miniaudio.h"
@@ -78,6 +79,16 @@ static bool classifyStemClickOrGuide(const std::string& id, const std::string& p
            utf8ContainsKeywordInsensitive(blob, "guide");
 }
 
+/** Stable build: realtime tempo (SoundTouch tempo + Tempo Lab) off; pitch post-mix unchanged. */
+static constexpr bool kNextGenTempoRealtimeDisabled = true;
+
+static std::atomic<bool> g_nextgen_tempo_disabled_logged{false};
+static void logNextGenTempoDisabledOnce() {
+    if (!g_nextgen_tempo_disabled_logged.exchange(true)) {
+        NGTEMPO("[NEXTGEN_TEMPO] disabled in stable build");
+    }
+}
+
 } // namespace
 
 std::string jsonEscape(const std::string& s) {
@@ -148,6 +159,10 @@ struct NextGenMultitrackEngine::Impl {
     /// Post–SoundTouch master fader [0, 1]
     std::atomic<float> master_volume_{1.f};
 
+    /** When true, mixed audio goes through TempoLabProcessor only (production SoundTouch post-mix skipped). */
+    std::atomic<bool> tempo_lab_active_{false};
+    TempoLabProcessor tempo_lab_;
+
     static constexpr float kTempoRatioMin = 0.8f;
     static constexpr float kTempoRatioMax = 1.2f;
 
@@ -163,11 +178,20 @@ struct NextGenMultitrackEngine::Impl {
         tempo_applied_.store(1.f);
         pitch_log_mode_.store(0);
         tempo_log_mode_.store(0);
+        if constexpr (!kNextGenTempoRealtimeDisabled) {
+            tempo_lab_.init((int)kSampleRate, kChannels);
+            tempo_lab_.setRatio(1.0);
+        }
+        tempo_lab_active_.store(false);
+        if constexpr (kNextGenTempoRealtimeDisabled) {
+            logNextGenTempoDisabledOnce();
+        }
     }
 
     void applyPostMixSoundTouch(float* pOut, ma_uint32 frameCount) {
         const float pTarget = pitch_semitones_.load(std::memory_order_relaxed);
-        const float tTarget = tempo_ratio_.load(std::memory_order_relaxed);
+        const float tTarget =
+            kNextGenTempoRealtimeDisabled ? 1.0f : tempo_ratio_.load(std::memory_order_relaxed);
         const bool pitchBypass = std::abs(pTarget) < 0.01f;
         const bool tempoBypass = std::abs(tTarget - 1.0f) < 0.001f;
 
@@ -587,6 +611,9 @@ struct NextGenMultitrackEngine::Impl {
 
         playhead_frames.store(frame);
         pitch_st_.clear();
+        if constexpr (!kNextGenTempoRealtimeDisabled) {
+            tempo_lab_.clear();
+        }
         pitch_applied_st_.store(1e6f);
         tempo_applied_.store(1e6f);
 
@@ -687,6 +714,13 @@ struct NextGenMultitrackEngine::Impl {
     }
 
     void setTempoRatio(float ratio) {
+        (void)ratio;
+        if constexpr (kNextGenTempoRealtimeDisabled) {
+            logNextGenTempoDisabledOnce();
+            tempo_ratio_.store(1.f);
+            tempo_clear_pending_.store(true);
+            return;
+        }
         if (ratio < kTempoRatioMin) ratio = kTempoRatioMin;
         if (ratio > kTempoRatioMax) ratio = kTempoRatioMax;
         tempo_ratio_.store(ratio);
@@ -701,6 +735,24 @@ struct NextGenMultitrackEngine::Impl {
         if (v > 1.f) v = 1.f;
         master_volume_.store(v);
         NGD("setMasterVolume %.3f", v);
+    }
+
+    void tempoLabSetActive(bool on) {
+        (void)on;
+        tempo_lab_active_.store(false);
+        if constexpr (!kNextGenTempoRealtimeDisabled) {
+            tempo_lab_.clear();
+        }
+    }
+
+    void tempoLabSetRatio(float ratio) {
+        (void)ratio;
+        if constexpr (kNextGenTempoRealtimeDisabled) {
+            return;
+        }
+        if (ratio < 0.85f) ratio = 0.85f;
+        if (ratio > 1.15f) ratio = 1.15f;
+        tempo_lab_.setRatio((double)ratio);
     }
 
     std::string getSnapshotJson() const {
@@ -720,7 +772,9 @@ struct NextGenMultitrackEngine::Impl {
         oss << "{\"engine\":\"NextGen\",\"transport\":\"" << stateStr << "\",";
         oss << "\"positionSec\":" << posSec << ",\"durationSec\":" << durSec << ",";
         oss << "\"pitchSemiTones\":" << (double)pitch_semitones_.load(std::memory_order_relaxed) << ",";
-        oss << "\"tempoRatio\":" << (double)tempo_ratio_.load(std::memory_order_relaxed) << ",";
+        oss << "\"tempoRatio\":"
+            << (kNextGenTempoRealtimeDisabled ? 1.0 : (double)tempo_ratio_.load(std::memory_order_relaxed))
+            << ",";
         oss << "\"masterVolume\":" << (double)master_volume_.load(std::memory_order_relaxed) << ",";
         oss << "\"sampleRate\":" << (int)kSampleRate << ",\"trackCount\":" << stems_.size() << ",";
         oss << "\"tracks\":[";
@@ -769,6 +823,10 @@ void NextGenMultitrackEngine::setPitchSemiTones(float semitones) { impl_->setPit
 void NextGenMultitrackEngine::setTempoRatio(float ratio) { impl_->setTempoRatio(ratio); }
 
 void NextGenMultitrackEngine::setMasterVolume(float volume) { impl_->setMasterVolume(volume); }
+
+void NextGenMultitrackEngine::tempoLabSetActive(bool on) { impl_->tempoLabSetActive(on); }
+
+void NextGenMultitrackEngine::tempoLabSetRatio(float ratio) { impl_->tempoLabSetRatio(ratio); }
 
 std::string NextGenMultitrackEngine::getSnapshotJson() const { return impl_->getSnapshotJson(); }
 
@@ -875,6 +933,14 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTempoRatio
 
 JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetMasterVolume(JNIEnv*, jobject, jfloat volume) {
     if (gNextGen) gNextGen->setMasterVolume(volume);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeTempoLabSetActive(JNIEnv*, jobject, jboolean on) {
+    if (gNextGen) gNextGen->tempoLabSetActive(on == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeTempoLabSetRatio(JNIEnv*, jobject, jfloat ratio) {
+    if (gNextGen) gNextGen->tempoLabSetRatio(ratio);
 }
 
 JNIEXPORT jstring JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeGetSnapshotJson(JNIEnv* env, jobject) {

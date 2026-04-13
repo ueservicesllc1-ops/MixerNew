@@ -6,7 +6,7 @@ import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
-import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore'
+import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
 
 /** updateDoc sin documento → code `not-found` (SDK puede decir que no existe el documento / fila). */
@@ -949,7 +949,11 @@ export default function Multitrack() {
                 if (!isAppNative) {
                     const qGlobal = query(
                         collection(db, 'songs'),
-                        where('isGlobal', '==', true),
+                        or(
+                            where('isGlobal', '==', true),
+                            where('forSale', '==', true),
+                            where('useType', '==', 'sell')
+                        ),
                         limit(WEB_GLOBAL_CATALOG_MAX)
                     );
                     unsubGlobal = onSnapshot(qGlobal, (snap) => {
@@ -1030,7 +1034,11 @@ export default function Multitrack() {
             try {
                 const q = query(
                     collection(db, 'songs'),
-                    where('isGlobal', '==', true),
+                    or(
+                        where('isGlobal', '==', true),
+                        where('forSale', '==', true),
+                        where('useType', '==', 'sell')
+                    ),
                     limit(NATIVE_GLOBAL_CATALOG_MAX)
                 );
                 const snap = await getDocs(q);
@@ -2566,7 +2574,8 @@ export default function Multitrack() {
                 <div className="audio-info">
                     {!isAppNative ? <span ref={timeDisplayRef} /> : <span ref={timeDisplayRef} style={{ display: 'none' }} aria-hidden="true" />}
 
-                    {/* TEMPO CONTROL with ┬▒ buttons */}
+                    {/* TEMPO CONTROL — hidden on native (NextGen realtime tempo disabled in stable build) */}
+                    {!isAppNative && (
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button onClick={() => handleTempoChange(-1)} className="square-btn">-</button>
                         <span
@@ -2581,6 +2590,7 @@ export default function Multitrack() {
                         </span>
                         <button onClick={() => handleTempoChange(+1)} className="square-btn">+</button>
                     </span>
+                    )}
 
                     {/* PITCH/KEY CONTROL */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>

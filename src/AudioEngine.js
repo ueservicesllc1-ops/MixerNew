@@ -429,20 +429,19 @@ class AudioEngine {
             this._playStartTime = this.ctx.currentTime;
         }
 
-        this.tempoRatio = ratio;
+        // Stable NextGen build: realtime tempo disabled in native; keep JS progress at 1.0x.
         if (IS_NATIVE) {
-            const r = typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : 1;
-            void NextGenMixerBridge.setTempoRatio({ ratio: r }).catch((err) => {
-                console.warn('[AudioEngine] setTempo (NextGen) failed', err);
-            });
-        } else {
-            for (const [, track] of this.tracks.entries()) {
-                if (track.source && track.source.playbackRate) {
-                    track.source.playbackRate.setTargetAtTime(ratio, this.ctx.currentTime, 0.05);
-                }
-            }
-            this._updateWorkletParams();
+            this.tempoRatio = 1.0;
+            return;
         }
+
+        this.tempoRatio = ratio;
+        for (const [, track] of this.tracks.entries()) {
+            if (track.source && track.source.playbackRate) {
+                track.source.playbackRate.setTargetAtTime(ratio, this.ctx.currentTime, 0.05);
+            }
+        }
+        this._updateWorkletParams();
     }
     
     setPitch(semitones) {

@@ -46,6 +46,14 @@ export class NextGenMixerPluginWeb extends WebPlugin {
         return;
     }
 
+    async tempoLabSetActive() {
+        return;
+    }
+
+    async tempoLabSetRatio() {
+        return;
+    }
+
     async getSnapshot() {
         return { json: '{}' };
     }
