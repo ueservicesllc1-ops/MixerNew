@@ -4,6 +4,7 @@ import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
+import Metronome from '../components/Metronome';
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
@@ -2769,7 +2770,7 @@ export default function Multitrack() {
                     { id: 'partituras', label: '🎼 Partituras' },
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
-                    { id: 'debug', label: 'DEBUG' },
+                    { id: 'metronome', label: 'Metrónomo' },
                     { id: 'settings', label: 'Ajustes' },
                 ].map(tab => {
                     const isActive = activeTab === tab.id;
@@ -2840,7 +2841,7 @@ export default function Multitrack() {
                                                 <SkipBack size={16} /> MIXER
                                             </button>
                                             <h2>
-                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab === 'chords' ? 'Cifrado' : activeTab === 'debug' ? 'Sistema de Diagnóstico' : activeTab === 'partituras' ? '🎼 Partituras' : activeTab}
+                                                {activeTab === 'lyrics' ? 'Teleprompter' : activeTab === 'chords' ? 'Cifrado' : activeTab === 'metronome' ? 'Metrónomo Digital' : activeTab === 'partituras' ? '🎼 Partituras' : activeTab}
                                             </h2>
                                         </div>
 
@@ -3013,27 +3014,8 @@ export default function Multitrack() {
                                                 )}
                                             </div>
                                         )}
-                                        {activeTab === 'debug' && (
-                                            <div style={{ flex: 1, background: '#0a0a0e', borderRadius: '12px', padding: '20px', overflowY: 'auto', fontFamily: 'monospace' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #333', paddingBottom: '15px', marginBottom: '15px', alignItems: 'center' }}>
-                                                    <span style={{ color: '#00bcd4', fontWeight: '800', fontSize: '1.1rem' }}>SISTEMA DE DIAGNÓSTICO ({debugLogs.length})</span>
-                                                    <button onClick={() => setDebugLogs([])} style={{ background: '#f44336', border: 'none', color: '#fff', padding: '6px 16px', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>LIMPIAR TODO</button>
-                                                </div>
-                                                {debugLogs.length === 0 && (
-                                                    <div style={{ textAlign: 'center', padding: '100px 20px', color: '#444', fontSize: '1.1rem' }}>
-                                                        No hay logs técnicos registrados.<br />
-                                                        Presiona PLAY o cambia de canción para generar datos.
-                                                    </div>
-                                                )}
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                                    {debugLogs.map((l, i) => (
-                                                        <div key={i} style={{ color: l.type === 'err' ? '#f87171' : l.type === 'warn' ? '#fbbf24' : '#86efac', marginBottom: '2px', fontSize: '0.9rem', whiteSpace: 'pre-wrap', borderLeft: `4px solid ${l.type === 'err' ? '#f87171' : l.type === 'warn' ? '#fbbf24' : '#333'}`, paddingLeft: '12px', backgroundColor: 'rgba(255,255,255,0.03)', padding: '10px', borderRadius: '4px' }}>
-                                                            <div style={{ color: '#555', fontSize: '0.7rem', marginBottom: '4px' }}>[{l.t}] - {l.type.toUpperCase()}</div>
-                                                            {l.msg}
-                                                        </div>
-                                                    )).reverse()}
-                                                </div>
-                                            </div>
+                                        {activeTab === 'metronome' && (
+                                            <Metronome />
                                         )}
                                         {activeTab === 'partituras' && (
                                             <div style={{ flex: 1, display: 'flex', gap: '0', overflow: 'hidden', background: '#0a0a0e', borderRadius: '12px' }}>
