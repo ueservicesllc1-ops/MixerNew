@@ -161,6 +161,7 @@ struct NextGenMultitrackEngine::Impl {
     static constexpr size_t kSTDrainChunk = 2048; // frames per drain iteration
     std::vector<float> st_pending_;   // accumulated frames ready to serve
     std::vector<float> st_drain_tmp_; // scratch for receiveSamples loops
+    std::vector<float> preMix_;       // pre-SoundTouch mix (sized for srcFrames)
 
     /// Post–SoundTouch master fader [0, 1]
     std::atomic<float> master_volume_{1.f};
@@ -190,81 +191,41 @@ struct NextGenMultitrackEngine::Impl {
         st_pending_.clear();
     }
 
-    void applyPostMixSoundTouch(float* pOut, ma_uint32 frameCount) {
+    // pIn  = pre-mixed audio (srcFrames = frameCount * tempoRatio from decoders)
+    // pOut = audio device output buffer (always frameCount frames)
+    void applyPostMixSoundTouch(const float* pIn, ma_uint32 inFrames,
+                                float* pOut, ma_uint32 outFrames) {
         const float pTarget = pitch_semitones_.load(std::memory_order_relaxed);
         const float tTarget = tempo_ratio_.load(std::memory_order_relaxed);
-        const bool pitchBypass = std::abs(pTarget) < 0.01f;
-        const bool tempoBypass = std::abs(tTarget - 1.0f) < 0.001f;
 
         const bool pClear = pitch_clear_pending_.exchange(false);
         const bool tClear = tempo_clear_pending_.exchange(false);
         if (pClear || tClear) {
             pitch_st_.clear();
-            st_pending_.clear(); // flush drain buffer when params reset
+            st_pending_.clear();
             pitch_applied_st_.store(1e6f);
             tempo_applied_.store(1e6f);
         }
 
-        if (pitchBypass && tempoBypass) {
-            // Full bypass — discard any leftover SoundTouch state.
-            if (!st_pending_.empty()) st_pending_.clear();
-            pitch_applied_st_.store(0.f);
-            tempo_applied_.store(1.f);
-            const int prevP = pitch_log_mode_.exchange(1);
-            if (prevP != 1) {
-                NGPITCH("[NEXTGEN_PITCH] bypass (pitch = 0)");
-            }
-            const int prevT = tempo_log_mode_.exchange(1);
-            if (prevT != 1) {
-                NGTEMPO("[NEXTGEN_TEMPO] bypass (tempo = 1.0)");
-            }
-            return;
+        // Update SoundTouch params when changed.
+        if (std::abs(pTarget - pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
+            pitch_st_.setPitchSemiTones((double)pTarget);
+            pitch_applied_st_.store(pTarget);
+            const int prev = pitch_log_mode_.exchange(std::abs(pTarget) > 0.01f ? 2 : 1);
+            if (prev == 0) NGPITCH("[NEXTGEN_PITCH] first set");
+        }
+        if (std::abs(tTarget - tempo_applied_.load(std::memory_order_relaxed)) > 1e-4f) {
+            // setTempo(ratio): SoundTouch compresses/stretches so output ≈ input/ratio.
+            // Combined with feeding inFrames = outFrames * ratio, output ≈ outFrames.
+            pitch_st_.setTempo((double)tTarget);
+            tempo_applied_.store(tTarget);
+            NGTEMPO("[NEXTGEN_TEMPO] SoundTouch tempo set %.4f", (double)tTarget);
         }
 
-        if (!pitchBypass) {
-            const int prev = pitch_log_mode_.exchange(2);
-            if (prev != 2) NGPITCH("[NEXTGEN_PITCH] processing active");
-        } else {
-            pitch_log_mode_.store(1);
-        }
-        if (!tempoBypass) {
-            const int prev = tempo_log_mode_.exchange(2);
-            if (prev != 2) NGTEMPO("[NEXTGEN_TEMPO] processing active");
-        } else {
-            tempo_log_mode_.store(1);
-        }
+        // Feed inFrames to SoundTouch.
+        pitch_st_.putSamples(pIn, inFrames);
 
-        // Update SoundTouch params only when they change.
-        if (!pitchBypass) {
-            if (std::abs(pTarget - pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
-                pitch_st_.setPitchSemiTones((double)pTarget);
-                pitch_applied_st_.store(pTarget);
-            }
-        } else {
-            if (std::abs(pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
-                pitch_st_.setPitchSemiTones(0.0);
-                pitch_applied_st_.store(0.f);
-            }
-        }
-        if (!tempoBypass) {
-            if (std::abs(tTarget - tempo_applied_.load(std::memory_order_relaxed)) > 1e-4f) {
-                pitch_st_.setTempo((double)tTarget);
-                tempo_applied_.store(tTarget);
-            }
-        } else {
-            if (std::abs(tempo_applied_.load(std::memory_order_relaxed) - 1.f) > 1e-4f) {
-                pitch_st_.setTempo(1.0);
-                tempo_applied_.store(1.f);
-            }
-        }
-
-        // Feed this block into SoundTouch.
-        pitch_st_.putSamples(pOut, frameCount);
-
-        // Drain ALL available SoundTouch output into st_pending_.
-        // SoundTouch accumulates frames internally (WSOLA windowing), so a single
-        // putSamples may produce 0..N output frames.  We never trust it to produce
-        // exactly frameCount frames per call — hence the pending buffer.
+        // Drain what SoundTouch has accumulated into st_pending_.
         if (st_drain_tmp_.size() < kSTDrainChunk * kChannels) {
             st_drain_tmp_.assign(kSTDrainChunk * kChannels, 0.f);
         }
@@ -276,8 +237,8 @@ struct NextGenMultitrackEngine::Impl {
             std::memcpy(st_pending_.data() + old, st_drain_tmp_.data(), ns * sizeof(float));
         }
 
-        // Serve exactly frameCount frames from the pending buffer.
-        const size_t needed = (size_t)frameCount * kChannels;
+        // Serve outFrames from st_pending_.
+        const size_t needed = (size_t)outFrames * kChannels;
         if (st_pending_.size() >= needed) {
             std::memcpy(pOut, st_pending_.data(), needed * sizeof(float));
             const size_t remaining = st_pending_.size() - needed;
@@ -287,13 +248,22 @@ struct NextGenMultitrackEngine::Impl {
             }
             st_pending_.resize(remaining);
         } else {
-            // Underrun (startup or extreme tempo change): serve what we have, pad silence.
+            // Warmup underrun: serve what we have, fill rest via linear resample
+            // of pIn so we never output silence (no audible cuts).
             const size_t have = st_pending_.size();
             if (have > 0) {
                 std::memcpy(pOut, st_pending_.data(), have * sizeof(float));
             }
-            std::memset(pOut + have, 0, (needed - have) * sizeof(float));
             st_pending_.clear();
+            // Fill remaining via nearest-neighbour resample of pIn → outFrames.
+            const ma_uint32 startF = (ma_uint32)(have / kChannels);
+            for (ma_uint32 f = startF; f < outFrames; ++f) {
+                // Map output frame f → input frame in [0, inFrames)
+                const float t  = (float)f / (float)(outFrames > 1 ? outFrames - 1 : 1);
+                const ma_uint32 sF = std::min((ma_uint32)(t * (float)inFrames), inFrames - 1);
+                pOut[(size_t)f * kChannels]     = pIn[(size_t)sF * kChannels];
+                pOut[(size_t)f * kChannels + 1] = pIn[(size_t)sF * kChannels + 1];
+            }
         }
 
         // Final clip.
@@ -371,8 +341,7 @@ struct NextGenMultitrackEngine::Impl {
             return;
         }
 
-        // Post-seek: device may still deliver callbacks before ma_device_start returns; never mix or
-        // advance playhead until the engine explicitly ungates after successful resume.
+        // Post-seek gate.
         if (!audio_ready_after_seek_.load(std::memory_order_acquire)) {
             std::memset(pOut, 0, samples * sizeof(float));
             if (!diag_logged_audio_gated_.exchange(true, std::memory_order_acq_rel)) {
@@ -381,8 +350,24 @@ struct NextGenMultitrackEngine::Impl {
             return;
         }
 
-        std::memset(pOut, 0, samples * sizeof(float));
-        if (mix_temp_.size() < samples) mix_temp_.resize(samples);
+        // ── How many file-frames to consume this callback ──────────────────────────
+        // When tempo != 1.0: read srcFrames = frameCount * tempoRatio from each decoder.
+        // SoundTouch receives srcFrames and produces ≈ frameCount output (since we also
+        // call setTempo(tempoRatio)). This guarantees SoundTouch always has enough input
+        // to produce the requested output — no underruns, no silence gaps.
+        const float tRatio = tempo_ratio_.load(std::memory_order_relaxed);
+        const float pSemis = pitch_semitones_.load(std::memory_order_relaxed);
+        const bool needsPostProcess = std::abs(tRatio - 1.0f) > 0.001f ||
+                                      std::abs(pSemis) > 0.01f;
+        const ma_uint32 srcFrames = needsPostProcess
+            ? std::max((ma_uint32)1, (ma_uint32)((double)frameCount * (double)tRatio + 0.5))
+            : frameCount;
+        const size_t srcSamples = (size_t)srcFrames * kChannels;
+
+        // Ensure preMix_ and mix_temp_ are large enough for srcFrames.
+        if (preMix_.size() < srcSamples) preMix_.resize(srcSamples);
+        if (mix_temp_.size() < srcSamples) mix_temp_.resize(srcSamples);
+        std::memset(preMix_.data(), 0, srcSamples * sizeof(float));
 
         bool sawActiveStem = false;
         bool blockAllStemsFullRead = true;
@@ -395,46 +380,37 @@ struct NextGenMultitrackEngine::Impl {
             }
         }
 
-        // Stems vector is stable while device runs (only replaced after stop+lock in loadSongSession).
         for (auto& up : stems_) {
             StemChannel* stem = up.get();
             if (!stem || !stem->decoderOk) continue;
             sawActiveStem = true;
 
             ma_uint64 framesRead = 0;
-            ma_result r = ma_decoder_read_pcm_frames(&stem->decoder, mix_temp_.data(), frameCount, &framesRead);
+            ma_result r = ma_decoder_read_pcm_frames(&stem->decoder, mix_temp_.data(), srcFrames, &framesRead);
             (void)r;
 
-            if (framesRead < frameCount) {
+            if (framesRead < srcFrames) {
                 blockAllStemsFullRead = false;
                 if (!stem->loggedPartialAfterSeek) {
                     stem->loggedPartialAfterSeek = true;
                     const auto msPart = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                            std::chrono::steady_clock::now() - seek_diag_epoch_)
-                                            .count();
+                                            std::chrono::steady_clock::now() - seek_diag_epoch_).count();
                     char line[128];
                     std::snprintf(line, sizeof(line), "partial read after seek (stem %s)", stem->id.c_str());
                     logNextGenInfoMsgMs(line, (int64_t)msPart);
                 }
             }
 
-            const bool muted = stem->muted.load(std::memory_order_relaxed);
+            const bool muted   = stem->muted.load(std::memory_order_relaxed);
             const bool soloFlag = stem->solo.load(std::memory_order_relaxed);
-            const float vol = stem->volume.load(std::memory_order_relaxed);
+            const float vol    = stem->volume.load(std::memory_order_relaxed);
             float g = 0.f;
             if (anySolo) {
-                if (!soloFlag) {
-                    g = 0.f;
-                } else if (muted) {
-                    g = 0.f;
-                } else {
-                    g = vol;
-                }
+                g = (soloFlag && !muted) ? vol : 0.f;
             } else {
                 g = muted ? 0.f : vol;
             }
-            // Split-stereo live routing: read stereo per stem as today; downmix to mono then write to ONE
-            // output channel only (no dual-channel bleed). Transport/seek/decoders unchanged.
+
             const ma_uint32 nFrames = (ma_uint32)framesRead;
             for (ma_uint32 f = 0; f < nFrames; ++f) {
                 const float L = mix_temp_[(size_t)f * 2];
@@ -442,22 +418,15 @@ struct NextGenMultitrackEngine::Impl {
                 const float m = 0.5f * (L + R);
                 const size_t base = (size_t)f * 2;
                 if (stem->routeClickGuide) {
-                    if (clickGuideOnLeft) {
-                        pOut[base + 0] += m * g;
-                    } else {
-                        pOut[base + 1] += m * g;
-                    }
+                    if (clickGuideOnLeft) preMix_[base + 0] += m * g;
+                    else                 preMix_[base + 1] += m * g;
                 } else {
-                    if (clickGuideOnLeft) {
-                        pOut[base + 1] += m * g;
-                    } else {
-                        pOut[base + 0] += m * g;
-                    }
+                    if (clickGuideOnLeft) preMix_[base + 1] += m * g;
+                    else                 preMix_[base + 0] += m * g;
                 }
             }
 
-            // Short read usually means EOF for file-backed decoders.
-            if (framesRead < frameCount) {
+            if (framesRead < srcFrames) {
                 stem->ended.store(true, std::memory_order_relaxed);
             }
         }
@@ -467,21 +436,27 @@ struct NextGenMultitrackEngine::Impl {
             logNextGenInfoFixed("first audible clean block");
         }
 
-        for (size_t i = 0; i < samples; ++i) {
-            float x = pOut[i];
-            if (x > 1.f) x = 1.f;
+        // Clip preMix_ before passing to SoundTouch.
+        for (size_t i = 0; i < srcSamples; ++i) {
+            float x = preMix_[i];
+            if (x >  1.f) x =  1.f;
             else if (x < -1.f) x = -1.f;
-            pOut[i] = x;
+            preMix_[i] = x;
         }
 
-        applyPostMixSoundTouch(pOut, frameCount);
+        if (needsPostProcess) {
+            applyPostMixSoundTouch(preMix_.data(), srcFrames, pOut, frameCount);
+        } else {
+            std::memcpy(pOut, preMix_.data(), samples * sizeof(float));
+        }
 
         const float master = master_volume_.load(std::memory_order_relaxed);
         for (size_t i = 0; i < samples; ++i) {
             pOut[i] *= master;
         }
 
-        playhead_frames.fetch_add(frameCount, std::memory_order_relaxed);
+        // Advance file-position playhead by srcFrames consumed from decoders.
+        playhead_frames.fetch_add(srcFrames, std::memory_order_relaxed);
     }
 
     void loadSongSession(const std::vector<StemDesc>& stems) {
