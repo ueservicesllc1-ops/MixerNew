@@ -947,20 +947,45 @@ export default function Multitrack() {
                 // Global VIP: solo docs con isGlobal (marketplace / catálogo publicado). La UI filtra las que tienen tracks[].
                 let unsubGlobal = () => {};
                 if (!isAppNative) {
-                    const qGlobal = query(
+                    // Query 1: Multitracks (items with tempo field, which CIF lack)
+                    const qMT = query(
+                        collection(db, 'songs'),
+                        where('tempo', '>=', ''),
+                        limit(800)
+                    );
+                    
+                    // Query 2: Marketplace / Global explicitly marked
+                    const qG = query(
                         collection(db, 'songs'),
                         or(
                             where('isGlobal', '==', true),
-                            where('forSale', '==', true),
-                            where('useType', '==', 'sell')
+                            where('forSale', '==', true)
                         ),
-                        limit(WEB_GLOBAL_CATALOG_MAX)
+                        limit(400)
                     );
-                    unsubGlobal = onSnapshot(qGlobal, (snap) => {
-                        const songs = [];
-                        snap.forEach(d => songs.push({ id: d.id, ...d.data() }));
-                        setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
-                    });
+
+                    let resultsMT = [];
+                    let resultsG = [];
+                    
+                    const updateMerged = () => {
+                        const all = [...resultsMT];
+                        resultsG.forEach(g => {
+                            if (!all.find(x => x.id === g.id)) all.push(g);
+                        });
+                        setGlobalSongs(sortGlobalCatalogNewestFirst(all));
+                    };
+
+                    const unsubMT = onSnapshot(qMT, (snap) => {
+                        resultsMT = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        updateMerged();
+                    }, () => setGlobalCatalogLoading(false));
+
+                    const unsubG = onSnapshot(qG, (snap) => {
+                        resultsG = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        updateMerged();
+                    }, () => setGlobalCatalogLoading(false));
+
+                    unsubGlobal = () => { unsubMT(); unsubG(); };
                 }
 
                 // ΓöÇΓöÇ Setlists: SOLO los del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -1032,18 +1057,27 @@ export default function Multitrack() {
         setGlobalCatalogLoading(true);
         (async () => {
             try {
-                const q = query(
+                const qMT = query(
+                    collection(db, 'songs'),
+                    where('tempo', '>=', ''),
+                    limit(600)
+                );
+                const qG = query(
                     collection(db, 'songs'),
                     or(
                         where('isGlobal', '==', true),
-                        where('forSale', '==', true),
-                        where('useType', '==', 'sell')
+                        where('forSale', '==', true)
                     ),
-                    limit(NATIVE_GLOBAL_CATALOG_MAX)
+                    limit(400)
                 );
-                const snap = await getDocs(q);
+                
+                const [snapMT, snapG] = await Promise.all([getDocs(qMT), getDocs(qG)]);
                 const songs = [];
-                snap.forEach(d => songs.push({ id: d.id, ...d.data() }));
+                snapMT.forEach(d => songs.push({ id: d.id, ...d.data() }));
+                snapG.forEach(d => {
+                    if (!songs.find(x => x.id === d.id)) songs.push({ id: d.id, ...d.data() });
+                });
+
                 if (!cancelled) setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
             } catch (e) {
                 console.error('[Global catalog]', e);

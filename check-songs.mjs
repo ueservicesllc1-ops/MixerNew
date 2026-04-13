@@ -1,6 +1,5 @@
-
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, query, limit } from 'firebase/firestore';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -16,27 +15,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-async function checkSongs() {
+(async () => {
     try {
-        const { where } = await import('firebase/firestore');
-        const q = query(collection(db, 'songs'), where('forSale', '==', true), limit(50));
-        const snap = await getDocs(q);
-        console.log(`Found ${snap.size} songs with forSale: true.`);
-        snap.forEach(doc => {
-            const data = doc.data();
-            console.log(`- ID: ${doc.id}, Name: ${data.name}, User: ${data.userEmail}, forSale: ${data.forSale}, status: ${data.status}`);
-        });
+        const d = await getDoc(doc(db, 'songs', 'tvc58V8lC0IP8TG84jV8'));
+        console.log(JSON.stringify(d.data()));
     } catch (e) {
-        console.error("Query for forSale == true failed:", e);
+        console.error(e);
     }
-
-    try {
-        const qAll = query(collection(db, 'songs'), limit(10));
-        await getDocs(qAll);
-        console.log("Query ALL correctly allowed (unlikely).");
-    } catch (e) {
-        console.log("Query ALL failed as expected (Rules working).");
-    }
-}
-
-checkSongs().catch(console.error);
+})();
