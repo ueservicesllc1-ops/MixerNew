@@ -20,6 +20,7 @@ import './index.css'
 const Dashboard  = lazy(() => import('./pages/Dashboard'))
 const Multitrack = lazy(() => import('./pages/Multitrack'))
 const Academy    = lazy(() => import('./pages/Academy'))
+const Manual     = lazy(() => import('./pages/Manual'))
 const NextGenTest = lazy(() => import('./pages/NextGenTest'))
 
 const PageLoader = () => (
@@ -95,6 +96,7 @@ function App() {
           <Route path="/seller/:id" element={<SellerProfile />} />
           <Route path="/checkout" element={<Checkout />} />
           <Route path="/academy" element={<Academy />} />
+          <Route path="/manual" element={<Manual />} />
         </Routes>
       </Suspense>
     </Router>
