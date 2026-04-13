@@ -1,7 +1,7 @@
 {
-  "versionName": "1.8.55",
-  "versionCode": 119,
-  "downloadUrl": "https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.55-1776015829453.apk",
-  "releaseNotes": "1.8.46 — Carga rapida: MA_SOUND_FLAG_STREAM en loadTrack + pitch al cargar; resto motor 6dfd40e (DECODE quitado solo aqui).",
-  "updatedAt": "2026-04-12T17:43:58.256Z"
+  "versionName": "1.8.56",
+  "versionCode": 120,
+  "downloadUrl": "https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.56-1776083067025.apk",
+  "releaseNotes": "Versión 1.8.56 — build 120",
+  "updatedAt": "2026-04-13T12:24:35.448Z"
 }
