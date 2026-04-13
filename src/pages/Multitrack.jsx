@@ -1737,12 +1737,30 @@ export default function Multitrack() {
         }
     };
 
+    /** Pistas reales en el mezclador (no placeholders del esqueleto mientras carga). */
+    const tracksReadyForEngine =
+        tracks.length > 0 && tracks.every((t) => !t.isPlaceholder);
+
+    /** Incluye descarga/preparación nativa visible y progreso de stems. */
+    const loadBlockingPlayback =
+        !!(nativeLoadProgress?.songId === activeSongId && nativeLoadProgress?.phase);
+
+    /** Misma idea que la onda nativa: `ready`, motor libre, stems reales cargados. */
+    const canStartPlayback = Boolean(
+        activeSongId &&
+            tracksReadyForEngine &&
+            preloadStatus[activeSongId] === 'ready' &&
+            !nativePrepareBusy &&
+            !loadBlockingPlayback,
+    );
+
     const handlePlay = async () => {
         await audioEngine.init();
         if (isPlaying) {
             await audioEngine.pause();
             setIsPlaying(false);
         } else {
+            if (!canStartPlayback) return;
             await audioEngine.play();
             setIsPlaying(true);
         }
@@ -2519,10 +2537,25 @@ export default function Multitrack() {
                 <div className="controls-group">
                     <button className="transport-btn" title="Rebobinar" onClick={handleSkipBack}><SkipBack size={20} /></button>
                     <button
+                        type="button"
                         className={`transport-btn ${isPlaying ? 'active' : 'play'}`}
-                        onClick={handlePlay}
-                        title={isPlaying ? 'Pausar' : 'Reproducir'}
-                        style={{ background: isPlaying ? '#f39c12' : undefined }}
+                        onClick={(e) => {
+                            if (!isPlaying && !canStartPlayback) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                return;
+                            }
+                            handlePlay();
+                        }}
+                        disabled={!isPlaying && !canStartPlayback}
+                        aria-disabled={!isPlaying && !canStartPlayback}
+                        title={isPlaying ? 'Pausar' : canStartPlayback ? 'Reproducir' : 'Espera a que las pistas estén listas'}
+                        style={{
+                            background: isPlaying ? '#f39c12' : undefined,
+                            opacity: !isPlaying && !canStartPlayback ? 0.45 : 1,
+                            cursor: !isPlaying && !canStartPlayback ? 'not-allowed' : 'pointer',
+                            pointerEvents: !isPlaying && !canStartPlayback ? 'none' : 'auto',
+                        }}
                     >
                         {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                     </button>

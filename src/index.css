@@ -240,6 +240,19 @@ body.dark-mode .transport-bar {
   transform: translateY(-1px);
 }
 
+.transport-btn:disabled,
+.transport-btn[disabled] {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  transform: none !important;
+}
+
+.transport-btn:disabled:hover,
+.transport-btn[disabled]:hover {
+  background: inherit;
+}
+
 body.dark-mode .transport-btn {
   background: #2d3748;
   color: #e2e8f0;
@@ -248,6 +261,18 @@ body.dark-mode .transport-btn {
 body.dark-mode .transport-btn:hover {
   background: #3a4a5a;
   color: white;
+}
+
+body.dark-mode .transport-btn:disabled,
+body.dark-mode .transport-btn[disabled] {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+}
+
+body.dark-mode .transport-btn.play:disabled,
+body.dark-mode .transport-btn.play[disabled] {
+  background: #4a5568 !important;
 }
 
 .transport-btn-mini {
@@ -278,6 +303,12 @@ body.dark-mode .transport-btn-mini {
 
 .transport-btn.play:hover {
   background: #00b8b8;
+}
+
+.transport-btn.play:disabled,
+.transport-btn.play[disabled] {
+  background: #95a5a6 !important;
+  opacity: 0.5 !important;
 }
 
 .transport-btn.stop {
