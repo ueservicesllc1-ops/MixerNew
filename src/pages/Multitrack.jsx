@@ -947,10 +947,10 @@ export default function Multitrack() {
                 // Global VIP: solo docs con isGlobal (marketplace / catálogo publicado). La UI filtra las que tienen tracks[].
                 let unsubGlobal = () => {};
                 if (!isAppNative) {
-                    // Query 1: Multitracks (items with tempo field, which CIF lack)
+                    // Query 1: Multitracks — docs with a tracks[] array (user-uploaded ZIPs)
                     const qMT = query(
                         collection(db, 'songs'),
-                        where('tempo', '>=', ''),
+                        where('tracks', '!=', null),
                         limit(800)
                     );
                     
@@ -1047,7 +1047,7 @@ export default function Multitrack() {
 
     // APK: catálogo Global solo al elegir la pestaña (getDocs acotado). Al volver a "Mi librería" se vacía para liberar RAM.
     useEffect(() => {
-        if (!isAppNative || !currentUser) return;
+        if (!isAppNative) return;
         if (libraryTab !== 'global') {
             setGlobalSongs([]);
             setGlobalCatalogLoading(false);
@@ -1057,9 +1057,10 @@ export default function Multitrack() {
         setGlobalCatalogLoading(true);
         (async () => {
             try {
+                // Query 1: Multitracks — docs with tracks[] array (user-uploaded ZIPs)
                 const qMT = query(
                     collection(db, 'songs'),
-                    where('tempo', '>=', ''),
+                    where('tracks', '!=', null),
                     limit(600)
                 );
                 const qG = query(
@@ -1087,7 +1088,7 @@ export default function Multitrack() {
             }
         })();
         return () => { cancelled = true; };
-    }, [libraryTab, currentUser, isAppNative]);
+    }, [libraryTab, isAppNative]);
 
     const handleCreateSetlist = async () => {
         if (!newSetlistName.trim()) return;
