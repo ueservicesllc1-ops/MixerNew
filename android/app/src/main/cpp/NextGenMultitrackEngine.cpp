@@ -80,7 +80,7 @@ static bool classifyStemClickOrGuide(const std::string& id, const std::string& p
 }
 
 /** Stable build: realtime tempo (SoundTouch tempo + Tempo Lab) off; pitch post-mix unchanged. */
-static constexpr bool kNextGenTempoRealtimeDisabled = true;
+static constexpr bool kNextGenTempoRealtimeDisabled = false;
 
 static std::atomic<bool> g_nextgen_tempo_disabled_logged{false};
 static void logNextGenTempoDisabledOnce() {
@@ -156,6 +156,12 @@ struct NextGenMultitrackEngine::Impl {
     std::atomic<int> pitch_log_mode_{0}; // 0 init, 1 bypass, 2 processing
     std::atomic<int> tempo_log_mode_{0};
 
+    /// SoundTouch drain buffer: accumulates variable-size ST output across callbacks
+    /// so the audio callback always reads exactly frameCount frames (no starvation).
+    static constexpr size_t kSTDrainChunk = 2048; // frames per drain iteration
+    std::vector<float> st_pending_;   // accumulated frames ready to serve
+    std::vector<float> st_drain_tmp_; // scratch for receiveSamples loops
+
     /// Post–SoundTouch master fader [0, 1]
     std::atomic<float> master_volume_{1.f};
 
@@ -178,20 +184,15 @@ struct NextGenMultitrackEngine::Impl {
         tempo_applied_.store(1.f);
         pitch_log_mode_.store(0);
         tempo_log_mode_.store(0);
-        if constexpr (!kNextGenTempoRealtimeDisabled) {
-            tempo_lab_.init((int)kSampleRate, kChannels);
-            tempo_lab_.setRatio(1.0);
-        }
         tempo_lab_active_.store(false);
-        if constexpr (kNextGenTempoRealtimeDisabled) {
-            logNextGenTempoDisabledOnce();
-        }
+        // Pre-size the drain scratch buffer; pending starts empty.
+        st_drain_tmp_.assign(kSTDrainChunk * kChannels, 0.f);
+        st_pending_.clear();
     }
 
     void applyPostMixSoundTouch(float* pOut, ma_uint32 frameCount) {
         const float pTarget = pitch_semitones_.load(std::memory_order_relaxed);
-        const float tTarget =
-            kNextGenTempoRealtimeDisabled ? 1.0f : tempo_ratio_.load(std::memory_order_relaxed);
+        const float tTarget = tempo_ratio_.load(std::memory_order_relaxed);
         const bool pitchBypass = std::abs(pTarget) < 0.01f;
         const bool tempoBypass = std::abs(tTarget - 1.0f) < 0.001f;
 
@@ -199,11 +200,14 @@ struct NextGenMultitrackEngine::Impl {
         const bool tClear = tempo_clear_pending_.exchange(false);
         if (pClear || tClear) {
             pitch_st_.clear();
+            st_pending_.clear(); // flush drain buffer when params reset
             pitch_applied_st_.store(1e6f);
             tempo_applied_.store(1e6f);
         }
 
         if (pitchBypass && tempoBypass) {
+            // Full bypass — discard any leftover SoundTouch state.
+            if (!st_pending_.empty()) st_pending_.clear();
             pitch_applied_st_.store(0.f);
             tempo_applied_.store(1.f);
             const int prevP = pitch_log_mode_.exchange(1);
@@ -219,22 +223,18 @@ struct NextGenMultitrackEngine::Impl {
 
         if (!pitchBypass) {
             const int prev = pitch_log_mode_.exchange(2);
-            if (prev != 2) {
-                NGPITCH("[NEXTGEN_PITCH] processing active");
-            }
+            if (prev != 2) NGPITCH("[NEXTGEN_PITCH] processing active");
         } else {
             pitch_log_mode_.store(1);
         }
-
         if (!tempoBypass) {
             const int prev = tempo_log_mode_.exchange(2);
-            if (prev != 2) {
-                NGTEMPO("[NEXTGEN_TEMPO] processing active");
-            }
+            if (prev != 2) NGTEMPO("[NEXTGEN_TEMPO] processing active");
         } else {
             tempo_log_mode_.store(1);
         }
 
+        // Update SoundTouch params only when they change.
         if (!pitchBypass) {
             if (std::abs(pTarget - pitch_applied_st_.load(std::memory_order_relaxed)) > 1e-4f) {
                 pitch_st_.setPitchSemiTones((double)pTarget);
@@ -246,7 +246,6 @@ struct NextGenMultitrackEngine::Impl {
                 pitch_applied_st_.store(0.f);
             }
         }
-
         if (!tempoBypass) {
             if (std::abs(tTarget - tempo_applied_.load(std::memory_order_relaxed)) > 1e-4f) {
                 pitch_st_.setTempo((double)tTarget);
@@ -259,21 +258,48 @@ struct NextGenMultitrackEngine::Impl {
             }
         }
 
+        // Feed this block into SoundTouch.
         pitch_st_.putSamples(pOut, frameCount);
-        ma_uint32 got = 0;
-        while (got < frameCount) {
-            const uint n = pitch_st_.receiveSamples(pOut + (size_t)got * kChannels, frameCount - got);
-            if (n == 0) break;
-            got += n;
+
+        // Drain ALL available SoundTouch output into st_pending_.
+        // SoundTouch accumulates frames internally (WSOLA windowing), so a single
+        // putSamples may produce 0..N output frames.  We never trust it to produce
+        // exactly frameCount frames per call — hence the pending buffer.
+        if (st_drain_tmp_.size() < kSTDrainChunk * kChannels) {
+            st_drain_tmp_.assign(kSTDrainChunk * kChannels, 0.f);
         }
-        if (got < frameCount) {
-            std::memset(pOut + (size_t)got * kChannels, 0,
-                        (size_t)(frameCount - got) * kChannels * sizeof(float));
+        uint drainN;
+        while ((drainN = pitch_st_.receiveSamples(st_drain_tmp_.data(), (uint)kSTDrainChunk)) > 0) {
+            const size_t ns = (size_t)drainN * kChannels;
+            const size_t old = st_pending_.size();
+            st_pending_.resize(old + ns);
+            std::memcpy(st_pending_.data() + old, st_drain_tmp_.data(), ns * sizeof(float));
         }
-        const size_t samples = (size_t)frameCount * kChannels;
-        for (size_t i = 0; i < samples; ++i) {
+
+        // Serve exactly frameCount frames from the pending buffer.
+        const size_t needed = (size_t)frameCount * kChannels;
+        if (st_pending_.size() >= needed) {
+            std::memcpy(pOut, st_pending_.data(), needed * sizeof(float));
+            const size_t remaining = st_pending_.size() - needed;
+            if (remaining > 0) {
+                std::memmove(st_pending_.data(), st_pending_.data() + needed,
+                             remaining * sizeof(float));
+            }
+            st_pending_.resize(remaining);
+        } else {
+            // Underrun (startup or extreme tempo change): serve what we have, pad silence.
+            const size_t have = st_pending_.size();
+            if (have > 0) {
+                std::memcpy(pOut, st_pending_.data(), have * sizeof(float));
+            }
+            std::memset(pOut + have, 0, (needed - have) * sizeof(float));
+            st_pending_.clear();
+        }
+
+        // Final clip.
+        for (size_t i = 0; i < needed; ++i) {
             float x = pOut[i];
-            if (x > 1.f) x = 1.f;
+            if (x >  1.f) x =  1.f;
             else if (x < -1.f) x = -1.f;
             pOut[i] = x;
         }
@@ -554,6 +580,9 @@ struct NextGenMultitrackEngine::Impl {
         playhead_frames.store(0);
         audio_ready_after_seek_.store(false, std::memory_order_release);
         diag_pending_first_audible_.store(false, std::memory_order_relaxed);
+        // Clear SoundTouch drain buffer so stale audio never leaks to the next song.
+        pitch_st_.clear();
+        st_pending_.clear();
         NGD("stop: seek 0, transport=stopped");
     }
 
@@ -611,9 +640,7 @@ struct NextGenMultitrackEngine::Impl {
 
         playhead_frames.store(frame);
         pitch_st_.clear();
-        if constexpr (!kNextGenTempoRealtimeDisabled) {
-            tempo_lab_.clear();
-        }
+        st_pending_.clear(); // flush drain buffer after seek to avoid pre-seek audio leaking
         pitch_applied_st_.store(1e6f);
         tempo_applied_.store(1e6f);
 
@@ -714,13 +741,6 @@ struct NextGenMultitrackEngine::Impl {
     }
 
     void setTempoRatio(float ratio) {
-        (void)ratio;
-        if constexpr (kNextGenTempoRealtimeDisabled) {
-            logNextGenTempoDisabledOnce();
-            tempo_ratio_.store(1.f);
-            tempo_clear_pending_.store(true);
-            return;
-        }
         if (ratio < kTempoRatioMin) ratio = kTempoRatioMin;
         if (ratio > kTempoRatioMax) ratio = kTempoRatioMax;
         tempo_ratio_.store(ratio);
@@ -772,9 +792,7 @@ struct NextGenMultitrackEngine::Impl {
         oss << "{\"engine\":\"NextGen\",\"transport\":\"" << stateStr << "\",";
         oss << "\"positionSec\":" << posSec << ",\"durationSec\":" << durSec << ",";
         oss << "\"pitchSemiTones\":" << (double)pitch_semitones_.load(std::memory_order_relaxed) << ",";
-        oss << "\"tempoRatio\":"
-            << (kNextGenTempoRealtimeDisabled ? 1.0 : (double)tempo_ratio_.load(std::memory_order_relaxed))
-            << ",";
+        oss << "\"tempoRatio\":" << (double)tempo_ratio_.load(std::memory_order_relaxed) << ",";
         oss << "\"masterVolume\":" << (double)master_volume_.load(std::memory_order_relaxed) << ",";
         oss << "\"sampleRate\":" << (int)kSampleRate << ",\"trackCount\":" << stems_.size() << ",";
         oss << "\"tracks\":[";
