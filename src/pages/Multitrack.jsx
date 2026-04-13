@@ -2534,8 +2534,8 @@ export default function Multitrack() {
                     </div>
                 </div>
 
-                <div className="controls-group">
-                    <button className="transport-btn" title="Rebobinar" onClick={handleSkipBack}><SkipBack size={20} /></button>
+                <div className="controls-group multitrack-main-transport">
+                    <button className="transport-btn" title="Rebobinar" onClick={handleSkipBack}><SkipBack size={26} /></button>
                     <button
                         type="button"
                         className={`transport-btn ${isPlaying ? 'active' : 'play'}`}
@@ -2557,10 +2557,10 @@ export default function Multitrack() {
                             pointerEvents: !isPlaying && !canStartPlayback ? 'none' : 'auto',
                         }}
                     >
-                        {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                        {isPlaying ? <Pause size={26} /> : <Play size={26} />}
                     </button>
-                    <button className="transport-btn stop" onClick={handleStop} title="Detener"><Square size={20} /></button>
-                    <button className="transport-btn" title="Siguiente" onClick={handleSkipForward}><SkipForward size={20} /></button>
+                    <button className="transport-btn stop" onClick={handleStop} title="Detener"><Square size={26} /></button>
+                    <button className="transport-btn" title="Siguiente" onClick={handleSkipForward}><SkipForward size={26} /></button>
                 </div>
 
                 <div className="audio-info">
@@ -2595,11 +2595,6 @@ export default function Multitrack() {
                         </span>
                         <button onClick={() => handlePitchChange(+1)} className="square-btn">+</button>
                     </span>
-                    {activeSong && (
-                        <span className="song-name-display">
-                            {activeSong.name}
-                        </span>
-                    )}
                 </div>
 
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center' }}>

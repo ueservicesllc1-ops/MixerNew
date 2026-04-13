@@ -221,6 +221,20 @@ body.dark-mode .transport-bar {
   gap: 8px;
 }
 
+/* Grupo principal multitrack: más grande tras quitar el título en el header */
+.transport-bar .controls-group.multitrack-main-transport {
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.transport-bar .controls-group.multitrack-main-transport .transport-btn {
+  width: 54px;
+  height: 54px;
+  min-width: 54px;
+  min-height: 54px;
+  border-radius: 10px;
+}
+
 .transport-btn {
   background: #f0f0f0;
   border: none;
@@ -345,21 +359,6 @@ body.dark-mode .audio-info button {
   background: #4a5568 !important;
   border-color: #718096 !important;
   color: white !important;
-}
-
-.song-name-display {
-  border-left: 1px solid #ddd;
-  padding-left: 15px;
-  color: var(--primary-cyan);
-  font-weight: 800;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px;
-}
-
-body.dark-mode .song-name-display {
-  border-left-color: rgba(255, 255, 255, 0.1);
 }
 
 /* WAVEFORM AREA / PROFESSIONAL SCRUBBER */
@@ -1129,6 +1128,13 @@ body.dark-mode .pads-panel {
   .transport-btn {
     width: 28px !important;
     height: 28px !important;
+  }
+
+  .transport-bar .controls-group.multitrack-main-transport .transport-btn {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
   }
 
   .tab-bar {
