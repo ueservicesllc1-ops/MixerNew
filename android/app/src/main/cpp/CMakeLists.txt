@@ -8,7 +8,6 @@ add_library(
         multitrack-native-engine
         SHARED
         MiniaudioImplementation.cpp
-        MixerNativeEngine.cpp
         NextGenMultitrackEngine.cpp
         NextGenTempoLab.cpp
         ${SOUNDTOUCH_SRCS}
