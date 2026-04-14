@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { audioEngine } from '../AudioEngine';
 import { NativeEngine } from '../NativeEngine';
 
@@ -9,15 +10,19 @@ function formatTime(s) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export default function WaveformCanvas({ songId, tracks, duration, hasPreview, suppressHeavyWork }) {
+export default function WaveformCanvas({ songId, tracks, duration, hasPreview, suppressHeavyWork, markers = [], onUpdateMarkers }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const lastDragSecRef = useRef(0);
     const actualDurationRef = useRef(1);
     const [peaks, setPeaks] = useState(null);
-    /** Duración del buffer usado para generar peaks (nativo: evita actualDuration=1 cuando aún no llega duration del padre). */
     const [peakDuration, setPeakDuration] = useState(0);
     const [statusInfo, setStatusInfo] = useState({ isReal: false, source: 'Analizando...', color: '#64748b' });
+    const [zoom, setZoom] = useState(1);
+    
+    // Markers Context Menu State
+    const [contextMenu, setContextMenu] = useState(null);
+
     const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
     const actualDuration = isNative
         ? ((duration && duration > 0)
@@ -217,24 +222,90 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
             ctx.fillStyle = '#1e293b'; 
             ctx.fillRect(0, 0, W, H);
 
+            // Draw Ruler (Time Guide)
+            ctx.fillStyle = 'rgba(0,0,0,0.4)';
+            ctx.fillRect(0, 0, W, 22);
+
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '10px "Outfit", sans-serif';
+            ctx.textAlign = 'center';
+
+            const pxPerSec = W / actualDuration;
+            let tickStep = 60; // default 1 tick per min
+            if (pxPerSec > 2) tickStep = 30; // every 30s
+            if (pxPerSec > 5) tickStep = 10; // every 10s
+            if (pxPerSec > 20) tickStep = 5;  // every 5s
+            if (pxPerSec > 80) tickStep = 1;  // every 1s
+
+            for (let s = 0; s < actualDuration; s += tickStep) {
+                const x = s * pxPerSec;
+                // Main tick
+                ctx.fillStyle = '#cbd5e1';
+                ctx.fillRect(x, 0, 1, 8);
+                ctx.fillText(formatTime(s), x, 18);
+                
+                // Sub ticks
+                if (tickStep >= 5) {
+                    const subStep = tickStep === 60 ? 10 : tickStep === 30 ? 5 : 1;
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    for (let subs = s + subStep; subs < s + tickStep; subs += subStep) {
+                        const sx = subs * pxPerSec;
+                        ctx.fillRect(sx, 0, 1, 4);
+                    }
+                }
+            }
+
             if (peaks) {
                 const playheadX = Math.max(0, Math.min(W, (currentT / actualDuration) * W));
-                const centerY = H / 2;
+                const centerY = (H + 22) / 2; // Offset below ruler
+                const maxWaveH = H - 22;
                 
-                // High contrast on dark bar: white tones (unplayed slightly dimmer than played accent)
+                // High contrast on dark bar
                 const wavePlayed = statusInfo.isReal ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.75)';
                 const waveUnplayed = 'rgba(255,255,255,0.28)';
+
+                // Use gradient to split colors at playhead exactly
+                const progressPct = Math.max(0, Math.min(1, currentT / actualDuration));
+                const gradient = ctx.createLinearGradient(0, 0, W, 0);
+                
+                // Fallbacks if progress is 0 or 1
+                if (progressPct <= 0) {
+                    gradient.addColorStop(0, waveUnplayed);
+                    gradient.addColorStop(1, waveUnplayed);
+                } else if (progressPct >= 1) {
+                    gradient.addColorStop(0, wavePlayed);
+                    gradient.addColorStop(1, wavePlayed);
+                } else {
+                    gradient.addColorStop(0, wavePlayed);
+                    gradient.addColorStop(progressPct, wavePlayed);
+                    gradient.addColorStop(progressPct + 0.0001, waveUnplayed);
+                    gradient.addColorStop(1, waveUnplayed);
+                }
+
+                ctx.beginPath();
+                
+                // Top half curve
+                ctx.moveTo(0, centerY);
                 for (let x = 0; x < peaks.length; x++) {
                     const canvasX = (x / peaks.length) * W;
                     const val = peaks[x];
-                    const h = Math.max(2, val * (H * 0.8));
-                    const played = canvasX < playheadX;
-                    
-                    ctx.fillStyle = played ? wavePlayed : waveUnplayed;
-                    ctx.fillRect(canvasX, centerY - h / 2, Math.ceil(W/peaks.length), h);
+                    const h = Math.max(2, val * maxWaveH * 0.9);
+                    ctx.lineTo(canvasX, centerY - h / 2);
                 }
+                
+                // Bottom half curve
+                for (let x = peaks.length - 1; x >= 0; x--) {
+                    const canvasX = (x / peaks.length) * W;
+                    const val = peaks[x];
+                    const h = Math.max(2, val * maxWaveH * 0.9);
+                    ctx.lineTo(canvasX, centerY + h / 2);
+                }
+                
+                ctx.closePath();
+                ctx.fillStyle = gradient;
+                ctx.fill();
 
-                // Playhead (amarillo visible sobre la onda)
+                // Playhead
                 const px = Math.round(playheadX);
                 ctx.shadowColor = 'rgba(0,0,0,0.6)';
                 ctx.shadowBlur = 4;
@@ -327,23 +398,186 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         };
     }, [songId, actualDuration]);
 
+    const handleWheel = (e) => {
+        if (e.deltaY < 0) {
+            setZoom(z => Math.min(10, z + 0.4));
+        } else if (e.deltaY > 0) {
+            setZoom(z => Math.max(1, z - 0.4));
+        }
+    };
+
+    // Android: Handle native long press specifically since touch events steal right click
+    useEffect(() => {
+        let timer;
+        const el = containerRef.current;
+        if (!el) return;
+
+        const onTouchStart = (e) => {
+            if (e.touches.length === 1) {
+                timer = setTimeout(() => {
+                    const t = handleInteraction(e.touches[0].clientX);
+                    setContextMenu({ x: e.touches[0].clientX, y: e.touches[0].clientY - 50, time: t });
+                }, 600); // 600ms = long press
+            }
+        };
+
+        const onTouchMove = () => clearTimeout(timer);
+        const onTouchEnd = () => clearTimeout(timer);
+
+        el.addEventListener('touchstart', onTouchStart, { passive: true });
+        el.addEventListener('touchmove', onTouchMove, { passive: true });
+        el.addEventListener('touchend', onTouchEnd, { passive: true });
+
+        return () => {
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', onTouchEnd);
+            clearTimeout(timer);
+        };
+    }, [actualDuration]);
+
+    const handleContextMenu = (e) => {
+        e.preventDefault(); // Block browser right-click menu
+        const t = handleInteraction(e.clientX);
+        setContextMenu({ x: e.clientX, y: e.clientY - 50, time: t });
+    };
+
+    const addMarker = (label, color) => {
+        if (!contextMenu || !onUpdateMarkers) return;
+        const newMarker = { label, color, time: contextMenu.time, id: Date.now().toString() };
+        const updated = [...markers, newMarker].sort((a, b) => a.time - b.time);
+        onUpdateMarkers(updated);
+        setContextMenu(null);
+    };
+
+    const removeMarker = (e, id) => {
+        e.stopPropagation();
+        if (!onUpdateMarkers) return;
+        if (window.confirm('¿Borrar marcador?')) {
+            onUpdateMarkers(markers.filter(m => m.id !== id));
+        }
+    };
+
     return (
-        <div
-            ref={containerRef}
-            onMouseDown={handleMouseDown}
-            style={{
-                position: 'relative',
-                width: '100%',
-                height: '100%',
-                cursor: 'pointer',
-                borderRadius: '12px',
-                overflow: 'hidden',
-                background: '#0f172a',
-                touchAction: 'none'
-            }}
-        >
-            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-            <div style={{ position: 'absolute', top: '5px', left: '10px', color: '#fff', fontSize: '10px', opacity: 0.5 }}>{statusInfo.source}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+            
+            {/* Context Menu Modal via Portal to escape transform/overflow traps */}
+            {contextMenu && createPortal(
+                <div style={{ position: 'fixed', inset: 0, zIndex: 2147483647, pointerEvents: 'auto' }}>
+                    <div style={{ position: 'absolute', inset: 0 }} onClick={() => setContextMenu(null)} />
+                    <div style={{ 
+                        position: 'absolute', left: Math.min(contextMenu.x, window.innerWidth - 220), top: Math.max(10, Math.min(contextMenu.y, window.innerHeight - 300)), 
+                        background: '#1e293b', border: '1px solid #475569', borderRadius: '12px', padding: '12px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.8)', width: '210px'
+                    }}>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px', textAlign: 'center' }}>
+                            Añadir marcador en {formatTime(contextMenu.time)}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                            <button onClick={() => addMarker('Intro', '#06b6d4')} style={{ background: '#06b6d4', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Intro</button>
+                            <button onClick={() => addMarker('Verso', '#3b82f6')} style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Verso</button>
+                            <button onClick={() => addMarker('Pre-Coro', '#8b5cf6')} style={{ background: '#8b5cf6', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>PreCoro</button>
+                            <button onClick={() => addMarker('Coro', '#ef4444')} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Coro</button>
+                            <button onClick={() => addMarker('Instrumental', '#f59e0b')} style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', gridColumn: 'span 2' }}>Instrumental</button>
+                            <button onClick={() => addMarker('Puente', '#ec4899')} style={{ background: '#ec4899', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Puente</button>
+                            <button onClick={() => addMarker('Final', '#10b981')} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer' }}>Final</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            <div style={{ flex: 1, position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', background: '#0f172a', display: 'flex' }} onWheel={handleWheel}>
+                
+                <div 
+                    ref={containerRef}
+                    onContextMenu={handleContextMenu}
+                    style={{
+                        width: '100%',
+                        height: '100%',
+                        overflowX: zoom > 1 ? 'auto' : 'hidden',
+                        overflowY: 'hidden',
+                        position: 'relative'
+                    }}
+                >
+                    <div 
+                        onMouseDown={handleMouseDown}
+                        style={{
+                            position: 'relative',
+                            width: `${zoom * 100}%`,
+                            height: '100%',
+                            cursor: 'crosshair',
+                            touchAction: 'none'
+                        }}
+                    >
+                        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+                        
+                        {/* Markers Overlay on Waveform */}
+                        {markers.map((m) => (
+                            <div key={m.id} onContextMenu={(e) => removeMarker(e, m.id)} title="Click derecho para borrar" style={{ 
+                                position: 'absolute', top: 0, bottom: 0, left: `${(m.time / actualDurationRef.current) * 100}%`, 
+                                borderLeft: `2px solid ${m.color}`, zIndex: 15, pointerEvents: 'auto'
+                            }}>
+                                <div onClick={(e) => { e.stopPropagation(); audioEngine.seek(m.time); }} style={{ 
+                                    background: m.color, color: '#fff', fontSize: '9px', fontWeight: 'bold', padding: '2px 6px', 
+                                    borderBottomRightRadius: '4px', cursor: 'pointer', opacity: 0.9, textTransform: 'uppercase' 
+                                }}>
+                                    {m.label}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Status overlay */}
+                <div style={{ position: 'absolute', top: '25px', left: '10px', color: '#fff', fontSize: '10px', opacity: 0.5, pointerEvents: 'none', zIndex: 2 }}>
+                    {statusInfo.source}
+                </div>
+
+            {/* Zoom Controls Overlay */}
+            <div style={{ 
+                position: 'absolute', bottom: '6px', right: '6px', 
+                background: 'rgba(0,0,0,0.6)', padding: '4px 6px',
+                display: 'flex', alignItems: 'center', gap: '5px',
+                borderRadius: '6px', border: '1px solid rgba(255,255,255,0.15)',
+                zIndex: 10, backdropFilter: 'blur(4px)'
+            }}>
+                <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '4px', lineHeight: 1 }}>-</button>
+                <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: '800' }}>{Math.round(zoom * 10)/10}X</span>
+                <button onClick={() => setZoom(z => Math.min(10, z + 0.5))} style={{ background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold', width: '18px', height: '18px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '4px', lineHeight: 1 }}>+</button>
+            </div>
+            {/* Jump Bar Console (Floating Overlay) */}
+            {markers && markers.length > 0 && (
+                <div style={{ 
+                    position: 'absolute', bottom: '0px', left: '0px', width: 'calc(100% - 90px)',
+                    display: 'flex', gap: '6px', padding: '6px 8px', 
+                    overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+                    background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0) 100%)',
+                    zIndex: 10, pointerEvents: 'auto', alignItems: 'flex-end', minHeight: '36px'
+                }}>
+                    {markers.map(m => (
+                        <button 
+                            key={m.id} 
+                            onClick={(e) => { e.stopPropagation(); audioEngine.seek(m.time); }}
+                            style={{ 
+                                background: `rgba(${parseInt(m.color.slice(1,3), 16)}, ${parseInt(m.color.slice(3,5), 16)}, ${parseInt(m.color.slice(5,7), 16)}, 0.4)`,
+                                border: `1px solid rgba(255,255,255,0.25)`, color: '#fff',
+                                padding: '4px 10px', borderRadius: '4px', fontSize: '10px', fontWeight: '800', 
+                                cursor: 'pointer', whiteSpace: 'nowrap', textTransform: 'uppercase', transition: 'all 0.2s', flexShrink: 0,
+                                boxShadow: '0 2px 4px rgba(0,0,0,0.5)', backdropFilter: 'blur(2px)'
+                            }}
+                            onMouseEnter={e => { e.target.style.background = m.color; e.target.style.color = '#fff'; }}
+                            onMouseLeave={e => { 
+                                e.target.style.background = `rgba(${parseInt(m.color.slice(1,3), 16)}, ${parseInt(m.color.slice(3,5), 16)}, ${parseInt(m.color.slice(5,7), 16)}, 0.4)`; 
+                                e.target.style.color = '#fff'; 
+                            }}
+                        >
+                            {m.label} <span style={{ opacity: 0.7, fontSize: '8px', marginLeft: '4px'}}>{formatTime(m.time)}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+            </div>
         </div>
     );
 }

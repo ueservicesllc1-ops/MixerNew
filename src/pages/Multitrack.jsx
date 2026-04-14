@@ -425,6 +425,7 @@ export default function Multitrack() {
     const [activeSetlist, setActiveSetlist] = useState(null);
     const [isCreatingSetlist, setIsCreatingSetlist] = useState(false);
     const [newSetlistName, setNewSetlistName] = useState('');
+    const [localMarkerOverrides, setLocalMarkerOverrides] = useState({});
     const [librarySongs, setLibrarySongs] = useState([]);
     const [globalSongs, setGlobalSongs] = useState([]);
     const [globalCatalogLoading, setGlobalCatalogLoading] = useState(false);
@@ -2674,7 +2675,7 @@ export default function Multitrack() {
             </div>
 
             {/* WAVEFORM OVERVIEW / SCRUBBER — web: WaveformCanvas; native: NextGen ProgressBar + lightweight fake overview (no decode pipeline) */}
-            <div className="waveform-section" style={{ height: '85px' }}>
+            <div className="waveform-section" style={{ height: isAppNative ? '85px' : '115px' }}>
                 {isAppNative ? (
                     <div
                         style={{
@@ -2757,6 +2758,25 @@ export default function Multitrack() {
                         duration={totalDuration}
                         hasPreview={activeSong?.tracks?.some(t => t.name === '__PreviewMix')}
                         suppressHeavyWork={isAppNative && nativePrepareBusy}
+                        markers={localMarkerOverrides[activeSong?.id] || activeSong?.markers || (() => { try { return JSON.parse(localStorage.getItem(`markers_${activeSong?.id}`) || '[]'); } catch { return []; } })()}
+                        onUpdateMarkers={async (newMarkers) => {
+                            if (!activeSong?.id) return;
+                            
+                            // Optimistic UI Update 
+                            setLocalMarkerOverrides(prev => ({ ...prev, [activeSong.id]: newMarkers }));
+                            
+                            // Always save to local cache as fallback for global / read-only tracks
+                            try {
+                                localStorage.setItem(`markers_${activeSong.id}`, JSON.stringify(newMarkers));
+                            } catch (e) {}
+
+                            try {
+                                // Attempt cloud sync (will fail if user isn't owner of the track)
+                                await updateDoc(doc(db, 'multitracks', activeSong.id), { markers: newMarkers });
+                            } catch (e) {
+                                console.log('Sincronización en la nube omitida: Guardado localmente (Pista Global de Solo-Lectura).');
+                            }
+                        }}
                     />
                 )}
             </div>

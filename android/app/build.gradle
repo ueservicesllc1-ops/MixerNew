@@ -12,8 +12,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Debe ser > APK ya instalado en el dispositivo o falla INSTALL_FAILED_VERSION_DOWNGRADE
-        versionCode 120
-        versionName "1.8.56"
+        versionCode 121
+        versionName "1.8.57"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -75,6 +75,9 @@ dependencies {
     // miniaudio is header-only — no AAR dependency needed
     // Audio normalization (MP3 → FLAC) is performed server-side during migration;
     // the device simply downloads pre-normalized FLAC files — no FFmpeg on device.
+    // NanoHTTPD para Servidor Local P2P y WebSockets (Band Sync Epic)
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+    implementation 'org.nanohttpd:nanohttpd-websocket:2.3.1'
 }
 
 apply from: 'capacitor.build.gradle'

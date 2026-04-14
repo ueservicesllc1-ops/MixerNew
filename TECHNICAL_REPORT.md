@@ -63,3 +63,11 @@ Para asegurar que la app no sea lenta en tablets Android de gama media, se han i
 1.  **Saturación de Memoria:** Si se cargan muchas canciones seguidas sin cerrar la app, el motor libera los buffers anteriores automáticamente.
 2.  **Latencia de Red:** La app prioriza el almacenamiento local (`FileSystem.writeFile`). Si una pista falla al descargar, el motor nativo la ignora para evitar que la app se cuelgue.
 3.  **Renderizado UI:** Evitar añadir demasiados "Efectos Visuales" complejos en el mixer que no usen Canvas, ya que el WebView de Android es más sensible que el de una PC.
+
+---
+
+## 8. Siguiente Gran Épica (Next Major Epic): Visor de Banda Sincronizado Offline
+Para la próxima iteración de características premium ("Zion Band Sync"), la arquitectura diseñada permitirá que el iPad/Tablet principal actúe como un **servidor web e inyector de WebSockets (`LocalHost`)**.
+*   **Funcionamiento Cero Fricción:** La tablet principal emitirá una URL local (Ej: `http://192.168.x.x:8080`) a la cual los músicos accederán apuntando el código QR.
+*   **Apertura Mágica en Navegador:** Se cargará una versión súper optimizada de la interfaz de letras y partituras de Zion Stage directamente en el navegador de los músicos, *sin requerir descargas previas ni registro en cuentas*.
+*   **Comunicación Offline Total:** Se garantiza sincronización (`Play`, `Stop`, `Jump to Section`) de 0 milisegundos de latencia por red Wi-Fi LAN, eliminando permanentemente la dependencia de internet en los recintos de ensayo e iglesias, evitando saturaciones en la capa de Firestore/Firebase.
