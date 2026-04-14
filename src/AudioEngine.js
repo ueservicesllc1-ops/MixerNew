@@ -422,6 +422,8 @@ class AudioEngine {
     }
 
     setTempo(ratio) {
+        const r = typeof ratio === 'number' && Number.isFinite(ratio) ? ratio : 1;
+
         if (!IS_NATIVE && this.isPlaying) {
             // Anchor real-world time to avoid playhead jumps
             const elapsed = this.ctx.currentTime - this._playStartTime;
@@ -429,16 +431,18 @@ class AudioEngine {
             this._playStartTime = this.ctx.currentTime;
         }
 
-        // Stable NextGen build: realtime tempo disabled in native; keep JS progress at 1.0x.
+        this.tempoRatio = r;
+
         if (IS_NATIVE) {
-            this.tempoRatio = 1.0;
+            getNative()
+                .then((n) => n.setSpeed(r))
+                .catch((e) => console.warn('[AudioEngine] setTempo (NextGen) failed', e));
             return;
         }
 
-        this.tempoRatio = ratio;
         for (const [, track] of this.tracks.entries()) {
             if (track.source && track.source.playbackRate) {
-                track.source.playbackRate.setTargetAtTime(ratio, this.ctx.currentTime, 0.05);
+                track.source.playbackRate.setTargetAtTime(r, this.ctx.currentTime, 0.05);
             }
         }
         this._updateWorkletParams();

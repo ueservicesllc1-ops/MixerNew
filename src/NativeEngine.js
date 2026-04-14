@@ -27,6 +27,48 @@ async function nextGenSnapshot() {
     }
 }
 
+/** CSV "id:rms,..." para AudioEngine — desde trackLevels en getSnapshot(). */
+function trackLevelsCsvFromSnapshot(s) {
+    if (!s || typeof s !== 'object') return '';
+    if (typeof s.trackLevelsCsv === 'string' && s.trackLevelsCsv.length) return s.trackLevelsCsv;
+    if (typeof s.trackLevelsStr === 'string' && s.trackLevelsStr.length) return s.trackLevelsStr;
+    const m = s.trackLevels ?? s.levels ?? s.vuLevels ?? s.meterLevels;
+    if (m && typeof m === 'object' && !Array.isArray(m)) {
+        const parts = [];
+        for (const id of Object.keys(m)) {
+            const v = m[id];
+            const n = typeof v === 'number' ? v : parseFloat(v);
+            parts.push(`${id}:${Number.isFinite(n) ? n : 0}`);
+        }
+        return parts.join(',');
+    }
+    if (Array.isArray(s.tracks)) {
+        const parts = [];
+        for (const e of s.tracks) {
+            if (!e || typeof e !== 'object') continue;
+            const id = e.id;
+            if (id == null) continue;
+            const v = e.rms ?? e.level ?? e.peak ?? 0;
+            const n = typeof v === 'number' ? v : parseFloat(v);
+            parts.push(`${id}:${Number.isFinite(n) ? n : 0}`);
+        }
+        if (parts.length) return parts.join(',');
+    }
+    if (Array.isArray(s.trackLevels)) {
+        const parts = [];
+        for (const e of s.trackLevels) {
+            if (!e || typeof e !== 'object') continue;
+            const id = e.id ?? e.trackId ?? e.name;
+            if (id == null) continue;
+            const v = e.level ?? e.rms ?? e.peak ?? e.value ?? 0;
+            const n = typeof v === 'number' ? v : parseFloat(v);
+            parts.push(`${id}:${Number.isFinite(n) ? n : 0}`);
+        }
+        return parts.join(',');
+    }
+    return '';
+}
+
 setTimeout(async () => {
     if (!IS_NATIVE) return;
     try {
@@ -365,7 +407,14 @@ export const NativeEngine = {
         }
     },
 
-    getTrackLevels: async () => '',
+    getTrackLevels: async () => {
+        try {
+            const s = await nextGenSnapshot();
+            return trackLevelsCsvFromSnapshot(s);
+        } catch {
+            return '';
+        }
+    },
 
     // ── Audio Format v2 (FLAC) helpers ───────────────────────────────────────
     // Tracks marked normalizedReady===true are stored on device as .flac files.

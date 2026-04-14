@@ -554,14 +554,35 @@ export default function Multitrack() {
         const origLog = console.log;
         const origErr = console.error;
         const origWarn = console.warn;
-        const push = (type, args) => {
-            let msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-            if (msg.length > 500) msg = msg.slice(0, 500) + '…[truncado]';
-            setDebugLogs(prev => [...prev.slice(-80), { type, msg, t: new Date().toISOString().slice(11, 19) }]);
+        const safeArg = (a) => {
+            try {
+                if (a === null || a === undefined) return String(a);
+                const t = typeof a;
+                if (t === 'string' || t === 'number' || t === 'boolean') return String(a);
+                if (t === 'bigint') return String(a);
+                if (t === 'symbol') return a.toString();
+                if (a instanceof Error) return a.message || String(a);
+                try {
+                    return JSON.stringify(a);
+                } catch {
+                    return Object.prototype.toString.call(a);
+                }
+            } catch {
+                return '[no serializable]';
+            }
         };
-        console.log = (...a) => { origLog(...a); push('log', a); };
-        console.error = (...a) => { origErr(...a); push('err', a); };
-        console.warn = (...a) => { origWarn(...a); push('warn', a); };
+        const push = (type, args) => {
+            try {
+                let msg = args.map(safeArg).join(' ');
+                if (msg.length > 500) msg = msg.slice(0, 500) + '…[truncado]';
+                setDebugLogs(prev => [...prev.slice(-80), { type, msg, t: new Date().toISOString().slice(11, 19) }]);
+            } catch {
+                /* no romper React.lazy / reconciliación si console recibe tipos raros */
+            }
+        };
+        console.log = (...a) => { try { origLog(...a); } catch (_) {} try { push('log', a); } catch (_) {} };
+        console.error = (...a) => { try { origErr(...a); } catch (_) {} try { push('err', a); } catch (_) {} };
+        console.warn = (...a) => { try { origWarn(...a); } catch (_) {} try { push('warn', a); } catch (_) {} };
         return () => { console.log = origLog; console.error = origErr; console.warn = origWarn; };
     }, []);
 
@@ -1417,12 +1438,12 @@ export default function Multitrack() {
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         try {
-            // Web: al seleccionar se libera el motor anterior.
+            // Web: igual que antes (p. ej. 2edda95): solo parar/limpiar el motor — no vaciar preloadCache.
+            // Vaciar el Map borraba stems de otras canciones del setlist; al volver a una canción ya
+            // precargada parecía "cargar de nuevo". LRU + evictOldestIfNeeded ya limitan RAM.
             if (!isAppNativeLoad) {
                 await audioEngine.stop();
                 await audioEngine.clear();
-                preloadCache.current.clear();
-                lruOrder.current = [];
             }
 
             const skeleton = (song.tracks || [])
@@ -2611,8 +2632,7 @@ export default function Multitrack() {
                 <div className="audio-info">
                     {!isAppNative ? <span ref={timeDisplayRef} /> : <span ref={timeDisplayRef} style={{ display: 'none' }} aria-hidden="true" />}
 
-                    {/* TEMPO CONTROL — hidden on native (NextGen realtime tempo disabled in stable build) */}
-                    {!isAppNative && (
+                    {/* TEMPO CONTROL — web y APK (NextGen setTempoRatio vía AudioEngine) */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button onClick={() => handleTempoChange(-1)} className="square-btn">-</button>
                         <span
@@ -2627,7 +2647,6 @@ export default function Multitrack() {
                         </span>
                         <button onClick={() => handleTempoChange(+1)} className="square-btn">+</button>
                     </span>
-                    )}
 
                     {/* PITCH/KEY CONTROL */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>

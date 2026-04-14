@@ -13,6 +13,6 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    historyApiFallback: true,
+    // HMR: dejar el valor por defecto de Vite (evita ws://localhost:3000 fallando si forzamos host/puerto).
   },
 })

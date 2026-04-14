@@ -1,5 +1,5 @@
 // Zion Stage Service Worker — caches app shell for offline use
-const CACHE = 'zion-stage-v4';
+const CACHE = 'zion-stage-v5';
 const SHELL = ['/', '/index.html'];
 
 self.addEventListener('install', e => {
@@ -21,6 +21,12 @@ self.addEventListener('fetch', e => {
     const url = new URL(e.request.url);
     if (url.pathname.startsWith('/api/') || url.hostname.includes('backblaze') || url.hostname.includes('railway')) return;
 
+    // Manifest / SW: solo red. Si el catch devolviera index.html, Chrome muestra "Manifest: Syntax error" en línea 1.
+    if (url.pathname === '/manifest.json' || url.pathname === '/sw.js') {
+        e.respondWith(fetch(e.request));
+        return;
+    }
+
     e.respondWith(
         fetch(e.request)
             .then(res => {
@@ -34,6 +40,19 @@ self.addEventListener('fetch', e => {
                 }
                 return res;
             })
-            .catch(() => caches.match(e.request).then(r => r || caches.match('/index.html')))
+            .catch(() =>
+                caches.match(e.request).then(r => {
+                    if (r) return r;
+                    // No sustituir JSON/manifest por el shell HTML (rompe el parser del manifest).
+                    const p = new URL(e.request.url).pathname;
+                    if (p.endsWith('.json') || p === '/manifest.json') {
+                        return new Response('{}', {
+                            status: 404,
+                            headers: { 'Content-Type': 'application/json' },
+                        });
+                    }
+                    return caches.match('/index.html');
+                })
+            )
     );
 });

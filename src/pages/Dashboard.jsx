@@ -17,7 +17,11 @@ function isFirestoreDocMissing(err) {
     return err?.code === 'not-found';
 }
 
-const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
+// Clave publicable: VITE_STRIPE_PUBLISHABLE_KEY en .env o fallback (live). En http://localhost Stripe avisa HTTPS — normal en dev.
+const STRIPE_PUBLISHABLE =
+    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
+    'pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y';
+const stripePromise = STRIPE_PUBLISHABLE ? loadStripe(STRIPE_PUBLISHABLE) : null;
 
 const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
     const stripe = useStripe();
@@ -1483,7 +1487,7 @@ function Dashboard() {
                                     <p style={{ fontSize: '1.2rem', marginBottom: '30px', fontWeight: '800' }}>Total a pagar: ${isAnnual ? pendingPaymentPlan.annualPrice : pendingPaymentPlan.price} USD /{isAnnual ? 'año' : 'mes'}</p>
 
                                     <div style={{ maxWidth: '400px', margin: '0 auto' }}>
-                                        {stripeClientSecret ? (
+                                        {stripeClientSecret && stripePromise ? (
                                             <Elements stripe={stripePromise} options={{ clientSecret: stripeClientSecret }}>
                                                 <StripeCheckoutForm
                                                     clientSecret={stripeClientSecret}

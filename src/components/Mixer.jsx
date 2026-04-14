@@ -76,9 +76,10 @@ function VUMeter({ trackId, muted }) {
 
                 if (isLit) {
                     if (isDark) {
-                        if (i >= LED_COUNT - 4) color = '#ff3b3b';
-                        else if (i >= LED_COUNT - 10) color = '#ff9f0a';
-                        else color = '#00e5ff';
+                        // Amarillos (modo oscuro)
+                        if (i >= LED_COUNT - 4) color = '#f59e0b';
+                        else if (i >= LED_COUNT - 10) color = '#fbbf24';
+                        else color = '#eab308';
                     } else {
                         if (i >= LED_COUNT - 4) color = '#ff1f1f';
                         else if (i >= LED_COUNT - 10) color = '#ffb142';

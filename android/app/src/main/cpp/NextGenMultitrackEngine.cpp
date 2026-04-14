@@ -8,6 +8,7 @@
 
 #include <android/log.h>
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cctype>
@@ -119,6 +120,8 @@ struct StemChannel {
     bool routeClickGuide = false;
     /// Diagnostic: log at most one partial-read line per stem after each seek (reset in seekSeconds).
     bool loggedPartialAfterSeek = false;
+    /// Smoothed peak 0..1 for VU (updated in audio thread).
+    std::atomic<float> vuPeak{0.f};
 };
 
 struct NextGenMultitrackEngine::Impl {
@@ -338,12 +341,18 @@ struct NextGenMultitrackEngine::Impl {
         const size_t samples = (size_t)frameCount * kChannels;
         if (transport.load(std::memory_order_acquire) != 1) {
             std::memset(pOut, 0, samples * sizeof(float));
+            for (auto& up : stems_) {
+                if (up) up->vuPeak.store(0.f, std::memory_order_relaxed);
+            }
             return;
         }
 
         // Post-seek gate.
         if (!audio_ready_after_seek_.load(std::memory_order_acquire)) {
             std::memset(pOut, 0, samples * sizeof(float));
+            for (auto& up : stems_) {
+                if (up) up->vuPeak.store(0.f, std::memory_order_relaxed);
+            }
             if (!diag_logged_audio_gated_.exchange(true, std::memory_order_acq_rel)) {
                 logNextGenInfoFixed("audio gated (callback blocked)");
             }
@@ -412,10 +421,14 @@ struct NextGenMultitrackEngine::Impl {
             }
 
             const ma_uint32 nFrames = (ma_uint32)framesRead;
+            float blockPeak = 0.f;
+            const float gAbs = std::fabs(g);
             for (ma_uint32 f = 0; f < nFrames; ++f) {
                 const float L = mix_temp_[(size_t)f * 2];
                 const float R = mix_temp_[(size_t)f * 2 + 1];
                 const float m = 0.5f * (L + R);
+                const float pk = std::max(std::fabs(L), std::fabs(R)) * gAbs;
+                if (pk > blockPeak) blockPeak = pk;
                 const size_t base = (size_t)f * 2;
                 if (stem->routeClickGuide) {
                     if (clickGuideOnLeft) preMix_[base + 0] += m * g;
@@ -424,6 +437,13 @@ struct NextGenMultitrackEngine::Impl {
                     if (clickGuideOnLeft) preMix_[base + 1] += m * g;
                     else                 preMix_[base + 0] += m * g;
                 }
+            }
+            {
+                const float prev = stem->vuPeak.load(std::memory_order_relaxed);
+                float smooth = prev * 0.82f + blockPeak * 0.18f;
+                if (smooth < 0.0005f) smooth = 0.f;
+                if (smooth > 1.f) smooth = 1.f;
+                stem->vuPeak.store(smooth, std::memory_order_relaxed);
             }
 
             if (framesRead < srcFrames) {
@@ -770,7 +790,13 @@ struct NextGenMultitrackEngine::Impl {
         oss << "\"tempoRatio\":" << (double)tempo_ratio_.load(std::memory_order_relaxed) << ",";
         oss << "\"masterVolume\":" << (double)master_volume_.load(std::memory_order_relaxed) << ",";
         oss << "\"sampleRate\":" << (int)kSampleRate << ",\"trackCount\":" << stems_.size() << ",";
-        oss << "\"tracks\":[";
+        oss << "\"trackLevels\":{";
+        for (size_t i = 0; i < stems_.size(); ++i) {
+            const auto& t = *stems_[i];
+            if (i) oss << ',';
+            oss << "\"" << jsonEscape(t.id) << "\":" << (double)t.vuPeak.load(std::memory_order_relaxed);
+        }
+        oss << "},\"tracks\":[";
         for (size_t i = 0; i < stems_.size(); ++i) {
             const auto& t = *stems_[i];
             if (i) oss << ',';
@@ -778,7 +804,8 @@ struct NextGenMultitrackEngine::Impl {
             oss << "\"path\":\"" << jsonEscape(t.path) << "\",";
             oss << "\"volume\":" << (double)t.volume.load() << ",\"muted\":" << (t.muted.load() ? "true" : "false");
             oss << ",\"solo\":" << (t.solo.load() ? "true" : "false");
-            oss << ",\"ended\":" << (t.ended.load() ? "true" : "false") << "}";
+            oss << ",\"ended\":" << (t.ended.load() ? "true" : "false");
+            oss << ",\"rms\":" << (double)t.vuPeak.load(std::memory_order_relaxed) << "}";
         }
         oss << "]}";
         return oss.str();

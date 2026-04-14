@@ -57,4 +57,8 @@ export class NextGenMixerPluginWeb extends WebPlugin {
     async getSnapshot() {
         return { json: '{}' };
     }
+
+    async getTrackLevels() {
+        return '';
+    }
 }

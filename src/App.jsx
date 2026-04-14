@@ -70,6 +70,17 @@ function App() {
     }
   }, [pwa]);
 
+  // Precarga el chunk de Multitrack para que #/multitrack no espere tanto al lazy (misma ruta que lazy()).
+  useEffect(() => {
+    const run = () => import('./pages/Multitrack');
+    if (typeof requestIdleCallback !== 'undefined') {
+      const id = requestIdleCallback(run);
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(run, 0);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <Router>
       <Suspense fallback={<PageLoader />}>

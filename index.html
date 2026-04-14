@@ -19,9 +19,7 @@
   <div id="root" translate="no"></div>
   <script type="module" src="/src/main.jsx"></script>
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
-    }
+    // Service Worker solo en build de producción — ver main.jsx (en dev el SW rompe manifest.json + HMR)
     // Capture PWA install prompt so the Windows install button can trigger it
     window._pwaInstallPrompt = null;
     window.addEventListener('beforeinstallprompt', e => {
