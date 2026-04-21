@@ -65,8 +65,19 @@ class AudioEngine {
         if (this.ctx) return;
         this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
         this.stSumBus = this.ctx.createGain();
+        
+        // --- Add Compressor to prevent digital clipping (explosions)
+        this.limiter = this.ctx.createDynamicsCompressor();
+        this.limiter.threshold.value = -1.0;
+        this.limiter.knee.value = 0.0;
+        this.limiter.ratio.value = 20.0;
+        this.limiter.attack.value = 0.005;
+        this.limiter.release.value = 0.050;
+
         this.masterGain = this.ctx.createGain();
-        this.stSumBus.connect(this.masterGain);
+        
+        this.stSumBus.connect(this.limiter);
+        this.limiter.connect(this.masterGain);
         this.masterGain.connect(this.ctx.destination);
     }
 
@@ -172,6 +183,7 @@ class AudioEngine {
             const analyser = this.ctx.createAnalyser();
             analyser.fftSize = 256;
             const gainNode = this.ctx.createGain();
+            gainNode.gain.value = 0; // Start at 0 gain, so there's no initial pop
 
             pannerNode.connect(analyser);
             analyser.connect(gainNode);
@@ -208,6 +220,20 @@ class AudioEngine {
                 await n.stop();
                 await n.clearTracks();
             } else {
+                // Fade out stSumBus or tracks before clearing to avoid pops
+                if (this.isPlaying && this.ctx) {
+                    for (const [, t] of this.tracks.entries()) {
+                        if (t.gain) {
+                            const now = this.ctx.currentTime;
+                            try {
+                                t.gain.gain.cancelScheduledValues(now);
+                                t.gain.gain.setValueAtTime(t.gain.gain.value, now);
+                                t.gain.gain.linearRampToValueAtTime(0, now + 0.03);
+                            } catch (e) {}
+                        }
+                    }
+                    await new Promise(r => setTimeout(r, 40));
+                }
                 for (const id of Array.from(this.tracks.keys())) this.removeTrack(id);
             }
         } catch (e) {
@@ -296,7 +322,15 @@ class AudioEngine {
         for (const t of this.tracks.values()) {
             let muteIt = t.muted;
             if (anySolo && !t.solo) muteIt = true;
-            t.gain.gain.setTargetAtTime(muteIt ? 0 : t.volume, this.ctx.currentTime, 0.01);
+            if (t.gain) {
+                const target = muteIt ? 0 : t.volume;
+                const now = this.ctx.currentTime;
+                try {
+                    t.gain.gain.cancelScheduledValues(now);
+                    t.gain.gain.setValueAtTime(t.gain.gain.value, now);
+                    t.gain.gain.linearRampToValueAtTime(target, now + 0.03);
+                } catch(e) {}
+            }
         }
     }
 
@@ -504,9 +538,9 @@ class AudioEngine {
             this._updateWorkletParams();
 
             this.stSumBus.connect(this.masterSoundTouchNode);
-            this.masterSoundTouchNode.connect(this.masterGain);
+            this.masterSoundTouchNode.connect(this.limiter);
         } else {
-            this.stSumBus.connect(this.masterGain);
+            this.stSumBus.connect(this.limiter);
         }
 
         for (const [, track] of this.tracks.entries()) {
@@ -520,9 +554,15 @@ class AudioEngine {
                 try { track.source.stop(); } catch(_) {}
                 track.source = null;
             }
-            // Reset gain to 1 before starting (may have been faded to 0 by stop())
-            if (track.gain) track.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-            if (track.gain) track.gain.gain.setTargetAtTime(track.muted ? 0 : track.volume, this.ctx.currentTime, 0.01);
+            // Smooth fade-in to prevent pops/clicks on start
+            if (track.gain) {
+                const now = this.ctx.currentTime;
+                try {
+                    track.gain.gain.cancelScheduledValues(now);
+                    track.gain.gain.setValueAtTime(0, now);
+                    track.gain.gain.linearRampToValueAtTime(track.muted ? 0 : track.volume, now + 0.05);
+                } catch(e) {}
+            }
 
             const src = this.ctx.createBufferSource();
             src.buffer = track.buffer;
@@ -652,8 +692,15 @@ class AudioEngine {
                 if (t.source) {
                     try {
                         // Short anti-pop fade then stop
-                        const stopTime = this.ctx.currentTime + 0.05;
-                        if (t.gain) t.gain.gain.linearRampToValueAtTime(0, stopTime);
+                        const now = this.ctx.currentTime;
+                        const stopTime = now + 0.03;
+                        if (t.gain) {
+                            try {
+                                t.gain.gain.cancelScheduledValues(now);
+                                t.gain.gain.setValueAtTime(t.gain.gain.value, now);
+                                t.gain.gain.linearRampToValueAtTime(0, stopTime);
+                            } catch(e) {}
+                        }
                         t.source.stop(stopTime);
                     } catch(e) {
                         // If scheduled stop fails, force-stop immediately
