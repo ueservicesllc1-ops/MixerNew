@@ -15,4 +15,14 @@ export default defineConfig({
     port: 3000,
     // HMR: dejar el valor por defecto de Vite (evita ws://localhost:3000 fallando si forzamos host/puerto).
   },
+  optimizeDeps: {
+    include: ['qrcode.react'],
+  },
+  build: {
+    rollupOptions: {
+      // Ensure qrcode.react is bundled, not treated as external
+      external: [],
+    },
+  },
 })
+
