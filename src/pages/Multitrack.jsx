@@ -851,25 +851,9 @@ export default function Multitrack() {
         localStorage.setItem('mixer_appFontSize', appFontSize);
     }, [appFontSize]);
 
-    // Apply pan mode to individual tracks
-    useEffect(() => {
-        tracks.forEach(track => {
-            if (!track || !track.name) return;
-            const n = track.name.toLowerCase();
-            const isClickOrGuide = n.includes('click') || n.includes('guide') || n.includes('guia') || n.includes('cue');
-            
-            let pan = 0;
-            if (panMode === 'L') {
-                // Click Left, Instruments Right
-                pan = isClickOrGuide ? -1 : 1;
-            } else if (panMode === 'R') {
-                // Click Right, Instruments Left
-                pan = isClickOrGuide ? 1 : -1;
-            }
-            audioEngine.setTrackPan(track.id, pan);
-        });
-        localStorage.setItem('mixer_panMode', panMode);
-    }, [panMode, tracks, audioReady]);
+    // FIXED PAN: click/guide always left, instruments always right
+    // Applied automatically on every song load — no user setting needed.
+
     // ΓöÇΓöÇ Smart LRU Preload Cache ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // Detects device RAM and sets how many decoded songs to keep in cache.
     // navigator.deviceMemory is privacy-capped at 8 even on 32/64GB machines.
@@ -3528,49 +3512,6 @@ export default function Multitrack() {
                     </div>
                 </div>
 
-                {/* ── 2. Pan ────────────────────────────────────────── */}
-                <div className="settings-section">
-                    <div className="settings-row" style={{ alignItems: 'flex-start' }}>
-                        <div className="settings-label">
-                            <div className="settings-icon-wrap" style={{ background: '#f0f8ff' }}>
-                                <Headphones size={16} color="#4299e1" />
-                            </div>
-                            <div>
-                                <div className="settings-title">Panorama (Pan)</div>
-                                <div className="settings-sub">Salida de audio estéreo</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                        {[{ id: 'L', label: '◄ L', desc: 'Solo Izquierda' }, { id: 'mono', label: '● Mono', desc: 'Centro' }, { id: 'R', label: 'R ►', desc: 'Solo Derecha' }].map(opt => (
-                            <button
-                                key={opt.id}
-                                onClick={() => setPanMode(opt.id)}
-                                title={opt.desc}
-                                style={{
-                                    flex: 1,
-                                    padding: '10px 4px',
-                                    borderRadius: '10px',
-                                    border: panMode === opt.id ? '2px solid #00bcd4' : '2px solid #e2e8f0',
-                                    background: panMode === opt.id ? 'linear-gradient(135deg, rgba(0,188,212,0.15), rgba(0,188,212,0.05))' : (darkMode ? '#2d3748' : '#f8f9fa'),
-                                    color: panMode === opt.id ? '#00bcd4' : (darkMode ? '#aaa' : '#555'),
-                                    fontWeight: panMode === opt.id ? '800' : '600',
-                                    fontSize: '0.78rem',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.2s',
-                                    boxShadow: panMode === opt.id ? '0 2px 12px rgba(0,188,212,0.2)' : 'none',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    gap: '4px'
-                                }}
-                            >
-                                {panMode === opt.id && <Check size={12} />}
-                                <span>{opt.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
 
                 {/* ── 3. Tamaño de fuente ────────────────────────────── */}
                 <div className="settings-section">
