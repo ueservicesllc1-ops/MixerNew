@@ -1541,15 +1541,12 @@ export default function Multitrack() {
                     deferPreviewMixDownload(song);
                 }
 
-                // Apply pan immediately after loading so click/guide are routed correctly from start
+                // ALWAYS: click/guide = left ear (-1), all other tracks = right ear (+1)
                 if (!isAppNativeLoad) {
                     for (const { id: tId, name: tName } of newTracks) {
                         const nm = (tName || '').toLowerCase();
                         const isClickOrGuide = nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue');
-                        const currentPanMode = localStorage.getItem('mixer_panMode') || 'mono';
-                        let pan = 0;
-                        if (currentPanMode === 'L') pan = isClickOrGuide ? -1 : 1;
-                        else if (currentPanMode === 'R') pan = isClickOrGuide ? 1 : -1;
+                        const pan = isClickOrGuide ? -1 : 1;
                         audioEngine.setTrackPan(tId, pan);
                     }
                 }
