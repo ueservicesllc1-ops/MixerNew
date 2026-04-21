@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -21,6 +22,7 @@ function clearMixerLastSetlistId() {
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
 import { padEngine } from '../PadEngine'
+import { BandSyncEngine } from '../BandSyncEngine'
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
     DndContext,
@@ -440,6 +442,8 @@ export default function Multitrack() {
     const [audioReady, setAudioReady] = useState(0); // Trigger re-renders when buffers finish decoding
     /** NextGen getSnapshot() durationSec — transport duration on native. */
     const [snapshotDurationSec, setSnapshotDurationSec] = useState(0);
+    const [bandSyncInfo, setBandSyncInfo] = useState(null);
+    const [showBandSyncQr, setShowBandSyncQr] = useState(false);
     // Bottom tab panel
     const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings' | 'partituras'
 
@@ -477,6 +481,17 @@ export default function Multitrack() {
             cancelled = true;
         };
     }, [activeSongId]);
+
+    const handleToggleBandSyncQr = useCallback(async () => {
+        if (!isAppNative) return;
+        if (showBandSyncQr) {
+            setShowBandSyncQr(false);
+            return;
+        }
+        const info = await BandSyncEngine.ensureServer(8080);
+        setBandSyncInfo(info);
+        setShowBandSyncQr(true);
+    }, [showBandSyncQr]);
 
     // Login Details
     const [showLoginModal, setShowLoginModal] = useState(false);
@@ -836,25 +851,25 @@ export default function Multitrack() {
         localStorage.setItem('mixer_appFontSize', appFontSize);
     }, [appFontSize]);
 
-    // Apply pan mode to audio engine
+    // Apply pan mode to individual tracks
     useEffect(() => {
-        if (!audioEngine?.masterGain?.context) return;
-        const ctx = audioEngine.masterGain.context;
-        // Create/reuse a stereoPanel node
-        if (!audioEngine._pannerNode) {
-            try {
-                audioEngine._pannerNode = ctx.createStereoPanner();
-                audioEngine.masterGain.disconnect();
-                audioEngine.masterGain.connect(audioEngine._pannerNode);
-                audioEngine._pannerNode.connect(ctx.destination);
-            } catch (e) { console.warn('StereoPanner not supported', e); }
-        }
-        if (audioEngine._pannerNode) {
-            const panVal = panMode === 'L' ? -1 : panMode === 'R' ? 1 : 0;
-            audioEngine._pannerNode.pan.setTargetAtTime(panVal, ctx.currentTime, 0.05);
-        }
+        tracks.forEach(track => {
+            if (!track || !track.name) return;
+            const n = track.name.toLowerCase();
+            const isClickOrGuide = n.includes('click') || n.includes('guide') || n.includes('guia') || n.includes('cue');
+            
+            let pan = 0;
+            if (panMode === 'L') {
+                // Click Left, Instruments Right
+                pan = isClickOrGuide ? -1 : 1;
+            } else if (panMode === 'R') {
+                // Click Right, Instruments Left
+                pan = isClickOrGuide ? 1 : -1;
+            }
+            audioEngine.setTrackPan(track.id, pan);
+        });
         localStorage.setItem('mixer_panMode', panMode);
-    }, [panMode]);
+    }, [panMode, tracks, audioReady]);
     // ΓöÇΓöÇ Smart LRU Preload Cache ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // Detects device RAM and sets how many decoded songs to keep in cache.
     // navigator.deviceMemory is privacy-capped at 8 even on 32/64GB machines.
@@ -1932,6 +1947,19 @@ export default function Multitrack() {
         : fromSetlist;
 
     const songKeyForUi = getSongMusicalKey(activeSong);
+    const activeMarkers = React.useMemo(() => {
+        if (!activeSong?.id) return [];
+        const override = localMarkerOverrides[activeSong.id];
+        if (Array.isArray(override)) return override;
+        if (Array.isArray(activeSong.markers)) return activeSong.markers;
+        try {
+            const raw = localStorage.getItem(`markers_${activeSong.id}`);
+            const parsed = JSON.parse(raw || '[]');
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }, [activeSong, localMarkerOverrides]);
 
     const onNextGenPlaybackSnapshot = useCallback(({ positionSec, durationSec }) => {
         progressRef.current = positionSec;
@@ -2057,6 +2085,83 @@ export default function Multitrack() {
         });
         return () => unsub();
     }, [activeSongId]);
+
+    useEffect(() => {
+        if (!isAppNative) return undefined;
+        if (!bandSyncInfo?.running) return undefined;
+        const fullTeleprompterText = (text) => {
+            if (typeof text !== 'string') return '';
+            if (text === 'loading') return '';
+            return text;
+        };
+        const markerForTime = (markers, t) => {
+            if (!Array.isArray(markers) || !markers.length) return 'INTRO';
+            let best = markers[0];
+            for (const m of markers) {
+                if (typeof m?.time !== 'number') continue;
+                if (m.time <= t) best = m;
+            }
+            return String(best?.label || 'INTRO');
+        };
+        const pushNow = async () => {
+            const t = Number.isFinite(progressRef.current) ? progressRef.current : 0;
+            const viewMode = activeTab || 'none';
+            const lyricsText = fullTeleprompterText(activeLyrics);
+            const chordsText = fullTeleprompterText(activeChords);
+            const lyricsSection = viewMode === 'chords' ? chordsText : lyricsText;
+            const setlistSongs = (activeSetlist?.songs || []).map((s) => ({
+                id: s.id,
+                name: s.name || 'Sin nombre',
+            }));
+            const state = {
+                songName: activeSong?.name || 'Esperando canción...',
+                activeSongId: activeSong?.id || null,
+                activeSongIndex: (activeSetlist?.songs || []).findIndex((s) => s.id === activeSong?.id),
+                setlistName: activeSetlist?.name || '',
+                setlistSongs,
+                time: t,
+                isPlaying: !!isPlaying,
+                activeMarkerLabel: markerForTime(activeMarkers, t),
+                lyricsSection: lyricsSection || 'Sin texto activo',
+                lyricsText: lyricsText || '',
+                chordsText: chordsText || '',
+                viewMode,
+                partituras: (activePartituras || []).map((p) => ({
+                    id: p.id,
+                    instrument: p.instrument || '',
+                    title: p.title || p.instrument || 'Partitura',
+                    pdfUrl: p.pdfUrl || '',
+                })),
+                selectedPartitura: selectedPartitura
+                    ? {
+                        id: selectedPartitura.id,
+                        instrument: selectedPartitura.instrument || '',
+                        title: selectedPartitura.title || selectedPartitura.instrument || 'Partitura',
+                        pdfUrl: selectedPartitura.pdfUrl || '',
+                    }
+                    : null,
+            };
+            await BandSyncEngine.pushState(state, 280);
+        };
+        void pushNow();
+        const id = setInterval(() => {
+            void pushNow();
+        }, 500);
+        return () => clearInterval(id);
+    }, [activeSong, activeSetlist, activePartituras, activeTab, activeLyrics, activeChords, activeMarkers, isPlaying, selectedPartitura, bandSyncInfo?.running]);
+
+    useEffect(() => {
+        if (!isAppNative || !bandSyncInfo?.running) return undefined;
+        const poll = async () => {
+            const info = await BandSyncEngine.getInfo();
+            setBandSyncInfo(info);
+        };
+        void poll();
+        const id = setInterval(() => {
+            void poll();
+        }, 3000);
+        return () => clearInterval(id);
+    }, [bandSyncInfo?.running]);
 
     // Update viewedSongId when activeSong changes if not already set
     useEffect(() => {
@@ -2517,6 +2622,32 @@ export default function Multitrack() {
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
                     <Menu size={20} />
                 </button>
+                {!isAppNative && (
+                    <button
+                        onClick={() => navigate('/dashboard')}
+                        title="Volver al Dashboard"
+                        style={{
+                            height: '34px',
+                            minWidth: '92px',
+                            padding: '0 14px',
+                            borderRadius: '999px',
+                            border: '1px solid rgba(148, 163, 184, 0.45)',
+                            background: 'rgba(15, 23, 42, 0.9)',
+                            color: '#e2e8f0',
+                            fontSize: '0.82rem',
+                            fontWeight: 700,
+                            letterSpacing: '0.2px',
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            whiteSpace: 'nowrap',
+                            lineHeight: 1
+                        }}
+                    >
+                        Dashboard
+                    </button>
+                )}
 
                 {/* MOBILE DRAWER BUTTONS */}
                 <div className="mobile-only-flex" style={{ display: 'flex', gap: '4px' }}>
@@ -2677,6 +2808,16 @@ export default function Multitrack() {
                             <button onClick={handleLogout} className="transport-btn" title="Cerrar Sesión"><LogOut size={18} /></button>
                         </div>
                     )}
+                    {isAppNative && (
+                        <button
+                            className={`transport-btn ${showBandSyncQr ? 'active' : ''}`}
+                            title="Band Sync QR (activa servidor)"
+                            onClick={handleToggleBandSyncQr}
+                            style={{ background: showBandSyncQr ? '#00bcd4' : undefined, color: showBandSyncQr ? 'white' : undefined }}
+                        >
+                            <QrCode size={20} />
+                        </button>
+                    )}
                     <button className="transport-btn" title="Reiniciar canción" onClick={handleRewind}><RefreshCw size={20} /></button>
                     <button
                         className={`transport-btn ${isSettingsOpen ? 'active' : ''}`}
@@ -2692,6 +2833,64 @@ export default function Multitrack() {
                     </button>
                 </div>
             </div>
+
+            {isAppNative && showBandSyncQr && bandSyncInfo?.url && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9999,
+                        background: 'rgba(2, 6, 23, 0.76)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                    }}
+                    onClick={() => setShowBandSyncQr(false)}
+                >
+                    <div
+                        style={{
+                            width: 'min(92vw, 430px)',
+                            background: '#0f172a',
+                            border: '1px solid #334155',
+                            borderRadius: 14,
+                            padding: '12px 12px 14px',
+                            boxShadow: '0 16px 50px rgba(0,0,0,0.45)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <div style={{ color: '#e2e8f0', fontWeight: 800, fontSize: '0.9rem' }}>Band Sync QR</div>
+                            <button
+                                type="button"
+                                onClick={() => setShowBandSyncQr(false)}
+                                title="Cerrar"
+                                style={{
+                                    width: 30,
+                                    height: 30,
+                                    borderRadius: 999,
+                                    border: '1px solid #475569',
+                                    background: '#0b1220',
+                                    color: '#e2e8f0',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <QRCodeSVG value={bandSyncInfo.url} size={196} bgColor="#ffffff" fgColor="#0f172a" />
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+                                <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>Escanea para entrar</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Clientes conectados: {bandSyncInfo.clients || 0}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* WAVEFORM OVERVIEW / SCRUBBER — web: WaveformCanvas; native: NextGen ProgressBar + lightweight fake overview (no decode pipeline) */}
             <div className="waveform-section" style={{ height: isAppNative ? '85px' : '115px' }}>
