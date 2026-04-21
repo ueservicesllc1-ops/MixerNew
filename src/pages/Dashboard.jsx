@@ -140,7 +140,7 @@ function Dashboard() {
 
     const [activeTab, setActiveTab] = useState('home');
     const [step, setStep] = useState('idle');
-    const [, setUserProfile] = useState(null);
+    const [userProfile, setUserProfile] = useState(null);
     const [useType, setUseType] = useState(null);
     const [hasRights, setHasRights] = useState(false);
     const [fileList, setFileList] = useState([]);
@@ -809,7 +809,7 @@ function Dashboard() {
                         { id: 'songs', label: 'Mis Canciones', icon: <Music2 size={20} /> },
                         { id: 'setlists', label: 'Setlists', icon: <ListMusic size={20} /> },
                         { id: 'global', label: 'Comunidad', icon: <Globe size={20} /> },
-                        { id: 'vendedores', label: 'Ventas (Hotmart)', icon: <TrendingUp size={20} /> },
+                        { id: 'vendedores', label: userProfile?.isSeller ? 'Panel de Vendedor' : 'Hacerte Vendedor', icon: <TrendingUp size={20} /> },
                     ].map(item => (
                         <button
                             key={item.id}

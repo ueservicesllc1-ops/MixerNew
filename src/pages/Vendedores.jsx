@@ -652,10 +652,10 @@ function Vendedores() {
 
                             <button
                                 disabled={!regForm.firstName || !regForm.idPhotoUrl}
-                                onClick={handleGoToPayment}
+                                onClick={() => handleCompleteRegistration(null)}
                                 className="btn-teal" style={{ width: '100%', padding: '16px', fontSize: '1.1rem', opacity: (!regForm.firstName || !regForm.idPhotoUrl) ? 0.5 : 1 }}
                             >
-                                Siguiente: Suscripción y Pago
+                                Convertirme en Vendedor (Gratis ahora)
                             </button>
                         </div>
                     )}

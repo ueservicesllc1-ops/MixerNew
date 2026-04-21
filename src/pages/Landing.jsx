@@ -4,13 +4,30 @@ import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 
 export default function Landing() {
     const navigate = useNavigate();
+    const [showHeroPopup, setShowHeroPopup] = useState(false);
+    const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
     const [email, setEmail] = useState('');
+
+    useEffect(() => {
+        const showTimer = setTimeout(() => {
+            setShowHeroPopup(true);
+        }, 1000);
+
+        const hideTimer = setTimeout(() => {
+            setShowHeroPopup(false);
+        }, 7000); // 1s wait + 6s duration
+
+        return () => {
+            clearTimeout(showTimer);
+            clearTimeout(hideTimer);
+        };
+    }, []);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [firstName, setFirstName] = useState('');
@@ -822,6 +839,26 @@ export default function Landing() {
                 </div>
             </section>
 
+            {/* SELLER CTA BANNER */}
+            <section style={{ padding: '60px 20px', background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)' }}>
+                <div style={{ maxWidth: '1200px', margin: '0 auto', background: 'rgba(0,210,211,0.05)', border: '1px solid rgba(0,210,211,0.2)', borderRadius: '32px', padding: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '40px' }}>
+                    <div style={{ flex: '1 1 500px' }}>
+                        <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px' }}>COMUNIDAD DE CREADORES</div>
+                        <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.5rem)', fontWeight: '900', color: 'white', lineHeight: '1.2', marginBottom: '20px' }}>Hazte vendedor y comparte tu talento hoy mismo</h2>
+                        <p style={{ color: '#94a3b8', fontSize: '1.1rem', maxWidth: '600px' }}>Únete a cientos de músicos que ya están monetizando sus secuencias y multitracks en Zion Stage.</p>
+                    </div>
+                    <div style={{ flex: '0 0 auto' }}>
+                        <button 
+                            onClick={() => setShowSellerInfoModal(true)} 
+                            className="btn-teal" 
+                            style={{ padding: '18px 48px', fontSize: '1.1rem', boxShadow: '0 20px 40px rgba(0,210,211,0.2)' }}
+                        >
+                            Hazte vendedor
+                        </button>
+                    </div>
+                </div>
+            </section>
+
             {/* INFO SECTION: BEYOND THE TRACKS */}
             <section style={{ backgroundColor: '#020617', padding: '100px 60px' }}>
                 <div style={{ maxWidth: '1300px', margin: '0 auto', display: 'flex', gap: '60px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1310,6 +1347,88 @@ export default function Landing() {
                     </div>
                 )
             }
+
+            {/* SELLER INFO MODAL */}
+            {showSellerInfoModal && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: '#0f172a', width: '100%', maxWidth: '500px', borderRadius: '24px', border: '1px solid rgba(0,210,211,0.2)', padding: '40px', position: 'relative', textAlign: 'center' }}>
+                        <button onClick={() => setShowSellerInfoModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={24} /></button>
+                        <div style={{ background: 'rgba(0,210,211,0.1)', width: '80px', height: '80px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#00d2d3' }}><TrendingUp size={40} /></div>
+                        <h2 style={{ fontSize: '2rem', fontWeight: '900', marginBottom: '16px', color: 'white' }}>Hazte Vendedor</h2>
+                        <p style={{ color: '#94a3b8', marginBottom: '32px', fontSize: '1.1rem' }}>Genera ingresos compartiendo tu talento con la comunidad de Zion Stage.</p>
+                        
+                        <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '40px' }}>
+                            <div style={{ display: 'flex', gap: '15px' }}>
+                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>1</div>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}><strong>Inicia Sesión</strong> o regístrate en la plataforma.</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '15px' }}>
+                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>2</div>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>Ve a tu <strong>Dashboard</strong> principal.</p>
+                            </div>
+                            <div style={{ display: 'flex', gap: '15px' }}>
+                                <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>3</div>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>Haz clic en el botón <strong>"Hacerte Vendedor"</strong> y completa tus datos.</p>
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={() => {
+                                setShowSellerInfoModal(false);
+                                if (!currentUser) setShowLoginPanel(true);
+                                else navigate('/dashboard');
+                            }} 
+                            className="btn-teal" 
+                            style={{ width: '100%', padding: '16px', fontSize: '1.1rem', border: 'none', cursor: 'pointer', borderRadius: '12px', fontWeight: '700' }}
+                        >
+                            {currentUser ? 'Ir al Dashboard' : 'Iniciar Sesión'}
+                        </button>
+                    </div>
+                </div>
+            )}
+            {/* HERO POPUP SELLERS */}
+            {showHeroPopup && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(15px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', width: '100%', maxWidth: '850px', borderRadius: '32px', border: '1px solid rgba(0,210,211,0.3)', overflow: 'hidden', position: 'relative', boxShadow: '0 50px 100px rgba(0,0,0,0.5)' }}>
+                        <button onClick={() => setShowHeroPopup(false)} style={{ position: 'absolute', top: '30px', right: '30px', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><X size={24} /></button>
+                        
+                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
+                            <div style={{ flex: '1 1 450px', padding: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                                <div style={{ background: 'rgba(0,210,211,0.1)', color: '#00d2d3', padding: '8px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', alignSelf: 'flex-start', marginBottom: '20px', letterSpacing: '1px' }}>OPORTUNIDAD EXCLUSIVA</div>
+                                <h2 style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>Monetiza tu <span style={{ color: '#00d2d3' }}>Talento Musical</span></h2>
+                                <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '40px' }}>Únete a la comunidad de vendedores de Zion Stage y empieza a generar ingresos compartiendo tus secuencias y multitracks con el mundo.</p>
+                                
+                                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                                    <button 
+                                        onClick={() => {
+                                            setShowHeroPopup(false);
+                                            setShowSellerInfoModal(true);
+                                        }} 
+                                        className="btn-teal" 
+                                        style={{ padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', border: 'none', cursor: 'pointer' }}
+                                    >
+                                        Ver Pasos para Vender
+                                    </button>
+                                    <button 
+                                        onClick={() => setShowHeroPopup(false)} 
+                                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', cursor: 'pointer' }}
+                                    >
+                                        Quizás luego
+                                    </button>
+                                </div>
+                            </div>
+                             <div style={{ flex: '1 1 300px', background: 'rgba(0,210,211,0.03)', position: 'relative', minHeight: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+                                 <TrendingUp size={220} color="#00d2d3" opacity={0.05} style={{ position: 'absolute' }} />
+                                 <div style={{ position: 'relative', textAlign: 'center', padding: '40px' }}>
+                                    <div style={{ fontSize: '3rem', fontWeight: '900', color: '#00d2d3', lineHeight: '1.1', marginBottom: '10px' }}>GENERA</div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.3rem', letterSpacing: '1px' }}>INGRESOS EXTRA</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '15px', maxWidth: '200px', margin: '15px auto 0' }}>Únete a la mayor red de creadores de secuencias y multitracks.</div>
+                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }
