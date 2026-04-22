@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import LanguageSwitch from '../components/LanguageSwitch'
 import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine'
 import { Mixer } from '../components/Mixer'
@@ -324,6 +326,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
 export default function Multitrack() {
     const navigate = useNavigate();
     const location = useLocation();
+    const { t } = useTranslation();
     const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
@@ -2614,13 +2617,13 @@ export default function Multitrack() {
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
                 <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V{CURRENT_VERSION} - ZION STAGE (STABLE SYNC)</div>
-                <button className="transport-btn" onClick={() => navigate('/dashboard')} title="Menu">
+                <button className="transport-btn" onClick={() => navigate('/dashboard')} title={t('multitrack.menuTitle')}>
                     <Menu size={20} />
                 </button>
                 {!isAppNative && (
                     <button
                         onClick={() => navigate('/dashboard')}
-                        title="Volver al Dashboard"
+                        title={t('multitrack.backDashTitle')}
                         style={{
                             height: '34px',
                             minWidth: '92px',
@@ -2640,16 +2643,16 @@ export default function Multitrack() {
                             lineHeight: 1
                         }}
                     >
-                        Dashboard
+                        {t('multitrack.dashboard')}
                     </button>
                 )}
 
                 {/* MOBILE DRAWER BUTTONS */}
                 <div className="mobile-only-flex" style={{ display: 'flex', gap: '4px' }}>
-                    <button className="transport-btn-mini" onClick={() => setIsSetlistMenuOpen(true)} title="Setlists">
+                    <button className="transport-btn-mini" onClick={() => setIsSetlistMenuOpen(true)} title={t('multitrack.setlistsTitle')}>
                         <ListMusic size={18} />
                     </button>
-                    <button className="transport-btn-mini" onClick={() => setIsLibraryMenuOpen(true)} title="Librería">
+                    <button className="transport-btn-mini" onClick={() => setIsLibraryMenuOpen(true)} title={t('multitrack.libraryTitle')}>
                         <LibraryIcon size={18} />
                     </button>
                 </div>
@@ -2681,7 +2684,7 @@ export default function Multitrack() {
                             flex: '0 0 auto',
                         }}
                     >
-                        MASTER
+                        {t('multitrack.master')}
                     </span>
                     <div
                         style={{
@@ -2700,7 +2703,7 @@ export default function Multitrack() {
                             value={masterVolume}
                             onChange={handleMasterVolume}
                             onInput={handleMasterVolume}
-                            aria-label="Volumen master"
+                            aria-label={t('multitrack.volMaster')}
                             style={{
                                 flex: '1 1 0',
                                 minWidth: 0,
@@ -2727,7 +2730,7 @@ export default function Multitrack() {
                 </div>
 
                 <div className="controls-group multitrack-main-transport">
-                    <button className="transport-btn" title="Rebobinar" onClick={handleSkipBack}><SkipBack size={26} /></button>
+                    <button className="transport-btn" title={t('multitrack.skipBack')} onClick={handleSkipBack}><SkipBack size={26} /></button>
                     <button
                         type="button"
                         className={`transport-btn ${isPlaying ? 'active' : 'play'}`}
@@ -2741,7 +2744,7 @@ export default function Multitrack() {
                         }}
                         disabled={!isPlaying && !canStartPlayback}
                         aria-disabled={!isPlaying && !canStartPlayback}
-                        title={isPlaying ? 'Pausar' : canStartPlayback ? 'Reproducir' : 'Espera a que las pistas estén listas'}
+                        title={isPlaying ? t('multitrack.pause') : canStartPlayback ? t('multitrack.play') : t('multitrack.playWait')}
                         style={{
                             background: isPlaying ? '#f39c12' : undefined,
                             opacity: !isPlaying && !canStartPlayback ? 0.45 : 1,
@@ -2751,8 +2754,8 @@ export default function Multitrack() {
                     >
                         {isPlaying ? <Pause size={26} /> : <Play size={26} />}
                     </button>
-                    <button className="transport-btn stop" onClick={handleStop} title="Detener"><Square size={26} /></button>
-                    <button className="transport-btn" title="Siguiente" onClick={handleSkipForward}><SkipForward size={26} /></button>
+                    <button className="transport-btn stop" onClick={handleStop} title={t('multitrack.stop')}><Square size={26} /></button>
+                    <button className="transport-btn" title={t('multitrack.skipFwd')} onClick={handleSkipForward}><SkipForward size={26} /></button>
                 </div>
 
                 <div className="audio-info">
@@ -2790,34 +2793,35 @@ export default function Multitrack() {
                 </div>
 
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <LanguageSwitch compact />
                     {!currentUser ? (
                         <button
                             onClick={handleLogin}
                             style={{ background: '#00d2d3', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
                         >
-                            <LogIn size={16} /> Entrar
+                            <LogIn size={16} /> {t('multitrack.login')}
                         </button>
                     ) : (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span className="desktop-only" style={{ fontSize: '0.8rem', color: '#666', fontWeight: 'bold' }}>{currentUser.displayName || currentUser.email.split('@')[0]}</span>
-                            <button onClick={handleLogout} className="transport-btn" title="Cerrar Sesión"><LogOut size={18} /></button>
+                            <button onClick={handleLogout} className="transport-btn" title={t('multitrack.logoutTitle')}><LogOut size={18} /></button>
                         </div>
                     )}
                     {isAppNative && (
                         <button
                             className={`transport-btn ${showBandSyncQr ? 'active' : ''}`}
-                            title="Band Sync QR (activa servidor)"
+                            title={t('multitrack.bandSyncTitle')}
                             onClick={handleToggleBandSyncQr}
                             style={{ background: showBandSyncQr ? '#00bcd4' : undefined, color: showBandSyncQr ? 'white' : undefined }}
                         >
                             <QrCode size={20} />
                         </button>
                     )}
-                    <button className="transport-btn" title="Reiniciar canción" onClick={handleRewind}><RefreshCw size={20} /></button>
+                    <button className="transport-btn" title={t('multitrack.rewind')} onClick={handleRewind}><RefreshCw size={20} /></button>
                     <button
                         className={`transport-btn ${isSettingsOpen ? 'active' : ''}`}
                         onClick={() => setIsSettingsOpen(o => !o)}
-                        title="Ajustes"
+                        title={t('multitrack.settings')}
                         style={{
                             background: isSettingsOpen ? '#00bcd4' : undefined,
                             color: isSettingsOpen ? 'white' : undefined,

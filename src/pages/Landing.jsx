@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitch from '../components/LanguageSwitch';
 import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
@@ -10,6 +12,7 @@ import { HorizontalMixer } from '../components/HorizontalMixer';
 
 export default function Landing() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [showHeroPopup, setShowHeroPopup] = useState(false);
     const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
     const [email, setEmail] = useState('');
@@ -82,14 +85,14 @@ export default function Landing() {
             localStorage.setItem('zion_cart', JSON.stringify(newCart));
             return newCart;
         });
-        setToast(`"${song.name}" añadida al carrito`);
+        setToast(t('landing.toastAdded', { name: song.name }));
         setTimeout(() => setToast(null), 3000);
     };
 
     const handlePwaInstall = async () => {
         const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
         if (standalone) {
-            setToast('La app ya esta instalada en este equipo.');
+            setToast(t('landing.toastPwa'));
             setTimeout(() => setToast(null), 3000);
             return;
         }
@@ -422,8 +425,8 @@ export default function Landing() {
 
             {/* TOP BAR PROMO */}
             <div style={{ backgroundColor: '#1e293b', padding: '8px 0', fontSize: '0.75rem', textAlign: 'center', letterSpacing: '1px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: '#94a3b8' }}>NUEVA ACTUALIZACIÓN: MOTOR DE AUDIO NATIVO Y WAVEFORMS MEJORADOS — </span>
-                <span style={{ color: '#00d2d3', marginLeft: '5px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>VER MÁS</span>
+                <span style={{ color: '#94a3b8' }}>{t('landing.promo')}</span>
+                <span style={{ color: '#00d2d3', marginLeft: '5px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>{t('common.seeMore')}</span>
             </div>
 
             {/* GLASS NAVBAR */}
@@ -448,9 +451,9 @@ export default function Landing() {
 
                     <div className="hide-mobile" style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.95rem', fontWeight: '600', color: '#94a3b8' }}>
                         {[
-                            { label: 'Canciones', path: '/store' },
-                            { label: 'Software', path: '/software' },
-                            { label: 'Recursos', path: '/recursos' },
+                            { label: t('nav.songs'), path: '/store' },
+                            { label: t('nav.software'), path: '/software' },
+                            { label: t('nav.resources'), path: '/recursos' },
                         ].map(item => (
                             <span
                                 key={item.label}
@@ -469,7 +472,7 @@ export default function Landing() {
                                 onMouseEnter={e => e.target.style.color = '#fff'}
                                 onMouseLeave={e => e.target.style.color = '#3ddc84'}
                             >
-                                ↓ Android
+                                {t('nav.android')}
                             </span>
                         )}
                         <span
@@ -478,7 +481,7 @@ export default function Landing() {
                             onMouseEnter={e => e.target.style.color = '#fff'}
                             onMouseLeave={e => e.target.style.color = '#60a5fa'}
                         >
-                            ↓ Windows
+                            {t('nav.windows')}
                         </span>
                         <span
                             onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
@@ -486,17 +489,18 @@ export default function Landing() {
                             onMouseEnter={e => e.target.style.color = '#f1c40f'}
                             onMouseLeave={e => e.target.style.color = '#94a3b8'}
                         >
-                            Precios
+                            {t('nav.prices')}
                         </span>
                     </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+                    <LanguageSwitch />
                     {!currentUser ? (
                         <>
-                            <span onClick={() => setShowLoginPanel(true)} style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: '#ccc' }}>Iniciar sesión</span>
+                            <span onClick={() => setShowLoginPanel(true)} style={{ cursor: 'pointer', fontSize: '0.9rem', fontWeight: '600', color: '#ccc' }}>{t('nav.login')}</span>
                             <button className="btn-teal" onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
-                                Únete gratis
+                                {t('nav.joinFree')}
                             </button>
                         </>
                     ) : (
@@ -545,10 +549,10 @@ export default function Landing() {
 
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         {[
-                                            { label: 'Nube principal', icon: <Globe size={18} />, onClick: () => navigate('/dashboard') },
-                                            { label: 'Tienda de Pistas', icon: <ShoppingCart size={18} />, onClick: () => navigate('/store') },
-                                            { label: 'Lista de deseos', icon: <CheckCircle2 size={18} />, onClick: () => navigate('/store') },
-                                            { label: 'Ajustes', icon: <Menu size={18} />, onClick: () => navigate('/dashboard') },
+                                            { label: t('nav.mainCloud'), icon: <Globe size={18} />, onClick: () => navigate('/dashboard') },
+                                            { label: t('nav.trackStore'), icon: <ShoppingCart size={18} />, onClick: () => navigate('/store') },
+                                            { label: t('nav.wishlist'), icon: <CheckCircle2 size={18} />, onClick: () => navigate('/store') },
+                                            { label: t('nav.settings'), icon: <Menu size={18} />, onClick: () => navigate('/dashboard') },
                                         ].map((item, idx) => (
                                             <div
                                                 key={idx}
@@ -567,7 +571,7 @@ export default function Landing() {
                                             onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                                             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                         >
-                                            <span style={{ color: '#94a3b8' }}><ArrowRight size={18} /></span> Finalizar la sesión
+                                            <span style={{ color: '#94a3b8' }}><ArrowRight size={18} /></span> {t('nav.signOut')}
                                         </div>
                                     </div>
                                 </div>
@@ -607,23 +611,23 @@ export default function Landing() {
                 }}>
                     <div style={{ flex: '0.6 1 350px' }}>
                         <h1 className="text-gradient" style={{ fontSize: 'clamp(1.8rem, 3.5vw, 3rem)', fontWeight: '900', lineHeight: '1.1', margin: '0 0 20px 0', letterSpacing: '-1px' }}>
-                            Pistas para adoración<br />hechas con excelencia
+                            {t('landing.heroLine1')}<br />{t('landing.heroLine2')}
                         </h1>
                         <p style={{ fontSize: '1rem', color: '#94a3b8', lineHeight: '1.6', maxWidth: '450px', margin: '0 0 32px' }}>
-                            Zion Stage es la plataforma definitiva para líderes de alabanza. Multitracks o Secuencias de alta calidad, sincroniza con tu equipo y lleva tu sonido al siguiente nivel con nuestro motor de audio nativo.
+                            {t('landing.heroSub')}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
                             {!currentUser ? (
                                 <button className="btn-teal" style={{ padding: '14px 32px', fontSize: '0.95rem' }} onClick={() => { setIsLogin(false); setShowLoginPanel(true); }}>
-                                    Comienza gratis ahora
+                                    {t('landing.ctaStart')}
                                 </button>
                             ) : (
                                 <button className="btn-teal" style={{ padding: '14px 32px', fontSize: '0.95rem' }} onClick={() => navigate('/dashboard')}>
-                                    Ir a la Nube Principal
+                                    {t('landing.ctaCloud')}
                                 </button>
                             )}
                             <button className="btn-ghost" style={{ padding: '14px 32px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                <Play size={18} fill="currentColor" /> Ver cómo funciona
+                                <Play size={18} fill="currentColor" /> {t('landing.ctaWatch')}
                             </button>
                         </div>
                         <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
@@ -633,7 +637,7 @@ export default function Landing() {
                                     style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#3ddc84,#2a9d5c)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(61,220,132,0.35)' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24A9.822 9.822 0 0 0 12 8c-1.53 0-2.97.38-4.47 1L5.65 5.67a.644.644 0 0 0-.84-.22c-.3.16-.42.54-.26.85l1.84 3.18C3.93 10.91 2.5 12.97 2.5 15.25c0 .22.02.44.05.65h18.9c.03-.21.05-.43.05-.65 0-2.28-1.43-4.34-3.9-5.77zM9 13.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm6 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-                                    Descargar Android {latestApp.versionName}
+                                    {t('landing.downloadAndroid', { ver: latestApp.versionName })}
                                 </button>
                             )}
                             {!window.matchMedia('(display-mode: standalone)').matches && (
@@ -642,7 +646,7 @@ export default function Landing() {
                                     style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                                    Instalar Windows (PWA)
+                                    {t('landing.installWin')}
                                 </button>
                             )}
                         </div>
@@ -761,8 +765,8 @@ export default function Landing() {
             <section style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '48px', maxWidth: '1300px', margin: '0 auto 48px', padding: '0 60px' }}>
                     <div>
-                        <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>Pistas en Venta</h2>
-                        <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>Lleva tu servicio al siguiente nivel con nuestras multipistas.</p>
+                        <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>{t('landing.tracksForSale')}</h2>
+                        <p style={{ color: '#64748b', fontSize: '1.1rem', margin: 0 }}>{t('landing.tracksForSaleSub')}</p>
                     </div>
                     <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
                         <button 
@@ -777,7 +781,7 @@ export default function Landing() {
                                 borderRadius: '12px'
                             }}
                         >
-                            ENTRAR A LA TIENDA
+                            {t('landing.enterStore')}
                         </button>
                         <div style={{ width: '1px', height: '30px', background: 'rgba(255,255,255,0.1)', margin: '0 10px' }}></div>
                         <button onClick={() => scrollCarousel('left')} style={{ width: '45px', height: '45px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={24} /></button>
@@ -843,9 +847,9 @@ export default function Landing() {
             <section style={{ padding: '60px 20px', background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', background: 'rgba(0,210,211,0.05)', border: '1px solid rgba(0,210,211,0.2)', borderRadius: '32px', padding: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '40px' }}>
                     <div style={{ flex: '1 1 500px' }}>
-                        <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px' }}>COMUNIDAD DE CREADORES</div>
-                        <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.5rem)', fontWeight: '900', color: 'white', lineHeight: '1.2', marginBottom: '20px' }}>Hazte vendedor y comparte tu talento hoy mismo</h2>
-                        <p style={{ color: '#94a3b8', fontSize: '1.1rem', maxWidth: '600px' }}>Únete a cientos de músicos que ya están monetizando sus secuencias y multitracks en Zion Stage.</p>
+                        <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px' }}>{t('landing.communityBadge')}</div>
+                        <h2 style={{ fontSize: 'clamp(2rem, 4vw, 2.5rem)', fontWeight: '900', color: 'white', lineHeight: '1.2', marginBottom: '20px' }}>{t('landing.sellerTitle')}</h2>
+                        <p style={{ color: '#94a3b8', fontSize: '1.1rem', maxWidth: '600px' }}>{t('landing.sellerSub')}</p>
                     </div>
                     <div style={{ flex: '0 0 auto' }}>
                         <button 
@@ -853,7 +857,7 @@ export default function Landing() {
                             className="btn-teal" 
                             style={{ padding: '18px 48px', fontSize: '1.1rem', boxShadow: '0 20px 40px rgba(0,210,211,0.2)' }}
                         >
-                            Hazte vendedor
+                            {t('landing.sellerBtn')}
                         </button>
                     </div>
                 </div>
@@ -870,13 +874,13 @@ export default function Landing() {
                         />
                     </div>
                     <div style={{ flex: '1 1 500px' }}>
-                        <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '32px', lineHeight: '1.2' }}>Más que simples pistas de audio.</h2>
+                        <h2 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '32px', lineHeight: '1.2' }}>{t('landing.moreThanTitle')}</h2>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
                             {[
-                                { title: 'Motor Nativo de Alto Rendimiento', info: 'Reproducción sin latencia y procesamiento en tiempo real directo en tu hardware.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
-                                { title: 'Sube tu Propia Biblioteca Cloud', info: 'Personaliza tu mezcla. Sube tus WAVs, mézclalos en el dashboard y llévalos a cualquier lugar.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
-                                { title: 'Letras y Cifrados Integrados', info: 'Visualiza letras y acordes perfectamente sincronizados mientras mezclas tus pistas en vivo.', icon: <CheckCircle2 size={24} color="#00d2d3" /> },
-                                { title: 'Sincronización Multiplataforma', info: 'Edita tu setlist en la oficina y ensaya en el teléfono. Todo en perfecta sincronía.', icon: <CheckCircle2 size={24} color="#00d2d3" /> }
+                                { title: t('landing.feat1t'), info: t('landing.feat1d'), icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: t('landing.feat2t'), info: t('landing.feat2d'), icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: t('landing.feat3t'), info: t('landing.feat3d'), icon: <CheckCircle2 size={24} color="#00d2d3" /> },
+                                { title: t('landing.feat4t'), info: t('landing.feat4d'), icon: <CheckCircle2 size={24} color="#00d2d3" /> }
                             ].map((item, i) => (
                                 <div key={i} style={{ display: 'flex', gap: '20px' }}>
                                     <div style={{ flexShrink: 0 }}>{item.icon}</div>
@@ -894,7 +898,7 @@ export default function Landing() {
             {/* TOP 10 RANKING SECTION */}
             <section style={{ padding: '100px 60px', backgroundColor: '#0f172a' }}>
                 <div style={{ maxWidth: '1300px', margin: '0 auto' }}>
-                    <h2 style={{ textAlign: 'center', fontSize: '2.5rem', fontWeight: '800', marginBottom: '60px' }}>Top 10 de este Mes</h2>
+                    <h2 style={{ textAlign: 'center', fontSize: '2.5rem', fontWeight: '800', marginBottom: '60px' }}>{t('landing.top10')}</h2>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px' }}>
                         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
                             {songsForSale.slice(0, 5).map((s, i) => (
@@ -909,11 +913,11 @@ export default function Landing() {
                                         className="btn-ghost" 
                                         style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem', border: '1px solid rgba(0,210,211,0.3)', color: '#00d2d3' }}
                                     >
-                                        Ver Pistas
+                                        {t('landing.viewTracks')}
                                     </button>
                                 </div>
                             ))}
-                            {songsForSale.length === 0 && <p style={{ color: '#64748b', textAlign: 'center' }}>Cargando canciones...</p>}
+                            {songsForSale.length === 0 && <p style={{ color: '#64748b', textAlign: 'center' }}>{t('common.loadingSongs')}</p>}
                         </div>
                         <div style={{ backgroundColor: '#1e293b', borderRadius: '16px', padding: '32px' }}>
                             {songsForSale.slice(5, 10).map((s, i) => (
@@ -928,11 +932,11 @@ export default function Landing() {
                                         className="btn-ghost" 
                                         style={{ marginLeft: 'auto', padding: '6px 16px', fontSize: '0.8rem', border: '1px solid rgba(0,210,211,0.3)', color: '#00d2d3' }}
                                     >
-                                        Ver Pistas
+                                        {t('landing.viewTracks')}
                                     </button>
                                 </div>
                             ))}
-                            {songsForSale.length <= 5 && songsForSale.length > 0 && <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>Más pistas próximamente...</p>}
+                            {songsForSale.length <= 5 && songsForSale.length > 0 && <p style={{ color: '#64748b', textAlign: 'center', marginTop: '20px' }}>{t('common.moreTracksSoon')}</p>}
                         </div>
                     </div>
                 </div>
@@ -942,14 +946,14 @@ export default function Landing() {
             <section id="precios" style={{ padding: '100px 60px', backgroundColor: '#020617' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: '60px' }}>
-                        <h2 style={{ fontSize: '3rem', fontWeight: '900', margin: '0 0 16px' }}>Planes diseñados para tu equipo</h2>
+                        <h2 style={{ fontSize: '3rem', fontWeight: '900', margin: '0 0 16px' }}>{t('landing.pricingTitle')}</h2>
                         <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '600px', margin: '0 0 30px' }}>
-                            Comienza gratis y mejora según tus necesidades de almacenamiento o acceso a la biblioteca global.
+                            {t('landing.pricingSub')}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'center' }}>
                             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Mensual</button>
-                                <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Anual (-30%)</button>
+                                <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.monthly')}</button>
+                                <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.annual')}</button>
                             </div>
                         </div>
                     </div>
@@ -959,21 +963,21 @@ export default function Landing() {
                         <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(0,210,211,0.2)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#00d2d3' }}>
                                 <Globe size={24} />
-                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>Estándar</h3>
+                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>{t('landing.planStdTitle')}</h3>
                             </div>
                             <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
-                                Almacenamiento seguro en la nube para tus pistas personales. Todo privado.
+                                {t('landing.planStdDesc')}
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {[
-                                    { name: 'Básico', gb: 2, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
-                                    { name: 'Estándar', gb: 5, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
-                                    { name: 'Plus', gb: 10, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
+                                    { name: t('landing.planTierBasic'), gb: 2, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
+                                    { name: t('landing.planTierStd'), gb: 5, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
+                                    { name: t('landing.planTierPlus'), gb: 10, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
                                 ].map((plan, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
                                         <div>
                                             <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{plan.name}</div>
-                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{plan.gb} GB Storage</div>
+                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{t('common.storageGb', { n: plan.gb })}</div>
                                         </div>
                                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
                                             {isAnnual && (
@@ -983,39 +987,39 @@ export default function Landing() {
                                             )}
                                             <div>
                                                 <span style={{ fontSize: '1.2rem', fontWeight: '800' }}>${isAnnual ? plan.annual : plan.price}</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> /{isAnnual ? 'año' : 'mes'}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> {isAnnual ? t('common.perYear') : t('common.perMonth')}</span>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                             <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} className="btn-teal" style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem' }}>
-                                Empezar
+                                {t('common.start')}
                             </button>
                         </div>
 
                         {/* VIP */}
                         <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(241,196,15,0.3)', position: 'relative' }}>
                             <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#f1c40f', color: '#000', padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', letterSpacing: '1px' }}>
-                                MÁS POPULAR
+                                {t('landing.planVipBadge')}
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#f1c40f' }}>
                                 <KeyRound size={24} />
-                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>Premium VIP</h3>
+                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>{t('landing.planVipTitle')}</h3>
                             </div>
                             <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
-                                Todo lo de Estándar + <strong>Acceso total a la biblioteca global</strong> de canciones de la comunidad.
+                                {t('landing.planVipDesc')}
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {[
-                                    { name: 'Básico VIP', gb: 2, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
-                                    { name: 'Estándar VIP', gb: 5, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
-                                    { name: 'Plus VIP', gb: 10, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
+                                    { name: t('landing.planTierBasicVip'), gb: 2, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
+                                    { name: t('landing.planTierStdVip'), gb: 5, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
+                                    { name: t('landing.planTierPlusVip'), gb: 10, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
                                 ].map((plan, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(241,196,15,0.05)', borderRadius: '12px', border: '1px solid rgba(241,196,15,0.1)' }}>
                                         <div>
                                             <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>{plan.name}</div>
-                                            <div style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.7)' }}>{plan.gb} GB Storage</div>
+                                            <div style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.7)' }}>{t('common.storageGb', { n: plan.gb })}</div>
                                         </div>
                                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
                                             {isAnnual && (
@@ -1025,14 +1029,14 @@ export default function Landing() {
                                             )}
                                             <div>
                                                 <span style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f1c40f' }}>${isAnnual ? plan.annual : plan.price}</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> /{isAnnual ? 'año' : 'mes'}</span>
+                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> {isAnnual ? t('common.perYear') : t('common.perMonth')}</span>
                                             </div>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                             <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem', backgroundColor: '#f1c40f', color: '#000', border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                                Elegir VIP
+                                {t('common.chooseVip')}
                             </button>
                         </div>
                     </div>
@@ -1044,35 +1048,35 @@ export default function Landing() {
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '60px', alignItems: 'center' }}>
                         <div style={{ textAlign: 'left' }}>
-                            <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px', textTransform: 'uppercase' }}>EL ESTÁNDAR DE LA INDUSTRIA</div>
+                            <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px', textTransform: 'uppercase' }}>{t('landing.industryBadge')}</div>
                             <h2 style={{ fontSize: 'clamp(1.8rem, 4vw, 2.8rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>
-                                Un ecosistema diseñado para servir.
+                                {t('landing.industryTitle')}
                             </h2>
                             <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.8', marginBottom: '32px' }}>
-                                Nuestra misión es simplificar tu domingo. Importa tus propios tracks, gestiona tus setlists en la nube y mezcla en vivo con la potencia del motor nativo más avanzado del mercado.
+                                {t('landing.industrySub')}
                             </p>
                             <div style={{ display: 'flex', gap: '40px', flexWrap: 'wrap' }}>
                                 <div>
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Cloud</div>
-                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Sincronización Total</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>{t('landing.cloudSync')}</div>
                                 </div>
                                 <div>
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Native</div>
-                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Audio Engine v2.0</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>{t('landing.audioEngine')}</div>
                                 </div>
                                 <div>
                                     <div style={{ color: 'white', fontWeight: '800', fontSize: '1.5rem' }}>Multi</div>
-                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>iOS, Android & Web</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem' }}>{t('landing.platforms')}</div>
                                 </div>
                             </div>
                         </div>
 
                         <div style={{ backgroundColor: '#1e293b', borderRadius: '32px', padding: '40px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden' }}>
                             <div style={{ position: 'relative', zIndex: 1 }}>
-                                <h3 style={{ color: 'white', fontSize: '1.4rem', fontWeight: '800', marginBottom: '20px' }}>Estandares Profesionales</h3>
-                                <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '30px' }}>Zion Stage está construido sobre las tecnologías que prefieren los profesionales.</p>
+                                <h3 style={{ color: 'white', fontSize: '1.4rem', fontWeight: '800', marginBottom: '20px' }}>{t('landing.standardsTitle')}</h3>
+                                <p style={{ color: '#64748b', fontSize: '0.95rem', marginBottom: '30px' }}>{t('landing.standardsSub')}</p>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-                                    {['Multi-Track Ready', 'Cloud Sync', 'Low Latency', 'Auto Mixing'].map((p, i) => (
+                                    {[t('landing.chip1'), t('landing.chip2'), t('landing.chip3'), t('landing.chip4')].map((p, i) => (
                                         <div key={i} style={{ backgroundColor: 'rgba(0,210,211,0.03)', padding: '16px', borderRadius: '12px', color: '#00d2d3', fontSize: '0.9rem', fontWeight: '700', border: '1px solid rgba(0,210,211,0.1)' }}>
                                             {p}
                                         </div>
@@ -1106,9 +1110,9 @@ export default function Landing() {
                                     <div>
                                         <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: '900', color: '#00d2d3' }}>{previewSong.name}</h3>
                                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', letterSpacing: '0.5px' }}>PREVIEW MODE</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '700', letterSpacing: '0.5px' }}>{t('landing.previewMode')}</span>
                                             <span style={{ width: '3px', height: '3px', background: '#334155', borderRadius: '50%' }}></span>
-                                            <span style={{ fontSize: '0.7rem', color: '#00d2d3', fontWeight: '800' }}>20 SECONDS</span>
+                                            <span style={{ fontSize: '0.7rem', color: '#00d2d3', fontWeight: '800' }}>{t('landing.previewSec')}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1119,7 +1123,7 @@ export default function Landing() {
                                 {previewLoading ? (
                                     <div style={{ textAlign: 'center', padding: '50px 0' }}>
                                         <div style={{ width: '40px', height: '40px', border: '3px solid rgba(0,210,211,0.1)', borderTopColor: '#00d2d3', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 20px' }}></div>
-                                        <p style={{ color: '#00d2d3', fontSize: '0.9rem', fontWeight: '900', letterSpacing: '1px' }}>INITIALIZING MIXER...</p>
+                                        <p style={{ color: '#00d2d3', fontSize: '0.9rem', fontWeight: '900', letterSpacing: '1px' }}>{t('landing.previewInit')}</p>
                                     </div>
                                 ) : (
                                     <>
@@ -1145,7 +1149,7 @@ export default function Landing() {
 
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                                    <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: '900', letterSpacing: '0.5px' }}>PLAYBACK (20s-40s)</span>
+                                                    <span style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: '900', letterSpacing: '0.5px' }}>{t('landing.previewPlayback')}</span>
                                                     <span style={{ color: '#00d2d3', fontSize: '1rem', fontWeight: '900', fontFamily: 'monospace' }}>{previewProgress.toFixed(1)}s</span>
                                                 </div>
                                                 <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1161,7 +1165,7 @@ export default function Landing() {
                                                 }}
                                                 style={{ background: '#f1c40f', color: 'black', border: 'none', padding: '10px 20px', borderRadius: '10px', fontSize: '0.85rem', fontWeight: '900', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                                             >
-                                                <ShoppingCart size={16} /> ADD TO CART
+                                                <ShoppingCart size={16} /> {t('landing.previewAddCart')}
                                             </button>
                                         </div>
                                     </>
@@ -1191,8 +1195,8 @@ export default function Landing() {
                                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
                                         <img src="/logo2.png" alt="Zion Stage" style={{ height: '40px' }} />
                                     </div>
-                                    <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>{isLogin ? '¡Bienvenido de nuevo!' : 'Crea tu cuenta gratis'}</h1>
-                                    <p style={{ color: '#6b7280' }}>Únete a la comunidad de líderes de alabanza.</p>
+                                    <h1 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '8px' }}>{isLogin ? t('landing.authWelcome') : t('landing.authCreate')}</h1>
+                                    <p style={{ color: '#6b7280' }}>{t('landing.authJoinSub')}</p>
                                 </div>
 
                                 {errorMsg && <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', color: '#b91c1c', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.85rem', textAlign: 'center' }}>{errorMsg}</div>}
@@ -1212,7 +1216,7 @@ export default function Landing() {
                                                         position: 'relative', overflow: 'hidden', flexShrink: 0,
                                                         transition: 'border-color 0.2s'
                                                     }}
-                                                    title="Agregar foto de perfil (opcional)"
+                                                    title={t('landing.authAvatarHint')}
                                                 >
                                                     {!avatarPreview && <Camera size={30} color="#9ca3af" />}
                                                     {avatarPreview && (
@@ -1221,7 +1225,7 @@ export default function Landing() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Foto de perfil <em>(opcional)</em></span>
+                                                <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{t('landing.authAvatarHint')}</span>
                                                 <input
                                                     ref={avatarInputRef}
                                                     type="file"
@@ -1240,7 +1244,7 @@ export default function Landing() {
                                             <div style={{ display: 'flex', gap: '10px' }}>
                                                 <input
                                                     type="text"
-                                                    placeholder="Nombre"
+                                                    placeholder={t('landing.phFirst')}
                                                     value={firstName}
                                                     onChange={e => setFirstName(e.target.value)}
                                                     required
@@ -1248,7 +1252,7 @@ export default function Landing() {
                                                 />
                                                 <input
                                                     type="text"
-                                                    placeholder="Apellido"
+                                                    placeholder={t('landing.phLast')}
                                                     value={lastName}
                                                     onChange={e => setLastName(e.target.value)}
                                                     required
@@ -1259,7 +1263,7 @@ export default function Landing() {
                                     )}
                                     <input
                                         type="email"
-                                        placeholder="Correo electrónico"
+                                        placeholder={t('landing.phEmail')}
                                         value={email}
                                         onChange={e => setEmail(e.target.value)}
                                         required
@@ -1267,7 +1271,7 @@ export default function Landing() {
                                     />
                                     <input
                                         type="password"
-                                        placeholder="Contraseña"
+                                        placeholder={t('landing.phPass')}
                                         value={password}
                                         onChange={e => setPassword(e.target.value)}
                                         required
@@ -1276,7 +1280,7 @@ export default function Landing() {
                                     {!isLogin && (
                                         <input
                                             type="password"
-                                            placeholder="Confirmar Contraseña"
+                                            placeholder={t('landing.phConfirm')}
                                             value={confirmPassword}
                                             onChange={e => setConfirmPassword(e.target.value)}
                                             required
@@ -1284,7 +1288,7 @@ export default function Landing() {
                                         />
                                     )}
                                     <button type="submit" className="btn-teal" style={{ padding: '14px', width: '100%', fontSize: '1rem', marginTop: '8px' }}>
-                                        {isLogin ? 'Entrar ahora' : 'Registrarme'}
+                                        {isLogin ? t('landing.authLoginBtn') : t('landing.authRegisterBtn')}
                                     </button>
 
                                     {isLogin && (
@@ -1293,13 +1297,13 @@ export default function Landing() {
                                                 onClick={handleForgotPassword} 
                                                 style={{ fontSize: '0.8rem', color: '#6b7280', cursor: 'pointer', textDecoration: 'underline' }}
                                             >
-                                                ¿Olvidaste tu contraseña?
+                                                {t('landing.forgot')}
                                             </span>
                                         </div>
                                     )}
                                     <div style={{ position: 'relative', textAlign: 'center', margin: '10px 0' }}>
                                         <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb' }} />
-                                        <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '0 12px', color: '#9ca3af', fontSize: '0.8rem' }}>O CONTINÚA CON</span>
+                                        <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '0 12px', color: '#9ca3af', fontSize: '0.8rem' }}>{t('landing.orContinue')}</span>
                                     </div>
                                     <button type="button" onClick={handleGoogleAuth} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white', cursor: 'pointer', fontWeight: '600', fontSize: '0.9rem' }}>
                                         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" alt="Google" />
@@ -1309,9 +1313,9 @@ export default function Landing() {
 
                                 <div style={{ marginTop: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.95rem' }}>
                                     {isLogin ? (
-                                        <>¿No tienes una cuenta? <span onClick={() => setIsLogin(false)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>Regístrate</span></>
+                                        <>{t('landing.noAccount')} <span onClick={() => setIsLogin(false)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>{t('landing.register')}</span></>
                                     ) : (
-                                        <>¿Ya tienes cuenta? <span onClick={() => setIsLogin(true)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>Inicia sesión</span></>
+                                        <>{t('landing.hasAccount')} <span onClick={() => setIsLogin(true)} style={{ color: '#00bcd4', fontWeight: '700', cursor: 'pointer' }}>{t('landing.signInLink')}</span></>
                                     )}
                                 </div>
                             </div>
@@ -1319,12 +1323,12 @@ export default function Landing() {
                             {/* Info Column */}
                             <div style={{ flex: '1 1 320px', display: 'flex', flexDirection: 'column', gap: '40px', paddingTop: '20px' }}>
                                 <div>
-                                    <h3 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '16px' }}>Todo lo que necesitas en un solo lugar.</h3>
+                                    <h3 style={{ fontSize: '1.4rem', fontWeight: '800', marginBottom: '16px' }}>{t('landing.authInfoTitle')}</h3>
                                     <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
                                         {[
-                                            { title: 'Gestión de Canciones Cloud', info: 'Accede a tus multipistas desde cualquier dispositivo.', icon: <CheckCircle2 size={22} color="#00bcd4" /> },
-                                            { title: 'App para Móvil y Web', icon: <CheckCircle2 size={22} color="#00bcd4" /> },
-                                            { title: 'Letras y Cifrados Integrados', icon: <CheckCircle2 size={22} color="#00bcd4" /> }
+                                            { title: t('landing.authBul1t'), info: t('landing.authBul1d'), icon: <CheckCircle2 size={22} color="#00bcd4" /> },
+                                            { title: t('landing.authBul2t'), icon: <CheckCircle2 size={22} color="#00bcd4" /> },
+                                            { title: t('landing.authBul3t'), icon: <CheckCircle2 size={22} color="#00bcd4" /> }
                                         ].map((item, i) => (
                                             <li key={i} style={{ display: 'flex', gap: '14px' }}>
                                                 <div style={{ flexShrink: 0, marginTop: '2px' }}>{item.icon}</div>
@@ -1339,7 +1343,7 @@ export default function Landing() {
 
                                 <div style={{ background: '#f0fdfa', border: '1px solid #ccfbf1', padding: '24px', borderRadius: '12px' }}>
                                     <p style={{ margin: 0, color: '#0f766e', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                                        <strong>¿Sabías que?</strong> Miles de líderes de alabanza ya usan Zion Stage para simplificar sus servicios de domingo. ¡Únete a la revolución!
+                                        <strong>{t('landing.authTipTitle')}</strong> {t('landing.authTipBody')}
                                     </p>
                                 </div>
                             </div>
@@ -1354,21 +1358,21 @@ export default function Landing() {
                     <div style={{ background: '#0f172a', width: '100%', maxWidth: '500px', borderRadius: '24px', border: '1px solid rgba(0,210,211,0.2)', padding: '40px', position: 'relative', textAlign: 'center' }}>
                         <button onClick={() => setShowSellerInfoModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><X size={24} /></button>
                         <div style={{ background: 'rgba(0,210,211,0.1)', width: '80px', height: '80px', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', color: '#00d2d3' }}><TrendingUp size={40} /></div>
-                        <h2 style={{ fontSize: '2rem', fontWeight: '900', marginBottom: '16px', color: 'white' }}>Hazte Vendedor</h2>
-                        <p style={{ color: '#94a3b8', marginBottom: '32px', fontSize: '1.1rem' }}>Genera ingresos compartiendo tu talento con la comunidad de Zion Stage.</p>
+                        <h2 style={{ fontSize: '2rem', fontWeight: '900', marginBottom: '16px', color: 'white' }}>{t('landing.sellerModalTitle')}</h2>
+                        <p style={{ color: '#94a3b8', marginBottom: '32px', fontSize: '1.1rem' }}>{t('landing.sellerModalSub')}</p>
                         
                         <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '40px' }}>
                             <div style={{ display: 'flex', gap: '15px' }}>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>1</div>
-                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}><strong>Inicia Sesión</strong> o regístrate en la plataforma.</p>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>{t('landing.sellerStep1')}</p>
                             </div>
                             <div style={{ display: 'flex', gap: '15px' }}>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>2</div>
-                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>Ve a tu <strong>Dashboard</strong> principal.</p>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>{t('landing.sellerStep2')}</p>
                             </div>
                             <div style={{ display: 'flex', gap: '15px' }}>
                                 <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: '#00d2d3', color: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '900', fontSize: '0.8rem', flexShrink: 0 }}>3</div>
-                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>Haz clic en el botón <strong>"Hacerte Vendedor"</strong> y completa tus datos.</p>
+                                <p style={{ margin: 0, color: '#e2e8f0', fontSize: '1rem' }}>{t('landing.sellerStep3')}</p>
                             </div>
                         </div>
 
@@ -1381,7 +1385,7 @@ export default function Landing() {
                             className="btn-teal" 
                             style={{ width: '100%', padding: '16px', fontSize: '1.1rem', border: 'none', cursor: 'pointer', borderRadius: '12px', fontWeight: '700' }}
                         >
-                            {currentUser ? 'Ir al Dashboard' : 'Iniciar Sesión'}
+                            {currentUser ? t('landing.sellerGoDash') : t('landing.sellerLogin')}
                         </button>
                     </div>
                 </div>
@@ -1394,9 +1398,9 @@ export default function Landing() {
                         
                         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
                             <div style={{ flex: '1 1 450px', padding: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                <div style={{ background: 'rgba(0,210,211,0.1)', color: '#00d2d3', padding: '8px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', alignSelf: 'flex-start', marginBottom: '20px', letterSpacing: '1px' }}>OPORTUNIDAD EXCLUSIVA</div>
-                                <h2 style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>Monetiza tu <span style={{ color: '#00d2d3' }}>Talento Musical</span></h2>
-                                <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '40px' }}>Únete a la comunidad de vendedores de Zion Stage y empieza a generar ingresos compartiendo tus secuencias y multitracks con el mundo.</p>
+                                <div style={{ background: 'rgba(0,210,211,0.1)', color: '#00d2d3', padding: '8px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', alignSelf: 'flex-start', marginBottom: '20px', letterSpacing: '1px' }}>{t('landing.heroPopupBadge')}</div>
+                                <h2 style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>{t('landing.heroPopupTitleLine')}<span style={{ color: '#00d2d3' }}>{t('landing.heroPopupTitleAccent')}</span></h2>
+                                <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '40px' }}>{t('landing.heroPopupSub')}</p>
                                 
                                 <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                                     <button 
@@ -1407,22 +1411,22 @@ export default function Landing() {
                                         className="btn-teal" 
                                         style={{ padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', border: 'none', cursor: 'pointer' }}
                                     >
-                                        Ver Pasos para Vender
+                                        {t('landing.heroPopupCta')}
                                     </button>
                                     <button 
                                         onClick={() => setShowHeroPopup(false)} 
                                         style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', cursor: 'pointer' }}
                                     >
-                                        Quizás luego
+                                        {t('landing.heroPopupLater')}
                                     </button>
                                 </div>
                             </div>
                              <div style={{ flex: '1 1 300px', background: 'rgba(0,210,211,0.03)', position: 'relative', minHeight: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
                                  <TrendingUp size={220} color="#00d2d3" opacity={0.05} style={{ position: 'absolute' }} />
                                  <div style={{ position: 'relative', textAlign: 'center', padding: '40px' }}>
-                                    <div style={{ fontSize: '3rem', fontWeight: '900', color: '#00d2d3', lineHeight: '1.1', marginBottom: '10px' }}>GENERA</div>
-                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.3rem', letterSpacing: '1px' }}>INGRESOS EXTRA</div>
-                                    <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '15px', maxWidth: '200px', margin: '15px auto 0' }}>Únete a la mayor red de creadores de secuencias y multitracks.</div>
+                                    <div style={{ fontSize: '3rem', fontWeight: '900', color: '#00d2d3', lineHeight: '1.1', marginBottom: '10px' }}>{t('landing.heroPopupGen')}</div>
+                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.3rem', letterSpacing: '1px' }}>{t('landing.heroPopupIncome')}</div>
+                                    <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '15px', maxWidth: '200px', margin: '15px auto 0' }}>{t('landing.heroPopupFoot')}</div>
                                  </div>
                             </div>
                         </div>

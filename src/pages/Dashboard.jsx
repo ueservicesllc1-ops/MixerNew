@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
@@ -136,6 +138,7 @@ const isNativeApp = () => {
 
 function Dashboard() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const fileInputRef = useRef();
 
     const [activeTab, setActiveTab] = useState('home');
@@ -805,11 +808,11 @@ function Dashboard() {
 
                 <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
                     {[
-                        { id: 'home', label: 'Inicio', icon: <Home size={20} /> },
-                        { id: 'songs', label: 'Mis Canciones', icon: <Music2 size={20} /> },
-                        { id: 'setlists', label: 'Setlists', icon: <ListMusic size={20} /> },
-                        { id: 'global', label: 'Comunidad', icon: <Globe size={20} /> },
-                        { id: 'vendedores', label: userProfile?.isSeller ? 'Panel de Vendedor' : 'Hacerte Vendedor', icon: <TrendingUp size={20} /> },
+                        { id: 'home', label: t('dashboard.home'), icon: <Home size={20} /> },
+                        { id: 'songs', label: t('dashboard.mySongs'), icon: <Music2 size={20} /> },
+                        { id: 'setlists', label: t('dashboard.setlists'), icon: <ListMusic size={20} /> },
+                        { id: 'global', label: t('dashboard.community'), icon: <Globe size={20} /> },
+                        { id: 'vendedores', label: userProfile?.isSeller ? t('dashboard.sellerPanel') : t('dashboard.becomeSeller'), icon: <TrendingUp size={20} /> },
                     ].map(item => (
                         <button
                             key={item.id}
@@ -832,10 +835,10 @@ function Dashboard() {
                         </button>
                     ))}
                     <button onClick={() => navigate('/store')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'transparent', border: 'none', color: '#94a3b8', textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s', marginTop: '10px' }}>
-                        <ShoppingCart size={20} /> Marketplace
+                        <ShoppingCart size={20} /> {t('dashboard.marketplace')}
                     </button>
                     <button onClick={() => navigate('/multitrack')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: '#00d2d3', border: 'none', color: 'white', marginTop: '20px', cursor: 'pointer', fontWeight: '700' }}>
-                        <Play size={20} fill="currentColor" /> Ir al Mixer
+                        <Play size={20} fill="currentColor" /> {t('dashboard.goMixer')}
                     </button>
                 </nav>
 
@@ -848,10 +851,10 @@ function Dashboard() {
                         </div>
                     </div>
                     <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
-                        Actualizar Plan
+                        {t('dashboard.upgradePlan')}
                     </button>
                     <button onClick={() => auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>
-                        <LogOut size={16} /> Cerrar sesión
+                        <LogOut size={16} /> {t('dashboard.signOut')}
                     </button>
                 </div>
             </aside>
@@ -859,37 +862,40 @@ function Dashboard() {
             {/* MAIN CONTENT */}
             <main style={{ marginLeft: '280px', flex: 1, padding: '40px 60px', maxWidth: '1200px' }}>
                 {/* ── HEADER OVERVIEW ── */}
-                <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
                         <h1 style={{ fontSize: '2rem', fontWeight: '800', margin: '0 0 8px' }}>
-                            {activeTab === 'home' ? `¡Hola, ${displayName}!` :
-                                activeTab === 'songs' ? 'Mis Canciones' :
-                                    activeTab === 'setlists' ? 'Setlists' : 'Explorar Comunidad'}
+                            {activeTab === 'home' ? t('dashboard.hello', { name: displayName }) :
+                                activeTab === 'songs' ? t('dashboard.tabSongs') :
+                                    activeTab === 'setlists' ? t('dashboard.tabSetlists') : t('dashboard.tabCommunity')}
                         </h1>
                         <p style={{ color: '#64748b', margin: 0 }}>
-                            {activeTab === 'home' ? 'Este es el resumen de tu biblioteca y actividad.' : ''}
+                            {activeTab === 'home' ? t('dashboard.homeSub') : ''}
                         </p>
                     </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <LanguageSwitch />
                     {!isNativeApp() && (activeTab === 'songs' || activeTab === 'home') && step === 'idle' && (
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button 
                                 onClick={() => setShowUploadHelp(true)} 
                                 style={{ background: 'rgba(0,210,211,0.1)', border: '1px solid #00d2d3', color: '#00d2d3', padding: '10px 15px', borderRadius: '10px', fontSize: '0.9rem', fontWeight: '800', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}
                             >
-                                <HelpCircle size={18} /> ¿Cómo subir?
+                                <HelpCircle size={18} /> {t('dashboard.howUpload')}
                             </button>
                             <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} disabled={isProcessingZip}>
                                 {isProcessingZip ? <Loader2 className="animate-spin" size={20} /> : <Plus size={20} />}
-                                {isProcessingZip ? `Procesando ZIP (${zipProgress}%)...` : 'Subir Canción'}
+                                {isProcessingZip ? t('dashboard.processingZip', { pct: zipProgress }) : t('dashboard.uploadSong')}
                             </button>
                         </div>
                     )}
                     {(activeTab === 'setlists') && (
                         <button onClick={() => setIsSetlistModalOpen(true)} className="btn-teal" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <Plus size={20} /> Nuevo Setlist
+                            <Plus size={20} /> {t('dashboard.newSetlist')}
                         </button>
                     )}
                     {!isNativeApp() && <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />}
+                    </div>
                 </header>
 
                 {/* ── WIZARD STEPS ── */}
@@ -897,9 +903,9 @@ function Dashboard() {
                     <section className="card-premium" style={{ maxWidth: '800px' }}>
                         {step === 'choose-use' && (
                             <div>
-                                <h3 style={{ marginBottom: '24px' }}>¿Cómo usarás esta canción?</h3>
+                                <h3 style={{ marginBottom: '24px' }}>{t('dashboard.wizardHowTitle')}</h3>
                                 <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
-                                    {[{ id: 'personal', label: 'Uso personal', icon: <User size={24} /> }, { id: 'sell', label: 'Vender', icon: <Tag size={24} /> }].map(type => (
+                                    {[{ id: 'personal', label: t('dashboard.usePersonal'), icon: <User size={24} /> }, { id: 'sell', label: t('dashboard.useSell'), icon: <Tag size={24} /> }].map(type => (
                                         <div key={type.id} onClick={() => setUseType(type.id)} style={{ flex: 1, padding: '30px', border: `2px solid ${useType === type.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', textAlign: 'center', cursor: 'pointer', backgroundColor: useType === type.id ? 'rgba(0,210,211,0.05)' : 'transparent' }}>
                                             <div style={{ color: useType === type.id ? '#00d2d3' : '#64748b', marginBottom: '12px' }}>{type.icon}</div>
                                             <div style={{ fontWeight: '700' }}>{type.label}</div>
@@ -907,7 +913,7 @@ function Dashboard() {
                                     ))}
                                 </div>
                                 <div style={{ display: 'flex', gap: '15px' }}>
-                                    <button onClick={resetWizard} className="btn-ghost">Cancelar</button>
+                                    <button onClick={resetWizard} className="btn-ghost">{t('dashboard.cancel')}</button>
                                     <button
                                         disabled={!useType}
                                         onClick={() => {

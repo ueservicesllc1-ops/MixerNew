@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitch from '../components/LanguageSwitch';
 import { db, auth } from '../firebase';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { Music2, ArrowLeft, Globe, User } from 'lucide-react';
@@ -8,6 +10,7 @@ import Footer from '../components/Footer';
 export default function SellerProfile() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [seller, setSeller] = useState(null);
     const [songs, setSongs] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -64,9 +67,12 @@ export default function SellerProfile() {
 
     return (
         <div style={{ background: '#0f172a', minHeight: '100vh', color: 'white', fontFamily: '"Outfit", sans-serif' }}>
-            <nav style={{ padding: '20px 40px', background: '#1e293b', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '20px' }}>
-                <button onClick={() => navigate('/store')} className="btn-ghost" style={{ padding: '10px' }}><ArrowLeft size={20} /></button>
-                <span style={{ fontWeight: '800', fontSize: '1.2rem' }}>Página del Vendedor</span>
+            <nav style={{ padding: '20px 40px', background: '#1e293b', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <button type="button" onClick={() => navigate('/store')} className="btn-ghost" style={{ padding: '10px' }}><ArrowLeft size={20} /></button>
+                    <span style={{ fontWeight: '800', fontSize: '1.2rem' }}>{t('pages.sellerPage')}</span>
+                </div>
+                <LanguageSwitch />
             </nav>
 
             <header style={{ padding: '60px 40px', textAlign: 'center', background: 'radial-gradient(circle at center, rgba(0,210,211,0.1), transparent)' }}>

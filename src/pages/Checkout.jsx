@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitch from '../components/LanguageSwitch';
 import { db, auth } from '../firebase';
 import { collection, doc, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
 import { ShoppingCart, ArrowLeft, X, Loader2, CheckCircle2, ChevronRight, Music2, ShieldCheck, Mail, CreditCard, LogOut, Globe } from 'lucide-react';
@@ -68,6 +70,7 @@ const StripeCheckoutForm = ({ total, subtotal, discount, onPaymentSuccess }) => 
 
 export default function Checkout() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [cart, setCart] = useState([]);
     const [currentUser, setCurrentUser] = useState(null);
     const [stripeClientSecret, setStripeClientSecret] = useState('');
@@ -281,13 +284,14 @@ export default function Checkout() {
                     </div>
 
                     <div onClick={() => navigate('/store')} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '700', color: '#64748b', fontSize: '0.9rem', background: '#f1f5f9', padding: '8px 16px', borderRadius: '30px' }}>
-                        <ArrowLeft size={16} /> <span className="hide-mobile">Volver a la Tienda</span>
+                        <ArrowLeft size={16} /> <span className="hide-mobile">{t('nav.backToStore')}</span>
                     </div>
                 </div>
 
                 <div style={{ fontSize: '1.2rem', fontWeight: '900', letterSpacing: '-1px' }} className="hide-mobile">ZION<span style={{ color: '#00d2d3' }}>STAGE</span> CHECKOUT</div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <LanguageSwitch light />
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#166534', fontWeight: '700', fontSize: '0.85rem' }} className="hide-mobile">
                         <ShieldCheck size={18} /> Pago Seguro
                     </div>

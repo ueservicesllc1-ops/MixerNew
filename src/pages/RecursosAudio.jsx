@@ -1,10 +1,11 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Zap, Headphones, Music, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { Zap, Headphones, Music, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import Footer from '../components/Footer';
+import PageNavBar from '../components/PageNavBar';
+import { useTranslation } from 'react-i18next';
 
 export default function RecursosAudio() {
-    const navigate = useNavigate();
+    const { t } = useTranslation();
 
     const sections = [
         {
@@ -43,12 +44,7 @@ export default function RecursosAudio() {
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', fontFamily: '"Outfit", sans-serif' }}>
-            {/* Header */}
-            <nav style={{ padding: '20px 40px', background: '#020617', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '20px', position: 'sticky', top: 0, zIndex: 100 }}>
-                <button onClick={() => navigate('/recursos')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontFamily: '"Outfit", sans-serif' }}>
-                    <ArrowLeft size={20} /> Volver a Recursos
-                </button>
-            </nav>
+            <PageNavBar Icon={Headphones} title={t('pages.recursosAudio')} sticky zIndex={100} backPath="/recursos" backLabel={t('nav.backToResources')} />
 
             <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '60px 20px' }}>
                 <div style={{ textAlign: 'center', marginBottom: '60px' }}>

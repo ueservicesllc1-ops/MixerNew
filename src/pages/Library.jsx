@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import {
     Search,
     ArrowLeft,
@@ -13,12 +13,14 @@ import {
 import { db } from '../firebase';
 import { collection, query, onSnapshot, where, getDocs } from 'firebase/firestore';
 import Footer from '../components/Footer';
+import PageNavBar from '../components/PageNavBar';
+import { useTranslation } from 'react-i18next';
 import ChordViewer from '../components/ChordViewer';
 import { extractLyricsOnly } from '../utils/lyricsExtractor';
 
 export default function Library() {
-    const navigate = useNavigate();
     const location = useLocation();
+    const { t } = useTranslation();
     const queryParams = new URLSearchParams(location.search);
     const viewType = queryParams.get('type') || 'chords'; // 'lyrics' or 'chords'
     const [search, setSearch] = useState('');
@@ -144,7 +146,7 @@ export default function Library() {
                             onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.02)'}
                             onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                         >
-                            Lo entiendo
+                            {t('library.understood')}
                         </button>
                     </div>
                 </div>
@@ -189,16 +191,14 @@ export default function Library() {
                 </div>
             )}
 
-            <nav style={{ padding: '20px 40px', background: '#020617', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '20px', position: 'sticky', top: 0, zIndex: 100 }}>
-                <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontFamily: '"Outfit", sans-serif' }}>
-                    <ArrowLeft size={20} /> Volver
-                </button>
-                <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00d2d3', fontSize: '0.95rem', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    <Music2 size={18} /> Base de {viewType === 'lyrics' ? 'Letras' : 'Cifrados'}
-                </div>
-                {isLoadingChords && <div style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#00d2d3' }}>Cargando...</div>}
-            </nav>
+            <PageNavBar
+                Icon={Music2}
+                title={viewType === 'lyrics' ? t('library.baseLyrics') : t('library.baseChords')}
+                sticky
+                zIndex={100}
+                backLabel={t('nav.backShort')}
+                rightSlot={isLoadingChords ? <div style={{ fontSize: '0.8rem', color: '#00d2d3' }}>{t('library.loading')}</div> : null}
+            />
 
             {/* Sub-Header with Stats and Search */}
             <div style={{ background: 'linear-gradient(to bottom, #020617, #0f172a)', padding: '60px 40px', borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
@@ -206,10 +206,10 @@ export default function Library() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '30px' }}>
                         <div>
                             <h1 style={{ fontSize: '2.8rem', fontWeight: '900', marginBottom: '16px' }}>
-                                {selectedArtist ? `Canciones de ${selectedArtist.name}` : `Explora por Artistas`}
+                                {selectedArtist ? t('library.songsBy', { name: selectedArtist.name }) : t('library.exploreArtists')}
                             </h1>
                             <p style={{ color: '#64748b', fontSize: '1.1rem', maxWidth: '600px' }}>
-                                Encuentra letras y acordes verificados por el equipo de Zion Stage. Todo organizado para tu domingo.
+                                {t('library.sub')}
                             </p>
                         </div>
                         <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', padding: '12px 24px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '16px', width: '100%', maxWidth: '450px' }}>
@@ -217,7 +217,7 @@ export default function Library() {
                             <input
                                 value={search}
                                 onChange={e => setSearch(e.target.value)}
-                                placeholder="Buscar artistas o canciones..."
+                                placeholder={t('library.searchPh')}
                                 style={{ background: 'transparent', border: 'none', color: 'white', fontSize: '1rem', flex: 1, outline: 'none', fontFamily: '"Outfit", sans-serif' }}
                             />
                         </div>

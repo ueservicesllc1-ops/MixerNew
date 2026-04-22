@@ -1,75 +1,70 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
-    ArrowLeft,
     BookOpen,
     Music,
     FileText,
-    Search,
-    PlayCircle,
     Users,
-    Heart,
     Zap,
     Globe,
-    Mic2,
-    Layout,
-    ShieldCheck,
-    MessageSquare,
-    Download,
     Video
 } from 'lucide-react';
 import Footer from '../components/Footer';
+import PageNavBar from '../components/PageNavBar';
 
 export default function Recursos() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('all');
 
-    const resourceCategories = [
-        { id: 'all', label: 'Todo', icon: <Globe size={18} /> },
-        { id: 'leads', label: 'Líderes', icon: <Users size={18} /> },
-        { id: 'tech', label: 'Técnico', icon: <Zap size={18} /> },
-        { id: 'music', label: 'Música', icon: <Music size={18} /> },
-    ];
+    const resourceCategories = useMemo(() => [
+        { id: 'all', label: t('recursos.catAll'), icon: <Globe size={18} /> },
+        { id: 'leads', label: t('recursos.catLeads'), icon: <Users size={18} /> },
+        { id: 'tech', label: t('recursos.catTech'), icon: <Zap size={18} /> },
+        { id: 'music', label: t('recursos.catMusic'), icon: <Music size={18} /> },
+    ], [t]);
 
-    const resources = [
+    const resources = useMemo(() => [
         {
             category: 'music',
-            title: 'Letras (Teleprompter)',
-            desc: 'Letras limpias listas para usar en el teleprompter de Zion Stage. Ordenadas por artista.',
+            title: t('recursos.r1t'),
+            desc: t('recursos.r1d'),
             icon: <FileText size={40} color="#00d2d3" />,
-            status: 'Disponible',
+            status: t('recursos.r1s'),
             path: '/library?type=lyrics'
         },
         {
             category: 'music',
-            title: 'Cifrados Oficiales',
-            desc: 'Miles de cifrados precisos con acordes para tus músicos. Ordenados por artista.',
+            title: t('recursos.r2t'),
+            desc: t('recursos.r2d'),
             icon: <Music size={40} color="#f1c40f" />,
-            status: 'Disponible',
+            status: t('recursos.r2s'),
             path: '/library?type=chords'
         },
         {
             category: 'leads',
-            title: 'Guía para Directores',
-            desc: 'Consejos prácticos para dirigir con secuencias y multitracks.',
+            title: t('recursos.r3t'),
+            desc: t('recursos.r3d'),
             icon: <Users size={40} color="#9b59b6" />,
-            status: 'NUEVO'
+            status: t('recursos.r3s')
         },
         {
             category: 'tech',
-            title: 'Configuración de Audio',
-            desc: 'Cómo configurar tu interfaz para mandar monitoreo y click separado.',
+            id: 'audio-setup',
+            title: t('recursos.r4t'),
+            desc: t('recursos.r4d'),
             icon: <Zap size={40} color="#f1c40f" />,
-            status: 'Popular'
+            status: t('recursos.r4s')
         },
         {
             category: 'music',
-            title: 'Video Tutoriales',
-            desc: 'Aprende a usar todas las funciones del mixer nativo de Zion Stage.',
+            title: t('recursos.r5t'),
+            desc: t('recursos.r5d'),
             icon: <Video size={40} color="#ff4757" />,
-            status: 'Video'
+            status: t('recursos.r5s')
         }
-    ];
+    ], [t]);
 
     const filteredResources = activeTab === 'all'
         ? resources
@@ -77,16 +72,7 @@ export default function Recursos() {
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', fontFamily: '"Outfit", sans-serif' }}>
-            {/* Header / Nav */}
-            <nav style={{ padding: '20px 40px', background: '#020617', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '20px', position: 'sticky', top: 0, zIndex: 100 }}>
-                <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontFamily: '"Outfit", sans-serif' }}>
-                    <ArrowLeft size={20} /> Volver al inicio
-                </button>
-                <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.9rem' }}>
-                    <BookOpen size={16} /> Recursos para Iglesias
-                </div>
-            </nav>
+            <PageNavBar Icon={BookOpen} title={t('pages.recursos')} sticky zIndex={100} />
 
             {/* Hero Section */}
             <div style={{
@@ -97,13 +83,13 @@ export default function Recursos() {
             }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', background: 'rgba(0,210,211,0.08)', border: '1px solid rgba(0,210,211,0.2)', borderRadius: '30px', padding: '8px 18px', marginBottom: '24px' }}>
                     <Zap size={16} color="#00d2d3" />
-                    <span style={{ color: '#00d2d3', fontWeight: '700', fontSize: '0.85rem', letterSpacing: '1px', textTransform: 'uppercase' }}>Centro de Capacitación</span>
+                    <span style={{ color: '#00d2d3', fontWeight: '700', fontSize: '0.85rem', letterSpacing: '1px', textTransform: 'uppercase' }}>{t('recursos.heroBadge')}</span>
                 </div>
                 <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 4rem)', fontWeight: '900', marginBottom: '24px', lineHeight: '1', maxWidth: '1000px', margin: '0 auto 24px' }}>
-                    Equipando a tu <span style={{ color: '#00d2d3' }}>Equipo de Alabanza</span>.
+                    {t('recursos.heroTitleLine')}<span style={{ color: '#00d2d3' }}>{t('recursos.heroTitleAccent')}</span>
                 </h1>
                 <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '700px', margin: '0 auto', lineHeight: '1.6' }}>
-                    Descarga guías, accede a tutoriales y encuentra todo lo necesario para que tu ministerio suene con excelencia cada domingo.
+                    {t('recursos.heroSub')}
                 </p>
             </div>
 
@@ -150,7 +136,7 @@ export default function Recursos() {
                         }}
                             onClick={() => {
                                 if (res.path) navigate(res.path);
-                                else if (res.category === 'tech' && res.title.includes('Audio')) navigate('/recursos/audio');
+                                else if (res.id === 'audio-setup') navigate('/recursos/audio');
                             }}
                             onMouseEnter={e => {
                                 e.currentTarget.style.transform = 'translateY(-8px)';
@@ -168,7 +154,7 @@ export default function Recursos() {
                             <h3 style={{ fontSize: '1.5rem', fontWeight: '900', marginBottom: '16px', color: 'white' }}>{res.title}</h3>
                             <p style={{ color: '#94a3b8', lineHeight: '1.7', fontSize: '0.95rem', marginBottom: '24px' }}>{res.desc}</p>
                             <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                Explorar recurso <ArrowRight size={16} />
+                                {t('common.exploreResource')} <ArrowRight size={16} />
                             </div>
                         </div>
                     ))}
@@ -183,9 +169,9 @@ export default function Recursos() {
                     marginBottom: '100px',
                     boxShadow: '0 20px 40px rgba(0, 210, 211, 0.2)'
                 }}>
-                    <h2 style={{ color: '#020617', fontSize: '2.5rem', fontWeight: '900', marginBottom: '20px' }}>¿Necesitas ayuda personalizada?</h2>
+                    <h2 style={{ color: '#020617', fontSize: '2.5rem', fontWeight: '900', marginBottom: '20px' }}>{t('recursos.ctaTitle')}</h2>
                     <p style={{ color: '#020617', opacity: 0.8, fontSize: '1.1rem', maxWidth: '600px', margin: '0 auto 40px' }}>
-                        Nuestro equipo está listo para ayudarte a configurar Zion Stage en tu iglesia local. Ofrecemos demos gratuitas.
+                        {t('recursos.ctaSub')}
                     </p>
                     <button onClick={() => navigate('/contact')} style={{
                         background: '#020617',
@@ -198,7 +184,7 @@ export default function Recursos() {
                         cursor: 'pointer',
                         boxShadow: '0 10px 20px rgba(0,0,0,0.2)'
                     }}>
-                        Hablar con un experto
+                        {t('recursos.ctaBtn')}
                     </button>
                 </div>
             </div>

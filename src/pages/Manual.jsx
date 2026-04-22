@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 import Footer from '../components/Footer';
+import PageNavBar from '../components/PageNavBar';
+import { useTranslation } from 'react-i18next';
 
 export default function Manual() {
-    const navigate = useNavigate();
+    const { t } = useTranslation();
 
     useEffect(() => {
         window.scrollTo(0, 0);
@@ -176,16 +177,7 @@ export default function Manual() {
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', fontFamily: '"Outfit", sans-serif' }}>
-            {/* Nav */}
-            <nav style={{ padding: '20px 40px', background: '#020617', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: '20px', position: 'sticky', top: 0, zIndex: 50 }}>
-                <button onClick={() => navigate('/')} style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontFamily: '"Outfit", sans-serif' }}>
-                    <ArrowLeft size={20} /> Volver al inicio
-                </button>
-                <div style={{ height: '20px', width: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b', fontSize: '0.9rem' }}>
-                    <BookOpen size={16} /> Manual del Community Manager
-                </div>
-            </nav>
+            <PageNavBar Icon={BookOpen} title={t('pages.manualCm')} sticky zIndex={50} />
 
             <div style={{ maxWidth: '900px', margin: '0 auto', padding: '60px 40px' }}>
                 <div style={{ textAlign: 'center', marginBottom: '60px' }}>

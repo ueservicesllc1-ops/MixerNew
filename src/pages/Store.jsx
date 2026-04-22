@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitch from '../components/LanguageSwitch';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2, Play, Pause, Loader2, LogOut } from 'lucide-react';
@@ -109,6 +111,7 @@ const SongCard = ({ song, onPreview, onBuy, navigate }) => {
 
 export default function Store() {
     const navigate = useNavigate();
+    const { t } = useTranslation();
     const [storeSongs, setStoreSongs] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [currentUser, setCurrentUser] = useState(null);
@@ -364,15 +367,16 @@ export default function Store() {
                         onClick={() => navigate('/')}
                         style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', padding: '8px 16px', borderRadius: '30px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '0.85rem' }}
                     >
-                        <ArrowLeft size={16} /> Volver al Inicio
+                        <ArrowLeft size={16} /> {t('nav.backHomeShort')}
                     </button>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                    <LanguageSwitch />
                     <div style={{ position: 'relative' }} className="hide-mobile">
                         <input
                             type="text"
-                            placeholder="Buscar en el marketplace..."
+                            placeholder={t('store.searchPh')}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', padding: '10px 15px 10px 40px', borderRadius: '30px', width: '250px', fontSize: '0.9rem' }}
@@ -416,7 +420,7 @@ export default function Store() {
                                         onClick={() => auth.signOut()}
                                         style={{ padding: '12px 20px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', color: '#ef4444', fontSize: '0.9rem', fontWeight: '600' }}
                                     >
-                                        <LogOut size={16} /> Cerrar Sesión
+                                        <LogOut size={16} /> {t('store.signOut')}
                                     </div>
                                 </div>
                             )}
@@ -426,8 +430,8 @@ export default function Store() {
             </nav>
 
             <header style={{ padding: '60px 40px', textAlign: 'center', background: 'radial-gradient(circle at center, rgba(0,210,211,0.1), transparent)' }}>
-                <h1 style={{ fontSize: '3.5rem', fontWeight: '900', marginBottom: '20px' }}>Pistas Premium Multitrack</h1>
-                <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto' }}>Descubre y compra secuencias directamente de los creadores originales, listas para nuestro potente motor de audio.</p>
+                <h1 style={{ fontSize: '3.5rem', fontWeight: '900', marginBottom: '20px' }}>{t('store.heroTitle')}</h1>
+                <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto' }}>{t('store.heroSub')}</p>
             </header>
 
             <style>{`
