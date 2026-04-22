@@ -1307,7 +1307,11 @@ function Dashboard() {
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                                                 <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>Explorar Comunidad (Acceso VIP)</h3>
                                                 <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '4px' }}>
-                                                    {userSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length} pistas de audio disponibles
+                                                    {userSongs.filter(s =>
+                                                        Array.isArray(s.tracks) &&
+                                                        s.tracks.length > 0 &&
+                                                        !(s.forSale === true && Number(s.price || 0) > 0)
+                                                    ).length} pistas de audio disponibles
                                                 </span>
                                             </div>
                                             <div style={{ position: 'relative', width: '350px' }}>
@@ -1332,7 +1336,9 @@ function Dashboard() {
                                                 <span style={{ textAlign: 'right' }}>Acciones</span>
                                             </div>
                                             {userSongs.filter(s =>
-                                                Array.isArray(s.tracks) && s.tracks.length > 0 &&
+                                                Array.isArray(s.tracks) &&
+                                                s.tracks.length > 0 &&
+                                                !(s.forSale === true && Number(s.price || 0) > 0) &&
                                                 (s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                                 (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase()))
                                             ).map((song) => (

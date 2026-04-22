@@ -190,10 +190,18 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     downloadProgress, onDownloadAdd,
     globalCatalogDocCount,
 }) {
+    const shouldHideFromVipGlobal = React.useCallback((song) => (
+        song?.forSale === true && Number(song?.price || 0) > 0
+    ), []);
+
     const baseSongs = React.useMemo(() => {
         const base = libraryTab === 'mine'
             ? librarySongs
-            : globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0);
+            : globalSongs.filter(s =>
+                Array.isArray(s.tracks) &&
+                s.tracks.length > 0 &&
+                !shouldHideFromVipGlobal(s)
+            );
         if (!searchQuery) return base;
         const q = searchQuery.toLowerCase();
         return base.filter(s =>
@@ -201,7 +209,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
             s.artist?.toLowerCase().includes(q) ||
             s.uploadedBy?.toLowerCase().includes(q)
         );
-    }, [libraryTab, librarySongs, globalSongs, searchQuery]);
+    }, [libraryTab, librarySongs, globalSongs, searchQuery, shouldHideFromVipGlobal]);
 
     return (
         <div className={`library-drawer ${isOpen ? 'open' : ''}`}>
@@ -223,7 +231,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                         onClick={() => onTabChange('global')}
                         style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                     >
-                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0).length})
+                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
                     </button>
                 </div>
 
