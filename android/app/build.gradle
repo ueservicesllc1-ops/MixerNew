@@ -12,7 +12,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Debe ser > APK ya instalado en el dispositivo o falla INSTALL_FAILED_VERSION_DOWNGRADE
-        versionCode 128
+        versionCode 130
         versionName "1.8.58"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

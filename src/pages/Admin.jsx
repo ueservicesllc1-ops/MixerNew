@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3 } from 'lucide-react';
+import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3, Download } from 'lucide-react';
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -218,6 +218,84 @@ export default function Admin() {
             console.error(e);
             alert("Error al actualizar privilegios.");
         }
+    };
+
+    const escapeCsvCell = (val) => {
+        if (val == null || val === '') return '';
+        const s = String(val);
+        if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+    };
+
+    /**
+     * Corrige TLD mal escritos muy frecuentes (.con, .vom) en dominios conocidos.
+     * Solo para export a Play Console; no modifica Firestore.
+     */
+    const normalizeEmailTypoForPlayExport = (email) => {
+        const t = email.trim();
+        if (!t) return t;
+        return t
+            .replace(/@gmail\.(con|vom|cim|comm|cpm|coom|vom)$/i, '@gmail.com')
+            .replace(/@googlemail\.(con|vom)$/i, '@googlemail.com')
+            .replace(/@yahoo\.(con|vom|cim)$/i, '@yahoo.com')
+            .replace(/@ymail\.(con|vom)$/i, '@ymail.com')
+            .replace(/@hotmail\.(con|vom|cim)$/i, '@hotmail.com')
+            .replace(/@outlook\.(con|vom|cim)$/i, '@outlook.com')
+            .replace(/@live\.(con|vom)$/i, '@live.com')
+            .replace(/@icloud\.(con|vom|cim)$/i, '@icloud.com')
+            .replace(/@msn\.(con|vom)$/i, '@msn.com');
+    };
+
+    /** Google Play (listas de testers, etc.): solo un correo por línea, sin cabecera ni columnas extra. */
+    const downloadUsersEmailsCsvForPlayStore = () => {
+        const seen = new Set();
+        const lines = [];
+        const emailOk = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+        for (const u of users) {
+            const raw = (u.email || '').trim();
+            if (!raw) continue;
+            const fixed = normalizeEmailTypoForPlayExport(raw);
+            if (!emailOk(fixed)) continue;
+            const key = fixed.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            lines.push(fixed);
+        }
+        if (lines.length === 0) {
+            alert('No hay correos válidos para exportar.');
+            return;
+        }
+        const csv = lines.join('\n');
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `zion-correos-play-console-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    /** CSV con columnas para Excel / uso interno (no subir a Play Console). */
+    const downloadUsersEmailsCsvDetailed = () => {
+        const header = ['email', 'nombre', 'uid', 'planId'];
+        const lines = [
+            header.join(','),
+            ...users.map((u) =>
+                [u.email, u.displayName || '', u.id, u.planId || 'free'].map(escapeCsvCell).join(','),
+            ),
+        ];
+        const csv = `\ufeff${lines.join('\r\n')}`;
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `zion-usuarios-detalle-${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
     };
 
     const syncWithLaCuerda = async () => {
@@ -1756,6 +1834,49 @@ export default function Admin() {
                                 style={{ padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
                             >
                                 {userSortOrder === 'asc' ? '⬆️ ASC' : '⬇️ DESC'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={downloadUsersEmailsCsvForPlayStore}
+                                disabled={users.length === 0}
+                                title="Un correo por línea, sin cabecera — formato que acepta Google Play Console (testers)"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    padding: '10px 14px',
+                                    borderRadius: '10px',
+                                    background: users.length === 0 ? '#475569' : '#0ea5e9',
+                                    color: '#fff',
+                                    border: 'none',
+                                    cursor: users.length === 0 ? 'not-allowed' : 'pointer',
+                                    fontWeight: '800',
+                                    fontSize: '0.85rem',
+                                }}
+                            >
+                                <Download size={18} />
+                                CSV Play (testers)
+                            </button>
+                            <button
+                                type="button"
+                                onClick={downloadUsersEmailsCsvDetailed}
+                                disabled={users.length === 0}
+                                title="email, nombre, uid, planId — para Excel; no usar en Play Console"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '10px 12px',
+                                    borderRadius: '10px',
+                                    background: users.length === 0 ? '#334155' : 'rgba(255,255,255,0.12)',
+                                    color: '#e2e8f0',
+                                    border: '1px solid rgba(255,255,255,0.15)',
+                                    cursor: users.length === 0 ? 'not-allowed' : 'pointer',
+                                    fontWeight: '700',
+                                    fontSize: '0.8rem',
+                                }}
+                            >
+                                CSV Excel
                             </button>
                             <input
                                 type="text"

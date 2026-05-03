@@ -16,6 +16,7 @@ import Vendedores from './pages/Vendedores'
 import SellerProfile from './pages/SellerProfile'
 import Checkout from './pages/Checkout'
 import './index.css'
+import PlayStoreTestPromoModal from './components/PlayStoreTestPromoModal'
 
 // Heavy pages — loaded on demand to reduce initial bundle size
 const Dashboard  = lazy(() => import('./pages/Dashboard'))
@@ -84,6 +85,7 @@ function App() {
 
   return (
     <Router>
+      <PlayStoreTestPromoModal />
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route

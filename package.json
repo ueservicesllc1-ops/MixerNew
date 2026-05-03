@@ -10,6 +10,7 @@
     "start-proxy": "node b2-proxy.mjs",
     "build": "vite build",
     "build:android": "npm run build && npx cap copy android && cd android && gradlew.bat assembleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease",
+    "build:android:bundle": "npm run build && npx cap copy android && cd android && gradlew.bat bundleRelease -x lintVitalAnalyzeRelease -x lintVitalReportRelease",
     "android:install": "npm run build && npx cap copy android && cd android && gradlew.bat installDebug",
     "android:log:snapshot": "adb logcat -d -t 2500 > logs/mixer-snapshot.txt",
     "upload:apk": "node upload-final-apk.mjs",
