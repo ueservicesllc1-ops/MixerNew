@@ -2902,7 +2902,7 @@ export default function Multitrack() {
             )}
 
             {/* WAVEFORM OVERVIEW / SCRUBBER — web: WaveformCanvas; native: NextGen ProgressBar + lightweight fake overview (no decode pipeline) */}
-            <div className="waveform-section" style={{ height: isAppNative ? '85px' : '115px' }}>
+            <div className="waveform-section" style={{ height: isAppNative ? '96px' : '115px' }}>
                 {isAppNative ? (
                     <div
                         style={{

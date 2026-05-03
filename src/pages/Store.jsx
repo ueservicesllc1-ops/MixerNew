@@ -33,14 +33,62 @@ const SongCard = ({ song, onPreview, onBuy, navigate }) => {
                       song.tracks?.find(t => t.name === '__PreviewMix')?.url ||
                       song.tracks?.[0]?.previewUrl;
 
+    const lineClamp2 = {
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        wordBreak: 'break-word',
+    };
+
     return (
-        <div style={{ background: '#1e293b', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', overflow: 'hidden', transition: 'transform 0.2s', cursor: 'pointer', height: '100%', position: 'relative' }} onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-5px)'} onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-            <div style={{ height: '140px', background: '#0f172a', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }} className="group">
+        <div
+            style={{
+                background: '#1e293b',
+                border: '1px solid rgba(255,255,255,0.05)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                transition: 'transform 0.2s',
+                cursor: 'pointer',
+                height: '100%',
+                minHeight: 300,
+                width: '100%',
+                minWidth: 0,
+                maxWidth: '100%',
+                boxSizing: 'border-box',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-5px)')}
+            onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
+        >
+            <div
+                style={{
+                    height: 140,
+                    minHeight: 140,
+                    maxHeight: 140,
+                    width: '100%',
+                    flexShrink: 0,
+                    background: '#0f172a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    position: 'relative',
+                    overflow: 'hidden',
+                }}
+                className="group"
+            >
                 {song.coverUrl ? (
-                    <img src={song.coverUrl} alt={song.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'filter 0.3s' }} className="song-cover" />
+                    <img
+                        src={song.coverUrl}
+                        alt={song.name}
+                        style={{ width: '100%', height: '100%', maxWidth: '100%', objectFit: 'cover', objectPosition: 'center', display: 'block', transition: 'filter 0.3s' }}
+                        className="song-cover"
+                    />
                 ) : (
                     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-                        <img src="/generic_cover.png" alt="Generic Cover" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6 }} />
+                        <img src="/generic_cover.png" alt="Generic Cover" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.6, display: 'block' }} />
                         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.4)' }}>
                             <Music2 size={32} color="white" style={{ opacity: 0.5 }} />
                         </div>
@@ -86,16 +134,48 @@ const SongCard = ({ song, onPreview, onBuy, navigate }) => {
                 .group:hover .play-overlay { opacity: 1 !important; background: rgba(0,0,0,0.3) !important; }
             `}</style>
 
-            <div style={{ padding: '12px' }}>
-                <h3 style={{ margin: '0 0 2px 0', fontSize: '0.9rem', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.name}</h3>
-                <div style={{ color: '#94a3b8', fontSize: '0.75rem', marginBottom: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.artist}</div>
+            <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0 }}>
+                <h3
+                    style={{
+                        margin: '0 0 4px 0',
+                        fontSize: '0.9rem',
+                        fontWeight: '800',
+                        lineHeight: 1.25,
+                        minHeight: '2.5em',
+                        ...lineClamp2,
+                    }}
+                >
+                    {song.name}
+                </h3>
+                <div
+                    style={{
+                        color: '#94a3b8',
+                        fontSize: '0.75rem',
+                        marginBottom: '4px',
+                        lineHeight: 1.3,
+                        minHeight: '2.6em',
+                        ...lineClamp2,
+                    }}
+                >
+                    {song.artist}
+                </div>
                 <div
                     onClick={(e) => { e.stopPropagation(); navigate(`/seller/${song.userId}`); }}
-                    style={{ color: '#00d2d3', fontSize: '0.7rem', marginBottom: '10px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 'bold' }}
+                    style={{
+                        color: '#00d2d3',
+                        fontSize: '0.7rem',
+                        marginBottom: '10px',
+                        fontWeight: 'bold',
+                        lineHeight: 1.2,
+                        minHeight: '1.2em',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                    }}
                 >
                     {realSellerName}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', gap: 8, flexShrink: 0 }}>
                     <div style={{ fontSize: '1.1rem', fontWeight: '900', color: '#fff' }}>${song.price || '9.99'}</div>
                     <button
                         onClick={(e) => { e.stopPropagation(); onBuy(); }}
@@ -435,26 +515,29 @@ export default function Store() {
             </header>
 
             <style>{`
+                /* minmax(0,1fr): evita que imágenes anchas inflen el ancho de la columna del grid */
                 .store-grid {
                     display: grid;
-                    grid-template-columns: repeat(6, 1fr);
+                    grid-template-columns: repeat(6, minmax(0, 1fr));
                     gap: 15px;
                     padding: 40px 0;
+                    align-items: stretch;
                 }
+                .store-grid > * { min-width: 0; }
                 @media (max-width: 1600px) {
-                    .store-grid { grid-template-columns: repeat(5, 1fr); }
+                    .store-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
                 }
                 @media (max-width: 1300px) {
-                    .store-grid { grid-template-columns: repeat(4, 1fr); }
+                    .store-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
                 }
                 @media (max-width: 1000px) {
-                    .store-grid { grid-template-columns: repeat(3, 1fr); }
+                    .store-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
                 }
                 @media (max-width: 700px) {
-                    .store-grid { grid-template-columns: repeat(2, 1fr); }
+                    .store-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
                 }
                 @media (max-width: 500px) {
-                    .store-grid { grid-template-columns: repeat(1, 1fr); }
+                    .store-grid { grid-template-columns: minmax(0, 1fr); }
                 }
             `}</style>
 
@@ -464,13 +547,14 @@ export default function Store() {
                         <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '30px' }}>Resultados de búsqueda</h2>
                         <div className="store-grid">
                             {filteredStore.map(song => (
-                                <SongCard 
-                                    key={song.id} 
-                                    song={song} 
-                                    onPreview={() => openPreview(song)}
-                                    onBuy={() => addToCart(song)} 
-                                    navigate={navigate} 
-                                />
+                                <div key={song.id} style={{ minWidth: 0, display: 'flex' }}>
+                                    <SongCard
+                                        song={song}
+                                        onPreview={() => openPreview(song)}
+                                        onBuy={() => addToCart(song)}
+                                        navigate={navigate}
+                                    />
+                                </div>
                             ))}
                         </div>
                     </div>
@@ -487,7 +571,7 @@ export default function Store() {
                             <div className="store-grid">
                                 {storeSongs.length > 0 ? (
                                     storeSongs.map(song => (
-                                        <div key={song.id}>
+                                        <div key={song.id} style={{ minWidth: 0, display: 'flex' }}>
                                             <SongCard 
                                                 song={song} 
                                                 onPreview={() => openPreview(song)}
