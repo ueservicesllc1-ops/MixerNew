@@ -88,5 +88,11 @@ service cloud.firestore {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
+
+    // -- ACCOUNT DELETION REQUESTS: public create; admin reads / manages
+    match /account_deletion_requests/{doc} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
   }
 }

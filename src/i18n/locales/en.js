@@ -36,6 +36,7 @@ export default {
     termsConditions: 'Terms & conditions',
     manualCm: 'Community manager manual',
     sellerPage: 'Seller page',
+    deleteAccount: 'Delete account',
   },
   library: {
     baseLyrics: 'Lyrics library',
@@ -60,6 +61,7 @@ export default {
     contact: 'Contact',
     privacy: 'Privacy',
     terms: 'Terms',
+    deleteAccount: 'Delete my account',
     training: 'TRAINING',
     guidesLeaders: 'Leader guides',
     setupTech: 'Technical setup',
@@ -180,6 +182,31 @@ export default {
     subjectPlans: 'Plans & subscriptions',
     subjectOther: 'Other',
     phMessage: 'Write your message here...',
+  },
+  deleteAccount: {
+    badge: 'Team request',
+    heroTitle: 'Account deletion request',
+    heroSub:
+      'Submit the email on your account. An administrator will process your request; it may take several business days. If you are signed in, the email field is filled in for you.',
+    warning:
+      'Deletion is permanent: cloud tracks, settings, and data tied to the user are removed, except what we must keep by law.',
+    formTitle: 'Submit request',
+    requiredNote: 'Email and the confirmation box are required.',
+    labelEmailStar: 'Account email *',
+    labelName: 'Name (optional)',
+    labelDetails: 'Comment (optional)',
+    phEmail: 'you@email.com',
+    phName: 'Name you registered with',
+    phDetails: 'Reason or anything else you want the team to know...',
+    confirmLabel:
+      'I request deletion of my Zion Stage account and understand the team will process it manually.',
+    submit: 'Send request to administrator',
+    sending: 'Sending...',
+    sentTitle: 'Request received',
+    sentSub:
+      'We have logged your request. An administrator will review it and may contact you to verify identity before data is removed.',
+    sendAnother: 'Submit another request',
+    errorSend: 'Could not send. Try again or email soporte@freedomlabs.io.',
   },
   software: {
     badge: 'Zion Stage Engine v2.0',

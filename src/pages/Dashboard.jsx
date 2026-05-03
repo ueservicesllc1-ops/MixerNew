@@ -7,6 +7,7 @@ import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
+import { trackUserUsage } from '../utils/usageMetrics';
 import {
     Upload, Music2, Music, User, Tag, Play, ShoppingCart,
     ChevronRight, ArrowLeft, Layers, Cloud,
@@ -292,6 +293,7 @@ function Dashboard() {
         const unsubAuth = auth.onAuthStateChanged((user) => {
             setCurrentUser(user);
             if (user) {
+                void trackUserUsage(user);
                 // Fetch User Plan from Firestore safely
                 unsubUser = onSnapshot(doc(db, 'users', user.uid), (snap) => {
                     if (snap.exists()) {

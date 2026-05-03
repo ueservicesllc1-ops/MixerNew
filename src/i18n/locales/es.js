@@ -36,6 +36,7 @@ export default {
     termsConditions: 'Términos y Condiciones',
     manualCm: 'Manual del Community Manager',
     sellerPage: 'Página del Vendedor',
+    deleteAccount: 'Eliminar cuenta',
   },
   library: {
     baseLyrics: 'Base de Letras',
@@ -59,6 +60,7 @@ export default {
     contact: 'Contacto',
     privacy: 'Privacidad',
     terms: 'Términos',
+    deleteAccount: 'Eliminar mi cuenta',
     training: 'CAPACITACIÓN',
     guidesLeaders: 'Guías para Líderes',
     setupTech: 'Setup Técnico',
@@ -174,6 +176,31 @@ export default {
     subjectPlans: 'Planes y suscripciones',
     subjectOther: 'Otro',
     phMessage: 'Escribe tu mensaje aquí...',
+  },
+  deleteAccount: {
+    badge: 'Solicitud al equipo',
+    heroTitle: 'Solicitud de eliminación de cuenta',
+    heroSub:
+      'Completa el formulario con el correo de tu cuenta. El administrador procesará tu solicitud; puede llevar varios días hábiles. Si iniciaste sesión, el correo se rellena solo.',
+    warning:
+      'La eliminación es definitiva: se pierden pistas en la nube, configuración y datos asociados al usuario, salvo lo que la ley exija conservar.',
+    formTitle: 'Enviar solicitud',
+    requiredNote: 'El correo y la casilla de confirmación son obligatorios.',
+    labelEmailStar: 'Correo de la cuenta *',
+    labelName: 'Nombre (opcional)',
+    labelDetails: 'Comentario (opcional)',
+    phEmail: 'tu@email.com',
+    phName: 'Nombre con el que te registraste',
+    phDetails: 'Motivo u otra información que quieras dejar al equipo...',
+    confirmLabel:
+      'Solicito la eliminación de mi cuenta Zion Stage y entiendo que el equipo la tramitará de forma manual.',
+    submit: 'Enviar solicitud al administrador',
+    sending: 'Enviando...',
+    sentTitle: 'Solicitud registrada',
+    sentSub:
+      'Hemos recibido tu pedido. El administrador lo revisará y te contactará si hace falta confirmar identidad antes de borrar los datos.',
+    sendAnother: 'Enviar otra solicitud',
+    errorSend: 'No se pudo enviar. Intenta de nuevo o escribe a soporte@freedomlabs.io.',
   },
   software: {
     badge: 'Zion Stage Engine v2.0',

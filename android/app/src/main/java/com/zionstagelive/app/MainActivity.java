@@ -1,4 +1,4 @@
-package com.mixer.app;
+package com.zionstagelive.app;
 
 import android.os.Bundle;
 import android.view.View;

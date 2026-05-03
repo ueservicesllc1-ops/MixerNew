@@ -1,18 +1,18 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace = "com.mixer.app"
+    namespace = "com.zionstagelive.app"
     compileSdk = rootProject.ext.compileSdkVersion
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
     defaultConfig {
-        applicationId "com.mixer.app"
+        applicationId "com.zionstagelive.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Debe ser > APK ya instalado en el dispositivo o falla INSTALL_FAILED_VERSION_DOWNGRADE
-        versionCode 127
+        versionCode 128
         versionName "1.8.58"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

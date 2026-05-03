@@ -1,4 +1,4 @@
-package com.mixer.app;
+package com.zionstagelive.app;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;

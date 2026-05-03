@@ -864,19 +864,19 @@ nextgen::NextGenMultitrackEngine* gNextGen = nullptr;
 
 extern "C" {
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeInit(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeInit(JNIEnv*, jobject) {
     if (!gNextGen) {
         gNextGen = new nextgen::NextGenMultitrackEngine();
         NGD("NextGen engine instance created");
     }
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeRelease(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeRelease(JNIEnv*, jobject) {
     delete gNextGen;
     gNextGen = nullptr;
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeLoadSongSession(JNIEnv* env, jobject,
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeLoadSongSession(JNIEnv* env, jobject,
                                                                                     jobjectArray jIds,
                                                                                     jobjectArray jPaths) {
     if (!gNextGen || !jIds || !jPaths) return;
@@ -903,23 +903,23 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeLoadSongSessi
     gNextGen->loadSongSession(stems);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativePlay(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativePlay(JNIEnv*, jobject) {
     if (gNextGen) gNextGen->play();
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativePause(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativePause(JNIEnv*, jobject) {
     if (gNextGen) gNextGen->pause();
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeStop(JNIEnv*, jobject) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeStop(JNIEnv*, jobject) {
     if (gNextGen) gNextGen->stop();
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSeek(JNIEnv*, jobject, jdouble sec) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSeek(JNIEnv*, jobject, jdouble sec) {
     if (gNextGen) gNextGen->seekSeconds(sec);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackVolume(JNIEnv* env, jobject, jstring jid,
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTrackVolume(JNIEnv* env, jobject, jstring jid,
                                                                                   jfloat vol) {
     if (!gNextGen || !jid) return;
     const char* id = env->GetStringUTFChars(jid, nullptr);
@@ -927,7 +927,7 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackVolum
     env->ReleaseStringUTFChars(jid, id);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackMute(JNIEnv* env, jobject, jstring jid,
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTrackMute(JNIEnv* env, jobject, jstring jid,
                                                                                 jboolean muted) {
     if (!gNextGen || !jid) return;
     const char* id = env->GetStringUTFChars(jid, nullptr);
@@ -935,7 +935,7 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackMute(
     env->ReleaseStringUTFChars(jid, id);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackSolo(JNIEnv* env, jobject, jstring jid,
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTrackSolo(JNIEnv* env, jobject, jstring jid,
                                                                                jboolean solo) {
     if (!gNextGen || !jid) return;
     const char* id = env->GetStringUTFChars(jid, nullptr);
@@ -943,27 +943,27 @@ JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTrackSolo(
     env->ReleaseStringUTFChars(jid, id);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetPitchSemiTones(JNIEnv*, jobject, jfloat semitones) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetPitchSemiTones(JNIEnv*, jobject, jfloat semitones) {
     if (gNextGen) gNextGen->setPitchSemiTones(semitones);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetTempoRatio(JNIEnv*, jobject, jfloat ratio) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTempoRatio(JNIEnv*, jobject, jfloat ratio) {
     if (gNextGen) gNextGen->setTempoRatio(ratio);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeSetMasterVolume(JNIEnv*, jobject, jfloat volume) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetMasterVolume(JNIEnv*, jobject, jfloat volume) {
     if (gNextGen) gNextGen->setMasterVolume(volume);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeTempoLabSetActive(JNIEnv*, jobject, jboolean on) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeTempoLabSetActive(JNIEnv*, jobject, jboolean on) {
     if (gNextGen) gNextGen->tempoLabSetActive(on == JNI_TRUE);
 }
 
-JNIEXPORT void JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeTempoLabSetRatio(JNIEnv*, jobject, jfloat ratio) {
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeTempoLabSetRatio(JNIEnv*, jobject, jfloat ratio) {
     if (gNextGen) gNextGen->tempoLabSetRatio(ratio);
 }
 
-JNIEXPORT jstring JNICALL Java_com_mixer_app_NextGenMixerPlugin_nativeGetSnapshotJson(JNIEnv* env, jobject) {
+JNIEXPORT jstring JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeGetSnapshotJson(JNIEnv* env, jobject) {
     if (!gNextGen) return env->NewStringUTF("{}");
     std::string j = gNextGen->getSnapshotJson();
     return env->NewStringUTF(j.c_str());

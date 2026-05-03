@@ -233,39 +233,39 @@ public:
 static MultitrackEngine* gEngine = nullptr;
 
 extern "C" {
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeInit(JNIEnv*, jobject) { if (!gEngine) { gEngine = new MultitrackEngine(); gEngine->init(); } }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeLoadTrack(JNIEnv* env, jobject, jstring jId, jstring jPath) {
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeInit(JNIEnv*, jobject) { if (!gEngine) { gEngine = new MultitrackEngine(); gEngine->init(); } }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeLoadTrack(JNIEnv* env, jobject, jstring jId, jstring jPath) {
         const char *id = env->GetStringUTFChars(jId, 0), *path = env->GetStringUTFChars(jPath, 0);
         if (gEngine) gEngine->loadTrack(id, path);
         env->ReleaseStringUTFChars(jId, id); env->ReleaseStringUTFChars(jPath, path);
     }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeClearTracks(JNIEnv*, jobject) { if (gEngine) gEngine->clearTracks(); }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativePlay(JNIEnv*, jobject) { if (gEngine) gEngine->play(); }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativePause(JNIEnv*, jobject) { if (gEngine) gEngine->pause(); }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeStop(JNIEnv*, jobject) { if (gEngine) { gEngine->pause(); gEngine->seekAll(0); } }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSeek(JNIEnv*, jobject, jdouble s) { if (gEngine) gEngine->seekAll(s); }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetVolume(JNIEnv*, jobject, jfloat v) { if (gEngine) gEngine->setMasterVolume(v); }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetTrackVolume(JNIEnv* env, jobject, jstring jId, jfloat v) {
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeClearTracks(JNIEnv*, jobject) { if (gEngine) gEngine->clearTracks(); }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativePlay(JNIEnv*, jobject) { if (gEngine) gEngine->play(); }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativePause(JNIEnv*, jobject) { if (gEngine) gEngine->pause(); }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeStop(JNIEnv*, jobject) { if (gEngine) { gEngine->pause(); gEngine->seekAll(0); } }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSeek(JNIEnv*, jobject, jdouble s) { if (gEngine) gEngine->seekAll(s); }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetVolume(JNIEnv*, jobject, jfloat v) { if (gEngine) gEngine->setMasterVolume(v); }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetTrackVolume(JNIEnv* env, jobject, jstring jId, jfloat v) {
         const char *id = env->GetStringUTFChars(jId, 0); if (gEngine) gEngine->setTrackVolume(id, v); env->ReleaseStringUTFChars(jId, id);
     }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetTrackMute(JNIEnv* env, jobject, jstring jId, jboolean m) {
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetTrackMute(JNIEnv* env, jobject, jstring jId, jboolean m) {
         const char *id = env->GetStringUTFChars(jId, 0); if (gEngine) gEngine->setTrackMute(id, m); env->ReleaseStringUTFChars(jId, id);
     }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetTrackSolo(JNIEnv* env, jobject, jstring jId, jboolean m) {
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetTrackSolo(JNIEnv* env, jobject, jstring jId, jboolean m) {
         const char *id = env->GetStringUTFChars(jId, 0); if (gEngine) gEngine->setTrackSolo(id, m); env->ReleaseStringUTFChars(jId, id);
     }
-    JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetPosition(JNIEnv*, jobject) { return gEngine ? gEngine->getPositionInternal() : 0.0; }
-    JNIEXPORT jint JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackCount(JNIEnv*, jobject) { return gEngine ? gEngine->getTrackCount() : 0; }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetSpeed(JNIEnv*, jobject, jfloat speed) { if (gEngine) gEngine->setSpeed(speed); }
+    JNIEXPORT jdouble JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeGetPosition(JNIEnv*, jobject) { return gEngine ? gEngine->getPositionInternal() : 0.0; }
+    JNIEXPORT jint JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeGetTrackCount(JNIEnv*, jobject) { return gEngine ? gEngine->getTrackCount() : 0; }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetSpeed(JNIEnv*, jobject, jfloat speed) { if (gEngine) gEngine->setSpeed(speed); }
 
-    JNIEXPORT jdouble JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetDuration(JNIEnv*, jobject) {
+    JNIEXPORT jdouble JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeGetDuration(JNIEnv*, jobject) {
         return gEngine ? gEngine->getDurationInternal() : 0.0;
     }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativePreloadTrack(JNIEnv*, jobject, jstring, jstring, jstring) {}
-    JNIEXPORT jboolean JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSwapToPending(JNIEnv*, jobject, jstring) { return JNI_FALSE; }
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeClearPending(JNIEnv*, jobject) {}
-    JNIEXPORT void JNICALL Java_com_mixer_app_MultitrackPlugin_nativeSetPitch(JNIEnv*, jobject, jfloat) {}
-    JNIEXPORT jstring JNICALL Java_com_mixer_app_MultitrackPlugin_nativeGetTrackLevels(JNIEnv* env, jobject) {
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativePreloadTrack(JNIEnv*, jobject, jstring, jstring, jstring) {}
+    JNIEXPORT jboolean JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSwapToPending(JNIEnv*, jobject, jstring) { return JNI_FALSE; }
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeClearPending(JNIEnv*, jobject) {}
+    JNIEXPORT void JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeSetPitch(JNIEnv*, jobject, jfloat) {}
+    JNIEXPORT jstring JNICALL Java_com_zionstagelive_app_MultitrackPlugin_nativeGetTrackLevels(JNIEnv* env, jobject) {
         if (!gEngine) return env->NewStringUTF("");
         std::string s = gEngine->getTrackLevelsString();
         return env->NewStringUTF(s.c_str());

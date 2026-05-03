@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search } from 'lucide-react';
+import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3 } from 'lucide-react';
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -11,6 +11,7 @@ export default function Admin() {
     const [masterArtists, setMasterArtists] = useState([]);
     const [newArtistName, setNewArtistName] = useState('');
     const [contacts, setContacts] = useState([]);
+    const [accountDeletionRequests, setAccountDeletionRequests] = useState([]);
     const [libraryChords, setLibraryChords] = useState([]); 
     const [libraryLyrics, setLibraryLyrics] = useState([]); 
     const [sellerApps, setSellerApps] = useState([]); // Nuevo: Solicitudes de vendedores
@@ -35,6 +36,9 @@ export default function Admin() {
 
     const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
     const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
+    const [usageReport, setUsageReport] = useState(null);
+    const [isBuildingUsageReport, setIsBuildingUsageReport] = useState(false);
+    const [onlineUsers, setOnlineUsers] = useState([]);
 
     const [selectedArtist, setSelectedArtist] = useState(null);
     const [artistSongs, setArtistSongs] = useState([]);
@@ -120,6 +124,12 @@ export default function Admin() {
             const c = [];
             snap.forEach(doc => c.push({ id: doc.id, ...doc.data() }));
             setContacts(c.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
+        });
+
+        onSnapshot(collection(db, 'account_deletion_requests'), (snap) => {
+            const r = [];
+            snap.forEach(doc => r.push({ id: doc.id, ...doc.data() }));
+            setAccountDeletionRequests(r.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
         });
 
         onSnapshot(collection(db, 'master_artists'), (snap) => {
@@ -889,6 +899,60 @@ export default function Admin() {
         } catch (e) { console.error(e); }
     };
 
+    const toMillisSafe = (value) => {
+        if (!value) return 0;
+        if (typeof value?.toMillis === 'function') return value.toMillis();
+        if (value instanceof Date) return value.getTime();
+        if (typeof value === 'number') return value;
+        return 0;
+    };
+
+    const buildUsageReport = () => {
+        setIsBuildingUsageReport(true);
+        try {
+            const now = Date.now();
+            const onlineWindowMs = 5 * 60 * 1000;
+            const activeWindowMs = 30 * 24 * 60 * 60 * 1000;
+            const onlineCutoff = now - onlineWindowMs;
+            const cutoff = now - activeWindowMs;
+
+            const totalUsers = users.length;
+            const trackedUsers = users.filter(u => toMillisSafe(u?.usageMetrics?.lastSeenAt) > 0).length;
+            const appInstalled = users.filter(u => toMillisSafe(u?.usageMetrics?.platforms?.native?.firstSeenAt) > 0).length;
+            const appActive30d = users.filter(u => toMillisSafe(u?.usageMetrics?.platforms?.native?.lastSeenAt) >= cutoff).length;
+            const webActive30d = users.filter(u => {
+                const webLastSeen = toMillisSafe(u?.usageMetrics?.platforms?.web?.lastSeenAt);
+                const pwaLastSeen = toMillisSafe(u?.usageMetrics?.platforms?.pwa?.lastSeenAt);
+                return Math.max(webLastSeen, pwaLastSeen) >= cutoff;
+            }).length;
+            const onlineNow = users.filter(u => toMillisSafe(u?.usageMetrics?.lastSeenAt) >= onlineCutoff).length;
+
+            const onlineList = users
+                .filter(u => toMillisSafe(u?.usageMetrics?.lastSeenAt) >= onlineCutoff)
+                .map(u => ({
+                    id: u.id,
+                    email: u.email || '',
+                    name: u.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email || 'Usuario',
+                    platform: u?.usageMetrics?.lastPlatform || 'unknown',
+                    lastSeenAt: toMillisSafe(u?.usageMetrics?.lastSeenAt),
+                }))
+                .sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+
+            setOnlineUsers(onlineList);
+            setUsageReport({
+                generatedAt: new Date(),
+                totalUsers,
+                trackedUsers,
+                onlineNow,
+                appInstalled,
+                appActive30d,
+                webActive30d
+            });
+        } finally {
+            setIsBuildingUsageReport(false);
+        }
+    };
+
     if (loading) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}>Cargando Admin...</div>;
     if (!isAdmin) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}><ShieldAlert size={48} color="red" /><h2>Acceso Denegado</h2></div>;
 
@@ -934,6 +998,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Marketplace ({forSaleSongs.length})</button>
                 <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({users.filter(u => u.isSeller).length})</button>
                 <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({users.length})</button>
+                <button onClick={() => setActiveTab('reports')} style={{ background: activeTab === 'reports' ? '#22c55e' : 'rgba(255,255,255,0.05)', color: activeTab === 'reports' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Reportes</button>
                 <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({coupons.length})</button>
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
@@ -941,7 +1006,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({appHistory.length})</button>
                 <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({banners.length})</button>
                 <button onClick={() => setActiveTab('letras')} style={{ background: activeTab === 'letras' ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: activeTab === 'letras' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>✏️ Letras ({libraryLyrics.length})</button>
-                <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length})</button>
+                <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length + accountDeletionRequests.length})</button>
             </div>
 
             {activeTab === 'artists' && (
@@ -1761,6 +1826,88 @@ export default function Admin() {
                 </div>
             )}
 
+            {activeTab === 'reports' && (
+                <div className="fade-in">
+                    <div style={{ background: '#1e293b', borderRadius: '20px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
+                            <div>
+                                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <BarChart3 size={24} color="#22c55e" />
+                                    Reporte de Uso
+                                </h2>
+                                <p style={{ color: '#94a3b8', margin: '6px 0 0 0' }}>Instalaciones app y usuarios activos de app/web (ventana: 30 días).</p>
+                            </div>
+                            <button
+                                onClick={buildUsageReport}
+                                disabled={isBuildingUsageReport}
+                                style={{ background: '#22c55e', color: '#04130a', border: 'none', padding: '12px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: '800' }}
+                            >
+                                {isBuildingUsageReport ? 'Generando...' : 'Generar reporte'}
+                            </button>
+                        </div>
+
+                        {usageReport ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
+                                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Usuarios totales</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.totalUsers}</div>
+                                </div>
+                                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Usuarios con tracking</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.trackedUsers}</div>
+                                </div>
+                                <div style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#6ee7b7', fontSize: '0.8rem' }}>Usando ahora (5 min)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.onlineNow}</div>
+                                </div>
+                                <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#86efac', fontSize: '0.8rem' }}>App instalada (nativa)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.appInstalled}</div>
+                                </div>
+                                <div style={{ background: 'rgba(14,165,233,0.08)', border: '1px solid rgba(14,165,233,0.25)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#7dd3fc', fontSize: '0.8rem' }}>Activos app (30d)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.appActive30d}</div>
+                                </div>
+                                <div style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#c4b5fd', fontSize: '0.8rem' }}>Activos web app (30d)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.webActive30d}</div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ color: '#64748b', fontSize: '0.95rem' }}>Pulsa <strong>Generar reporte</strong> para ver las métricas.</div>
+                        )}
+
+                        {usageReport && (
+                            <div style={{ marginTop: '22px' }}>
+                                <h3 style={{ margin: '0 0 10px 0' }}>Usuarios activos ahora</h3>
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden' }}>
+                                    {onlineUsers.length === 0 ? (
+                                        <div style={{ padding: '12px 14px', color: '#64748b' }}>No hay usuarios activos en los ultimos 5 minutos.</div>
+                                    ) : (
+                                        onlineUsers.map((u) => (
+                                            <div key={u.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <div>
+                                                    <div style={{ fontWeight: '700' }}>{u.name}</div>
+                                                    <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{u.email || 'sin email'}</div>
+                                                </div>
+                                                <div style={{ alignSelf: 'center', color: '#22d3ee', fontWeight: '700', textTransform: 'uppercase' }}>{u.platform}</div>
+                                                <div style={{ alignSelf: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>{new Date(u.lastSeenAt).toLocaleTimeString()}</div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {usageReport?.generatedAt && (
+                            <div style={{ marginTop: '15px', fontSize: '0.8rem', color: '#64748b' }}>
+                                Generado: {usageReport.generatedAt.toLocaleString()}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {activeTab === 'apps' && (
                 <div className="fade-in">
                     <div style={{ background: '#1e293b', padding: '30px', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '40px' }}>
@@ -1891,11 +2038,24 @@ export default function Admin() {
 
             {activeTab === 'contacts' && (
                 <div className="fade-in">
-                    <h2>Mensajes</h2>
+                    <h2>Mensajes de contacto</h2>
+                    {contacts.length === 0 && <p style={{ color: '#64748b' }}>No hay mensajes.</p>}
                     {contacts.map(c => (
                         <div key={c.id} style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', marginBottom: '15px' }}>
                             <div style={{ fontWeight: '800' }}>{c.nombre} ({c.email})</div>
                             <p style={{ color: '#94a3b8', marginTop: '10px' }}>{c.mensaje}</p>
+                        </div>
+                    ))}
+
+                    <h2 style={{ marginTop: '40px', color: '#f87171' }}>Solicitudes de eliminación de cuenta</h2>
+                    <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>Tramitar en Firebase Auth / Firestore según tu proceso interno. UID si el usuario estaba logueado.</p>
+                    {accountDeletionRequests.length === 0 && <p style={{ color: '#64748b' }}>No hay solicitudes.</p>}
+                    {accountDeletionRequests.map(r => (
+                        <div key={r.id} style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', marginBottom: '15px', border: '1px solid rgba(248,113,113,0.25)' }}>
+                            <div style={{ fontWeight: '800' }}>{r.email}{r.nombre ? ` — ${r.nombre}` : ''}</div>
+                            {r.authUid && <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '6px' }}>UID: {r.authUid}</div>}
+                            {r.detalles && <p style={{ color: '#94a3b8', marginTop: '10px', whiteSpace: 'pre-wrap' }}>{r.detalles}</p>}
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '10px' }}>Estado: {r.estado || 'pending'}{r.leido ? ' · leído' : ''}</div>
                         </div>
                     ))}
                 </div>

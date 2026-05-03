@@ -52,6 +52,7 @@ export default function Footer() {
                             <li onClick={() => navigate('/contact')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.contact')}</li>
                             <li onClick={() => navigate('/privacy')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.privacy')}</li>
                             <li onClick={() => navigate('/terms')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.terms')}</li>
+                            <li onClick={() => navigate('/delete')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.deleteAccount')}</li>
                         </ul>
                     </div>
 

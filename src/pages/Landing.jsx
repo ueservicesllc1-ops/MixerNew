@@ -9,6 +9,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
+import { trackUserUsage } from '../utils/usageMetrics';
 
 export default function Landing() {
     const navigate = useNavigate();
@@ -108,6 +109,7 @@ export default function Landing() {
 
         const unsubscribe = onAuthStateChanged(auth, user => {
             setCurrentUser(user);
+            if (user) void trackUserUsage(user);
         });
 
         const fetchSongs = async () => {

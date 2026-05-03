@@ -12,6 +12,7 @@ import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, 
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
+import { trackUserUsage } from '../utils/usageMetrics'
 
 /** updateDoc sin documento → code `not-found` (SDK puede decir que no existe el documento / fila). */
 function isFirestoreDocMissing(err) {
@@ -969,6 +970,7 @@ export default function Multitrack() {
             setCurrentUser(user);
 
             if (user) {
+                void trackUserUsage(user);
                 // ΓöÇΓöÇ Songs: solo las del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 const q = query(collection(db, 'songs'), where('userId', '==', user.uid));
                 const unsubSongs = onSnapshot(q, (snap) => {

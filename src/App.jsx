@@ -6,6 +6,7 @@ import Store from './pages/Store'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import Contact from './pages/Contact'
+import DeleteAccount from './pages/DeleteAccount'
 import About from './pages/About'
 import Software from './pages/Software'
 import Recursos from './pages/Recursos'
@@ -98,6 +99,7 @@ function App() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/delete" element={<DeleteAccount />} />
           <Route path="/about" element={<About />} />
           <Route path="/software" element={<Software />} />
           <Route path="/recursos" element={<Recursos />} />
