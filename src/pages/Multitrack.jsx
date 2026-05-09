@@ -2626,7 +2626,9 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>V{CURRENT_VERSION} - ZION STAGE (STABLE SYNC)</div>
+                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>
+                    V{CURRENT_VERSION} - ZION STAGE ({isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
+                </div>
                 <button className="transport-btn" onClick={() => navigate('/dashboard')} title={t('multitrack.menuTitle')}>
                     <Menu size={20} />
                 </button>

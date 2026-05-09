@@ -1137,6 +1137,7 @@ var SoundTouchWorklet = function (_AudioWorkletProcesso) {
     _this = _callSuper(this, SoundTouchWorklet);
     _this.bufferSize = 128;
     _this._samples = new Float32Array(_this.bufferSize * 2);
+    _this._processedSamples = new Float32Array(_this.bufferSize * 2);
     _this._pipe = new SoundTouch();
     return _this;
   }
@@ -1165,7 +1166,11 @@ var SoundTouchWorklet = function (_AudioWorkletProcesso) {
       }
       this._pipe.inputBuffer.putSamples(samples, 0, leftInput.length);
       this._pipe.process();
-      var processedSamples = new Float32Array(leftInput.length * 2);
+      var processedSamples = this._processedSamples;
+      if (processedSamples.length < leftOutput.length * 2) {
+        this._processedSamples = new Float32Array(leftOutput.length * 2);
+        processedSamples = this._processedSamples;
+      }
       this._pipe.outputBuffer.receiveSamples(processedSamples, leftOutput.length);
       for (var _i = 0; _i < leftInput.length; _i++) {
         leftOutput[_i] = processedSamples[_i * 2];
