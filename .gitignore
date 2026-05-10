@@ -47,3 +47,11 @@ public/release-pending.json
 
 .gemini/
 .agents/
+
+# ZionAudioCore Build Artifacts
+ZionAudioCore/build/
+ZionAudioCore/build_wasm/
+ZionAudioCore/build_wasm_real/
+*.txt
+*.patch
+multitrack_good_backup.jsx
