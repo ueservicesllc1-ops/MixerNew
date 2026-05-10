@@ -256,8 +256,11 @@ export const ProgressBar = React.memo(
 
         // ── Native Android: Zion waveform (cache → deferred PreviewMix decode → synthetic placeholder) ──
         useEffect(() => {
+            const isDesktop = typeof window !== 'undefined' && !!window.zionNative;
+            const isNativeCap = typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform();
+
             if (!nativeUi) return undefined;
-            if (typeof Capacitor === 'undefined' || !Capacitor.isNativePlatform()) return undefined;
+            if (!isNativeCap && !isDesktop) return undefined;
             if (!songId) return undefined;
 
             let cancelled = false;
@@ -330,8 +333,22 @@ export const ProgressBar = React.memo(
 
                 try {
                     await audioEngine.init();
-                    const raw = await NativeEngine.readTrackBlob(songId, PREVIEW_MIX_TRACK);
-                    if (!raw) {
+                    let ab = null;
+
+                    if (isDesktop && window.zionNative?.readEncryptedTrack) {
+                        const filename = `${songId}_${PREVIEW_MIX_TRACK}.mp3`;
+                        const buffer = await window.zionNative.readEncryptedTrack(filename);
+                        if (buffer) {
+                            ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
+                        }
+                    } else {
+                        const raw = await NativeEngine.readTrackBlob(songId, PREVIEW_MIX_TRACK);
+                        if (raw) {
+                            ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
+                        }
+                    }
+
+                    if (!ab) {
                         attempt += 1;
                         if (!cancelled && attempt < maxAttempts) {
                             retryTimer = setTimeout(() => {
@@ -345,7 +362,6 @@ export const ProgressBar = React.memo(
                     await waitUntilIdleForDecode();
                     if (cancelled || realWaveformActiveRef.current) return;
 
-                    const ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
                     const buf = await audioEngine.ctx.decodeAudioData(ab);
                     const peaks = buildPeaksFromAudioBuffer(buf);
                     try {
@@ -505,7 +521,15 @@ export const ProgressBar = React.memo(
                 const finalTime = calculateTime(upEvent.clientX);
                 logNativeSeekUi('[NEXTGEN_UI] seek end (final position)', finalTime.toFixed(3));
                 isDraggingRef.current = false;
-                await audioEngine.endDrag(finalTime);
+                if (
+                    typeof window !== 'undefined' &&
+                    window.zionNative?.seek &&
+                    window.__zionDesktopPlayback !== 'wasm'
+                ) {
+                    await window.zionNative.seek(finalTime);
+                } else {
+                    await audioEngine.endDrag(finalTime);
+                }
                 if (nativeUi) {
                     lastSnapshotRef.current = {
                         ...lastSnapshotRef.current,
@@ -558,7 +582,15 @@ export const ProgressBar = React.memo(
             const finalTime = pct * (dur || 0);
             logNativeSeekUi('[NEXTGEN_UI] seek end (final position)', finalTime.toFixed(3));
             isDraggingRef.current = false;
-            await audioEngine.endDrag(finalTime);
+            if (
+                typeof window !== 'undefined' &&
+                window.zionNative?.seek &&
+                window.__zionDesktopPlayback !== 'wasm'
+            ) {
+                await window.zionNative.seek(finalTime);
+            } else {
+                await audioEngine.endDrag(finalTime);
+            }
             if (nativeUi) {
                 lastSnapshotRef.current = {
                     ...lastSnapshotRef.current,

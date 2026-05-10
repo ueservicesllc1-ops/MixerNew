@@ -10,6 +10,8 @@ const appVersion = pkg.version || '0.0.0'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Rutas relativas para que `dist/` funcione con Electron (`file://`) sin depender de un servidor.
+  base: './',
   plugins: [react()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),

@@ -1,3 +1,8 @@
+html {
+  height: 100%;
+  min-height: 100dvh;
+}
+
 :root {
   --font-main: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-lyrics: 'Montserrat', sans-serif;
@@ -39,8 +44,12 @@
 body {
   margin: 0;
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
   min-height: 100vh;
-  width: 100vw;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
@@ -52,6 +61,10 @@ body.dark-mode {
 
 #root {
   width: 100%;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 /* Landing Page & Dashboard Premium Styles */
@@ -158,25 +171,248 @@ div:has(> .avatar-overlay):hover {
 .multitrack-layout {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   height: 100vh;
   height: 100dvh;
+  max-height: 100dvh;
   padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
   box-sizing: border-box;
   overflow: hidden;
   /* Prevent body scroll, use child scroll */
 }
 
+/* Multitrack (#/multitrack y #/desktop): columna central + sidebar con altura completa */
+.multitrack-layout .main-content {
+  flex: 1 1 0% !important;
+  min-height: 0;
+  display: flex !important;
+  align-items: stretch !important;
+  overflow: hidden;
+}
+
+/* Web no usa .multitrack-main-layout; sin flex-shrink la barra de tabs puede comprimir mal el reparto */
+.multitrack-layout > .tab-bar {
+  flex-shrink: 0;
+}
+
+/* Escritorio (Electron): mismo shell, ancho app */
+.multitrack-main-layout.multitrack-layout {
+  flex: 1 1 0%;
+  min-height: 0;
+  width: 100%;
+}
+
+/*
+ * Sidebar derecha (web + Electron): setlist crece hasta los pads; lista con scroll; pads al fondo.
+ * Antes solo .multitrack-main-layout → /multitrack en navegador no heredaba estilos.
+ */
+.multitrack-layout .sidebar.desktop-only {
+  display: flex !important;
+  flex-direction: column !important;
+  width: clamp(252px, 30vw, 560px) !important;
+  min-width: 220px !important;
+  max-width: min(560px, 46vw) !important;
+  min-height: 0 !important;
+  align-self: stretch !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.multitrack-layout .sidebar.desktop-only .setlist-panel {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.multitrack-layout .sidebar.desktop-only .setlist-songs-scroll {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.multitrack-layout .sidebar.desktop-only .pads-panel {
+  flex: 0 0 auto !important;
+  margin-top: auto !important;
+  height: auto !important;
+  min-height: 120px;
+}
+
+/*
+ * DesktopMultitrack (#/desktop, .multitrack-main-layout): panel derecho con altura acotada.
+ * Scroll únicamente en .desktop-setlist-songs; pads fuera del flujo scrolleable del setlist.
+ */
+.multitrack-main-layout .sidebar.desktop-only.desktop-right-panel {
+  height: calc(100vh - 150px) !important;
+  height: calc(100dvh - 150px) !important;
+  max-height: calc(100dvh - 150px) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  gap: 0 !important;
+  align-self: flex-start !important;
+  box-sizing: border-box !important;
+}
+
+.multitrack-main-layout .desktop-setlist-card {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+.multitrack-main-layout .desktop-setlist-header {
+  flex: 0 0 auto !important;
+}
+
+.multitrack-main-layout .desktop-setlist-songs {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-right: 6px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.multitrack-main-layout .desktop-pads-card {
+  flex: 0 0 230px !important;
+  margin-top: 12px !important;
+  overflow: hidden !important;
+  min-height: 0 !important;
+}
+
+.multitrack-main-layout .master-fader-mini {
+  min-width: 0;
+  max-width: min(280px, 42vw);
+}
+
+.multitrack-main-layout .tab-bar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  flex-shrink: 0;
+}
+
+.multitrack-main-layout .transport-bar {
+  flex-shrink: 0;
+}
+
+.multitrack-main-layout .waveform-section {
+  flex-shrink: 0;
+}
+
+@media (max-width: 1100px) {
+  .multitrack-main-layout .transport-bar {
+    padding: 6px 10px;
+    gap: 10px;
+  }
+
+  .multitrack-main-layout .audio-info {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+}
+
+@media (max-width: 720px) {
+  .multitrack-main-layout .main-content {
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  .multitrack-main-layout .main-stage-wrapper {
+    flex: 1 1 0%;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .multitrack-layout .sidebar.desktop-only {
+    flex: 0 0 auto;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: min(380px, 44vh) !important;
+    overflow: hidden;
+    flex-direction: column !important;
+  }
+}
+
+/*
+ * Escritorio Electron: anula grid-auto-rows: 48% global.
+ * El scroll va en .mixer-wrapper: el .mixer-grid mantiene altura natural; si es más alto que el hueco, el wrapper hace overflow (flex-basis 0 evita que el grid estire el padre sin límite).
+ */
+.multitrack-main-layout .main-stage-wrapper {
+  flex: 1 1 0%;
+  min-height: 0;
+  /* height:100% global rompe el reparto flex y el scroll del mixer */
+  height: auto !important;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.multitrack-main-layout .mixer-wrapper {
+  flex: 1 1 0%;
+  flex-basis: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: scroll;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.multitrack-main-layout .mixer-grid {
+  display: grid !important;
+  grid-auto-rows: minmax(252px, min(340px, 40vh)) !important;
+  align-content: start !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  flex: none !important;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: visible !important;
+}
+
+.multitrack-main-layout .channel-strip {
+  flex: unset !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.multitrack-main-layout .fader-stack {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
 .main-content {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   gap: 12px;
   width: 100%;
+  min-height: 0;
   overflow: hidden;
   /* Each child handles its own scroll */
 }
 
 /* TOP TRANSPORT BAR */
 .transport-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 15px;
@@ -190,6 +426,7 @@ div:has(> .avatar-overlay):hover {
   transition: background 0.3s, border-color 0.3s;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  flex-wrap: nowrap;
 }
 
 .transport-bar::-webkit-scrollbar {
@@ -1998,4 +2235,41 @@ body.dark-mode .pad-ms-btn {
     padding: 6px 0 !important;
     font-size: 0.75rem !important;
   }
+}
+
+/* ─── Zion Stage escritorio (Electron): scroll del mixer por encima de tablet/global ─── */
+body .multitrack-main-layout .main-content {
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+}
+
+body .multitrack-main-layout .main-stage-wrapper {
+  flex: 1 1 0% !important;
+  flex-basis: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: hidden !important;
+}
+
+body .multitrack-main-layout .mixer-wrapper.desktop-mixer-scroll-host {
+  flex: 1 1 0% !important;
+  flex-basis: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow-x: auto !important;
+  overflow-y: scroll !important;
+  overscroll-behavior: contain;
+}
+
+body .multitrack-main-layout .mixer-wrapper.desktop-mixer-scroll-host .mixer-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)) !important;
+  grid-auto-rows: minmax(220px, min(300px, 34vh)) !important;
+  align-content: start !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: min-content !important;
+  flex: none !important;
+  overflow: visible !important;
 }

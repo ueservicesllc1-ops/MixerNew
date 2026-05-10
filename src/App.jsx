@@ -1,5 +1,5 @@
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import Landing from './pages/Landing'
 import Admin from './pages/Admin'
 import Store from './pages/Store'
@@ -21,9 +21,23 @@ import PlayStoreTestPromoModal from './components/PlayStoreTestPromoModal'
 // Heavy pages — loaded on demand to reduce initial bundle size
 const Dashboard  = lazy(() => import('./pages/Dashboard'))
 const Multitrack = lazy(() => import('./pages/Multitrack'))
+const DesktopMultitrack = lazy(() => import('./pages/DesktopMultitrack'))
 const Academy    = lazy(() => import('./pages/Academy'))
 const Manual     = lazy(() => import('./pages/Manual'))
 const NextGenTest = lazy(() => import('./pages/NextGenTest'))
+
+import { DesktopSessionService } from './desktop/DesktopSessionService'
+import DesktopLoginGate from './desktop/DesktopLoginGate'
+
+const DesktopWrapper = () => {
+  const [session, setSession] = useState(DesktopSessionService.getCurrentSession())
+  
+  if (!session) {
+    return <DesktopLoginGate onLoginSuccess={(user) => setSession(user)} />
+  }
+  
+  return <DesktopMultitrack session={session} />
+}
 
 const PageLoader = () => (
   <div style={{
@@ -94,6 +108,7 @@ function App() {
           />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/multitrack" element={<Multitrack />} />
+          <Route path="/desktop" element={<DesktopWrapper />} />
           {/* Isolated NextGen native engine manual test — not part of production multitrack flow */}
           <Route path="/nextgen-test" element={<NextGenTest />} />
           <Route path="/admin" element={<Admin />} />

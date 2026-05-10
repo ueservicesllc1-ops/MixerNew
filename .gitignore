@@ -48,6 +48,10 @@ public/release-pending.json
 .gemini/
 .agents/
 
+# Zion Stage desktop (JUCE) — artefactos locales
+ZionStageDesktop/build/
+ZionStageDesktop/tools/*.pem
+
 # ZionAudioCore Build Artifacts
 ZionAudioCore/build/
 ZionAudioCore/build_wasm/

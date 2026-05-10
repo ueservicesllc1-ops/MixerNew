@@ -5,6 +5,7 @@
 
 import { NextGenMixerBridge } from './NextGenNativeEngine.js';
 import ZionAudioCoreModule from './wasm/zion_audio_core_wasm.js';
+import soundtouchWorkletUrl from './worklets/soundtouch-worklet.js?url';
 
 let _nativeEngine = null;
 async function getNative() {
@@ -44,6 +45,8 @@ class AudioEngine {
         this._levelPollInterval = null;
         this._songPreparationActive = false;
         this._durationHint = 0;
+        /** Stems loaded into Zion WASM (Electron desktop mixer). */
+        this._wasmTrackCount = 0;
 
         // WASM State
         this.wasm = null;
@@ -162,6 +165,18 @@ class AudioEngine {
                     this.wasm.initEngine(sr);
                     this.isWASMReady = true;
                     this._startWASMProcessor();
+                    // Pitch (header transpose) runs in SoundTouch; tempo is handled in WASM.
+                    // Without loading the worklet here, init() returned early and workletLoaded stayed false.
+                    if (this.ctx && !this.workletLoaded) {
+                        try {
+                            if (this.ctx.state === 'suspended') await this.ctx.resume();
+                            await this.ctx.audioWorklet.addModule(soundtouchWorkletUrl);
+                            this.workletLoaded = true;
+                        } catch (err) {
+                            console.warn('[AudioEngine] soundtouch-worklet not available (pitch will not work):', err);
+                        }
+                    }
+                    this._updateWorkletGraph();
                     console.log("[AudioEngine] Zion Core C++ WASM ready at", sr, "Hz");
                     return;
                 }
@@ -179,7 +194,7 @@ class AudioEngine {
 
         if (!this.workletLoaded) {
             try {
-                await this.ctx.audioWorklet.addModule('/soundtouch-worklet.js');
+                await this.ctx.audioWorklet.addModule(soundtouchWorkletUrl);
                 this.workletLoaded = true;
             } catch (err) {
                 console.warn("[AudioEngine] soundtouch-worklet not available:", err);
@@ -192,14 +207,16 @@ class AudioEngine {
         this.resetTiming();
 
         if (this.isWASMReady && this.wasm) {
+            this._wasmTrackCount = 0;
             for (const t of tracksArray) {
                 if (t.isVisualOnly) continue;
-                await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
+                const ok = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
+                if (ok) this._wasmTrackCount += 1;
                 // Flag guide/click tracks so C++ routes them to the secondary bus (bypassing pitch)
                 const nm = (t.name || t.id || '').toLowerCase();
                 const isGuideOrClick = nm.includes('click') || nm.includes('guide') ||
                                        nm.includes('guia')  || nm.includes('cue');
-                if (isGuideOrClick) {
+                if (ok && isGuideOrClick) {
                     this.wasm.setTrackIsGuide(t.id, true);
                 }
             }
@@ -236,7 +253,7 @@ class AudioEngine {
                     buffer = await this.ctx.decodeAudioData(arrayBuf.slice(0));
                 }
             }
-            if (!buffer) return;
+            if (!buffer) return false;
 
             const length = buffer.length;
             // Get channel data — always stereo in C++
@@ -251,8 +268,10 @@ class AudioEngine {
             this.wasm.loadTrackData(id, ptrL, ptrR, length);
 
             console.log(`[ZionCore] Track '${id}' loaded: ${(length / (buffer.sampleRate || 44100)).toFixed(1)}s`);
+            return true;
         } catch (e) {
             console.error(`[ZionCore] Failed to load track '${id}':`, e);
+            return false;
         }
     }
 
@@ -302,7 +321,11 @@ class AudioEngine {
 
     async clear() {
         this.resetTiming();
-        if (this.isWASMReady && this.wasm) { this.wasm.clearTracks(); return; }
+        if (this.isWASMReady && this.wasm) {
+            this.wasm.clearTracks();
+            this._wasmTrackCount = 0;
+            return;
+        }
         this._trackMeta.clear();
         try {
             if (IS_NATIVE) { const n = await getNative(); await n.stop(); await n.clearTracks(); }
@@ -476,15 +499,19 @@ class AudioEngine {
                 }
                 const guideTempo = this.guideSoundTouchNode.parameters.get('tempo');
                 const guidePitch = this.guideSoundTouchNode.parameters.get('pitchSemitones');
-                if (guideTempo) guideTempo.value = 1.0;
-                if (guidePitch) guidePitch.value = 0; // ZERO pitch for guide to keep it original
+                const gNow = this.ctx.currentTime;
+                if (guideTempo) guideTempo.setValueAtTime(1.0, gNow);
+                if (guidePitch) guidePitch.setValueAtTime(0, gNow); // guía/click sin transpose
             }
 
             const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
             const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
-            if (tempoParam) tempoParam.value = this.isWASMReady ? 1.0 : 1.0; 
+            const now = this.ctx.currentTime;
+            // WASM aplica tempo en C++; el worklet solo compensa tono (tempo 1) más el transpose pedido.
+            if (tempoParam) tempoParam.setValueAtTime(this.isWASMReady ? 1.0 : 1.0, now);
             const pitchOffset = 12 * Math.log2(this.tempoRatio || 1);
-            if (pitchParam) pitchParam.value = this.pitchSemitones - pitchOffset;
+            if (pitchParam)
+                pitchParam.setValueAtTime(this.pitchSemitones - pitchOffset, now);
         } else if (!needsWorklet) {
             if (this.masterSoundTouchNode) {
                 this.stSumBus.disconnect();
@@ -687,6 +714,13 @@ class AudioEngine {
             this._updater = requestAnimationFrame(update);
         };
         this._updater = requestAnimationFrame(update);
+    }
+
+    /** Stem count in the active engine (WASM, Capacitor native meta, or Web Audio map). */
+    getTrackCount() {
+        if (this.isWASMReady && this.wasm) return this._wasmTrackCount;
+        if (IS_NATIVE) return this._trackMeta.size;
+        return this.tracks.size;
     }
 
     startDrag(seconds) {

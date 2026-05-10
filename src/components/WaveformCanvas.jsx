@@ -104,26 +104,40 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         const updateWaveform = async () => {
             let bufferToUse = pickBufferFromEngine();
 
-            // Native: __PreviewMix desde disco + decodeAudioData — muy pesado (OOM / cierre si corre
-            // justo tras loadTracks). Diferir con idle + pausa; no duplicar con Multitrack.
-            if (!bufferToUse && isNative && audioEngine.ctx && !suppressHeavyWork) {
+            // Desktop / Native: __PreviewMix desde disco + decodeAudioData
+            if (!bufferToUse && (isNative || window.zionNative) && audioEngine.ctx && !suppressHeavyWork) {
                 try {
                     await new Promise((r) => setTimeout(r, 0));
+                    
+                    // Throttle/Idle logic
                     await new Promise((r) => {
                         if (typeof requestIdleCallback !== 'undefined') {
                             requestIdleCallback(() => r(), { timeout: 60000 });
                         } else {
-                            setTimeout(r, 5000);
+                            setTimeout(r, 4000);
                         }
                     });
-                    await new Promise((r) => setTimeout(r, 1500));
-                    const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
-                    if (raw) {
-                        const ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
+
+                    let ab = null;
+                    if (window.zionNative?.readEncryptedTrack) {
+                        const filename = `${songId}___PreviewMix.mp3`;
+                        console.log(`[WAVEFORM] Desktop read start: ${filename}`);
+                        const buffer = await window.zionNative.readEncryptedTrack(filename);
+                        if (buffer) {
+                            ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
+                        }
+                    } else if (isNative) {
+                        const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
+                        if (raw) {
+                            ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
+                        }
+                    }
+
+                    if (ab) {
                         bufferToUse = await audioEngine.ctx.decodeAudioData(ab);
                     }
-                } catch {
-                    /* ignore */
+                } catch (e) {
+                    console.warn('[WAVEFORM] decode failed', e);
                 }
             }
 

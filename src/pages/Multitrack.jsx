@@ -3079,7 +3079,10 @@ export default function Multitrack() {
                 })}
             </div>
 
-            <div className="main-content">
+            <div
+                className="main-content"
+                style={{ flex: '1 1 0%', minHeight: 0, display: 'flex', alignItems: 'stretch', overflow: 'hidden' }}
+            >
                 {/* MAIN STAGE (Mixer or Tab Content) */}
                 <div className="main-stage-wrapper">
                     {loading ? (
@@ -3365,11 +3368,20 @@ export default function Multitrack() {
                     )}
                 </div>
 
-                {/* DESKTOP SIDEBAR — visible on web, hidden on mobile */}
-                <aside className="sidebar desktop-only">
+                {/* DESKTOP SIDEBAR — setlist llena el hueco; scroll interno; pads al fondo */}
+                <aside
+                    className="sidebar desktop-only"
+                    style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignSelf: 'stretch',
+                        minHeight: 0,
+                        height: '100%',
+                    }}
+                >
                     {/* Active Setlist Panel */}
-                    <div className="setlist-panel">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                    <div className="setlist-panel" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', flexShrink: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <ListMusic size={20} color="#00bcd4" />
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800' }}>{activeSetlist?.name || 'Lista de Canciones'}</h3>
@@ -3413,7 +3425,7 @@ export default function Multitrack() {
                                 </button>
                             </div>
                         </div>
-                        <div style={{ flex: 1, overflowY: 'auto' }}>
+                        <div className="setlist-songs-scroll" style={{ flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto' }}>
                             {!activeSetlist ? (
                                 <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
                                     <p>No hay un setlist activo.</p>
@@ -3450,8 +3462,7 @@ export default function Multitrack() {
                         </div>
                     </div>
 
-                    {/* Ambient Pads Panel */}
-                    <div className="pads-panel" style={{ marginTop: '5px' }}>
+                    <div className="pads-panel" style={{ flexShrink: 0, marginTop: 'auto', height: 'auto', minHeight: '120px' }}>
                         <div className="pads-header" style={{ marginBottom: '10px' }}>
                             <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '45px', height: '45px' }}>
                                 <Power size={22} />

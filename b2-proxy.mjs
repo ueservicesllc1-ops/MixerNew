@@ -45,6 +45,9 @@ const STRIPE_PLANS_CONFIG = {
     'vip1': { name: 'Plan Básico VIP MixCommunity', monthly: 799, annual: 6712 },
     'vip2': { name: 'Plan Estándar VIP MixCommunity', monthly: 999, annual: 8392 },
     'vip3': { name: 'Plan Plus VIP MixCommunity', monthly: 1299, annual: 10912 },
+    /** Escritorio Zion Stage — mismos planId que envía DesktopProSubscribeModal */
+    'zion_desktop_pro_local': { name: 'Zion Stage PRO (PC)', monthly: 199, annual: 1990 }, // US$1.99/mes · US$19.90/año
+    'zion_desktop_pro_online': { name: 'Zion Stage PRO Online', monthly: 599, annual: 5990 }, // US$5.99/mes · US$59.90/año
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -575,6 +578,9 @@ app.get('/api/list-files', async (req, res) => {
 
 app.post('/api/stripe/create-subscription', async (req, res) => {
     try {
+        if (!stripe) {
+            return res.status(503).json({ error: 'Stripe no está configurado en el servidor (STRIPE_SECRET_KEY).' });
+        }
         const { email, name, userId, planId = 'seller', isAnnual = false } = req.body;
         if (!email || !userId) return res.status(400).json({ error: 'Faltan datos de usuario' });
 
@@ -631,9 +637,19 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
             expand: ['latest_invoice.payment_intent'],
         });
 
+        const inv = subscription.latest_invoice;
+        const pi = inv && typeof inv === 'object' ? inv.payment_intent : null;
+        const clientSecret = pi && typeof pi === 'object' ? pi.client_secret : null;
+        if (!clientSecret) {
+            console.error('[stripe] Suscripción sin client_secret', subscription.id, { invoiceId: inv?.id });
+            return res.status(500).json({
+                error: 'No se pudo obtener el secreto de pago. Revisa Stripe Dashboard (facturas / modo de prueba).',
+            });
+        }
+
         res.json({
             subscriptionId: subscription.id,
-            clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+            clientSecret,
         });
     } catch (error) {
         console.error("Stripe Error:", error);
