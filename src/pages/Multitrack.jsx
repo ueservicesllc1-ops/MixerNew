@@ -1423,12 +1423,22 @@ export default function Multitrack() {
             return;
         }
 
+        // --- INICIO DE LÓGICA SOLICITADA POR EL USUARIO ---
+        // Simular el clic en el botón "Stop" y esperar 1 segundo antes de cambiar
+        console.log("[SELECT] Ejecutando STOP manual y esperando 1 segundo...");
+        await audioEngine.stop();
+        setIsPlaying(false);
+        progressRef.current = 0;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        // --- FIN DE LÓGICA SOLICITADA POR EL USUARIO ---
+
         const isAppNativeLoad = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
         if (isAppNativeLoad && isPreparingSong) {
             console.log('[PREPARE] ignored, already running');
             return;
         }
+
 
         // Nativo: primero cortar polling y audio (antes de setState/render) para no acumular callbacks al bridge.
         if (isAppNativeLoad) {

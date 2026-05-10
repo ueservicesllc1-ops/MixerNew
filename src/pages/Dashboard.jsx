@@ -62,12 +62,12 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
 
 const STORAGE_PLANS = [
     { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 1, storageMB: 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
-    { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 2, storageMB: 2000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
-    { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 5, storageMB: 5000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
-    { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
-    { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 2, storageMB: 2000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true },
-    { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 5, storageMB: 5000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
-    { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true },
+    { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
+    { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 20, storageMB: 20000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
+    { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
+    { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true },
+    { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 20, storageMB: 20000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
+    { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 50, storageMB: 50000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true },
 ];
 
 // ── Audio Multi-Track Mixing System for Waveforms ───────────────

@@ -117,7 +117,7 @@ export default function Manual() {
                     <div className="faq-item">
                         <h4 style={{ margin: '0 0 8px', color: '#00d2d3' }}>"¿Cuánto cuesta el plan VIP?"</h4>
                         <p style={{ margin: 0, background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px' }}>
-                            El plan Premium VIP comienza en $7.99/mes (Básico VIP). El más popular es el Estándar VIP ($9.99/mes) que incluye 5 GB + acceso total al catálogo de la comunidad. (Hay 30% descto si pagas anual) 💛
+                            El plan Premium VIP comienza en $7.99/mes (Básico VIP). El más popular es el Estándar VIP ($9.99/mes) que incluye 20 GB + acceso total al catálogo de la comunidad. (Hay 30% descto si pagas anual) 💛
                         </p>
                     </div>
                 </div>

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import LanguageSwitch from '../components/LanguageSwitch';
 import { db, auth } from '../firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
-import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2, Play, Pause, Loader2, LogOut } from 'lucide-react';
+import { ShoppingCart, Search, Music2, ArrowLeft, X, CheckCircle2, Play, Pause, Loader2, LogOut, Globe } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 

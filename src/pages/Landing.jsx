@@ -972,9 +972,9 @@ export default function Landing() {
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {[
-                                    { name: t('landing.planTierBasic'), gb: 2, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
-                                    { name: t('landing.planTierStd'), gb: 5, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
-                                    { name: t('landing.planTierPlus'), gb: 10, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
+                                    { name: t('landing.planTierBasic'), gb: 10, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
+                                    { name: t('landing.planTierStd'), gb: 20, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
+                                    { name: t('landing.planTierPlus'), gb: 50, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
                                 ].map((plan, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
                                         <div>
@@ -1014,9 +1014,9 @@ export default function Landing() {
                             </p>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 {[
-                                    { name: t('landing.planTierBasicVip'), gb: 2, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
-                                    { name: t('landing.planTierStdVip'), gb: 5, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
-                                    { name: t('landing.planTierPlusVip'), gb: 10, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
+                                    { name: t('landing.planTierBasicVip'), gb: 10, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
+                                    { name: t('landing.planTierStdVip'), gb: 20, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
+                                    { name: t('landing.planTierPlusVip'), gb: 50, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
                                 ].map((plan, i) => (
                                     <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(241,196,15,0.05)', borderRadius: '12px', border: '1px solid rgba(241,196,15,0.1)' }}>
                                         <div>
