@@ -1,4 +1,5 @@
 import React from 'react';
+import { LOGO_BLANCO_PNG, LOGO_NEGRO_PNG } from '../utils/publicAssets.js';
 
 /**
  * Zion Stage Logo Component
@@ -12,7 +13,7 @@ import React from 'react';
 const Logo = ({ height = '32px', isDarkBackground = true, className = '', style = {} }) => {
     // zionnegro (black) for white backgrounds
     // zionblanco (white) for black backgrounds
-    const src = isDarkBackground ? '/logo2blanco.png' : '/logo2.png';
+    const src = isDarkBackground ? LOGO_BLANCO_PNG : LOGO_NEGRO_PNG;
     
     return (
         <img 

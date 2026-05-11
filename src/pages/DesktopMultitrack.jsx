@@ -6,17 +6,93 @@ import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine.js'
 
 /**
- * Electron: mismos offsets que la UI para reaplicar tempo/pitch tras cargar stems en WASM
- * (mismo comportamiento que web: SoundTouch en bus música, guía sin transpose).
+ * Electron: mismos offsets que la UI para reaplicar tempo/pitch tras cargar stems
+ * (WASM web: SoundTouch; Desktop: JUCE DesktopMixSession).
  */
 const electronMixerMusicalRef = { pitch: 0, tempoBpmOffset: 0 };
 
-/**
- * Descifra stems vía IPC, decodifica en el renderer y carga Zion Core WASM + grafo SoundTouch
- * (no usa JUCE para mezcla — el .node solo sirve BD/caché).
- */
+function isElectronDesktopMixer() {
+    return typeof window !== 'undefined'
+        && window.zionNative?.isDesktop === true
+        && !window.Capacitor?.isNativePlatform?.();
+}
+
+/** Mezcla stems ya decodificados en la caché RAM del setlist (misma canción / mismo path). */
+function mergeZionEnrichedIntoPreload(songsPreloadMap, songId, enriched) {
+    if (!enriched?.length) return;
+    const m = new Map(songsPreloadMap.get(songId) || []);
+    for (const t of enriched) {
+        if (t.isVisualOnly || !t.name) continue;
+        const prev = m.get(t.name) || {};
+        m.set(t.name, {
+            ...prev,
+            path: t.path || t.filename || prev.path,
+            audioBuf: t.audioBuffer ?? prev.audioBuf,
+            rawBuf: null,
+        });
+    }
+    songsPreloadMap.set(songId, m);
+}
+
+/** Zion Stage Electron: JUCE + IPC (disc / temp decrypt) — sin WASM ni decodeAudioData en renderer. */
+async function loadDesktopNativeFromBatch(batch, song) {
+    if (!window.zionNative?.loadSong) {
+        throw new Error('[DESKTOP AUDIO] Native JUCE bridge missing');
+    }
+    delete window.__zionDesktopPlayback;
+    window.zionNative.stop?.();
+    await audioEngine.stop();
+    await audioEngine.clear();
+    await audioEngine.init();
+
+    const stemBatch = [];
+    for (const t of batch) {
+        if (t.isVisualOnly) continue;
+        const fn = t.filename || t.path || t.cacheKey || t.localPath;
+        if (!fn || typeof fn !== 'string') continue;
+        const nm = (t.name || '').toLowerCase();
+        stemBatch.push({
+            id: t.id,
+            name: t.name,
+            filename: String(fn).trim(),
+            path: String(fn).trim(),
+            isGuide: nm.includes('guide') || nm.includes('guia') || nm.includes('cue'),
+            isClick: nm.includes('click'),
+            isVisualOnly: false,
+        });
+    }
+    if (stemBatch.length === 0) return { ok: false, enriched: [] };
+    try {
+        await audioEngine.addTracksBatch(stemBatch);
+    } catch (e) {
+        console.error('[DESKTOP AUDIO] addTracksBatch', e);
+        return { ok: false, enriched: [] };
+    }
+    const bpm = song?.tempo ? parseFloat(song.tempo) : 120;
+    const safeBpm = Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
+    const ratio = (safeBpm + electronMixerMusicalRef.tempoBpmOffset) / safeBpm;
+    audioEngine.setTempo(ratio);
+    audioEngine.setPitch(electronMixerMusicalRef.pitch);
+    window.__zionDesktopPlayback = 'native';
+    try {
+        const snap = await window.zionNative.getSnapshot?.();
+        if (snap && typeof snap === 'string') {
+            const s = JSON.parse(snap);
+            const d = s.durationSec;
+            if (Number.isFinite(d) && d > 1) audioEngine._durationHint = d;
+        }
+    } catch { /* ignore */ }
+    return { ok: true, enriched: [] };
+}
+
+async function loadDesktopMixerFromBatch(batch, song) {
+    if (isElectronDesktopMixer()) return loadDesktopNativeFromBatch(batch, song);
+    return loadElectronZionWasmFromBatch(batch, song);
+}
+
+/** Solo navegador / sin bridge escritorio: WASM + descifrado en renderer. */
 async function loadElectronZionWasmFromBatch(batch, song) {
-    if (typeof window === 'undefined' || !window.zionNative?.readEncryptedTrack) return false;
+    if (typeof window === 'undefined' || !window.zionNative?.readEncryptedTrack) return { ok: false };
     delete window.__zionDesktopPlayback;
     if (window.zionNative.stop) window.zionNative.stop();
     await audioEngine.stop();
@@ -24,7 +100,7 @@ async function loadElectronZionWasmFromBatch(batch, song) {
     await audioEngine.init();
     if (!audioEngine.isWASMReady || !audioEngine.ctx) {
         console.error('[Desktop] Zion WASM no está listo; no se puede igualar tono/tempo a la web.');
-        return false;
+        return { ok: false };
     }
     if (audioEngine.ctx.state === 'suspended') await audioEngine.ctx.resume();
 
@@ -32,6 +108,12 @@ async function loadElectronZionWasmFromBatch(batch, song) {
     let stemCount = 0;
     for (const t of batch) {
         if (t.isVisualOnly) continue;
+        const existingBuf = t.audioBuffer;
+        if (existingBuf && existingBuf.sampleRate > 0 && (existingBuf.numberOfChannels || 0) > 0) {
+            enriched.push({ ...t, audioBuffer: existingBuf });
+            stemCount += 1;
+            continue;
+        }
         const key = t.filename || t.path;
         if (!key || typeof key !== 'string') continue;
         const raw = await window.zionNative.readEncryptedTrack(key);
@@ -52,7 +134,7 @@ async function loadElectronZionWasmFromBatch(batch, song) {
             console.warn('[Desktop] decodeAudioData', t.name, e);
         }
     }
-    if (stemCount === 0) return false;
+    if (stemCount === 0) return { ok: false };
 
     await audioEngine.addTracksBatch(enriched);
     const bpm = song?.tempo ? parseFloat(song.tempo) : 120;
@@ -67,7 +149,7 @@ async function loadElectronZionWasmFromBatch(batch, song) {
     } catch {
         /* ignore */
     }
-    return true;
+    return { ok: true, enriched };
 }
 
 import { Mixer } from '../components/Mixer'
@@ -80,6 +162,7 @@ import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, 
 import { getSongMusicalKey } from '../utils/transposer.js'
 import { trackUserUsage } from '../utils/usageMetrics'
 import { DesktopProSubscribeModal } from '../desktop/DesktopProSubscribeModal.jsx'
+import { LOGO_BLANCO_PNG } from '../utils/publicAssets.js'
 
 /** updateDoc sin documento → code `not-found` (SDK puede decir que no existe el documento / fila). */
 function isFirestoreDocMissing(err) {
@@ -112,20 +195,40 @@ import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 const isAppNative = typeof window !== 'undefined' && (!!window.Capacitor?.isNativePlatform?.() || !!window.zionNative);
+/** Electron con bridge Zion (sin Capacitor): más RAM para LRU de stems decodificados. */
+const isCapacitorNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
 // Optimized Setlist Creator to fix lag
 const SetlistCreator = React.memo(({ onSave, onCancel }) => {
     const [name, setName] = React.useState('');
+    const inputRef = React.useRef(null);
+    React.useEffect(() => {
+        let cancelled = false;
+        const raf = requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                if (cancelled) return;
+                try {
+                    inputRef.current?.focus({ preventScroll: true });
+                } catch {
+                    inputRef.current?.focus();
+                }
+            });
+        });
+        return () => {
+            cancelled = true;
+            cancelAnimationFrame(raf);
+        };
+    }, []);
     return (
         <div style={{ padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
             <h4 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>Nuevo Setlist</h4>
             <input 
+                ref={inputRef}
                 type="text" 
                 placeholder="Nombre del setlist..." 
                 value={name} 
                 onChange={e => setName(e.target.value)}
                 style={{ width: '100%', padding: '8px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
-                autoFocus
             />
             <div style={{ display: 'flex', gap: '5px' }}>
                 <button className="play-btn" style={{ flex: 1, background: '#2ecc71', padding: '8px' }} onClick={() => onSave(name)}>✔ Guardar</button>
@@ -148,9 +251,155 @@ function prepareStagger() {
 }
 
 const PREVIEW_TRACK_NAME = '__PreviewMix';
+const FREE_SETLIST_SONG_LIMIT = 3;
+
+/** SQLite `tracks_json`: manifest v1 o legado (solo array de pistas). */
+function parseDesktopLibraryManifest(tracksJsonStr) {
+    if (!tracksJsonStr) return { downloaded: false, tracks: [], previewMixLocalPath: null };
+    try {
+        const p = JSON.parse(tracksJsonStr);
+        if (Array.isArray(p)) {
+            // Fila SQLite sin wrapper v1: si hay pistas, se asume descarga completa previa.
+            return { downloaded: p.length > 0, tracks: p, previewMixLocalPath: null };
+        }
+        const tracks = p.tracks || p.stems || [];
+        return {
+            downloaded: !!p.downloaded,
+            tracks: Array.isArray(tracks) ? tracks : [],
+            previewMixLocalPath: p.previewMixLocalPath || null,
+        };
+    } catch {
+        return { downloaded: false, tracks: [], previewMixLocalPath: null };
+    }
+}
+
+function desktopStemCacheKey(songId, tr) {
+    const name = tr?.name;
+    if (!name) return '';
+    const useFlac = name !== PREVIEW_TRACK_NAME && tr.normalizedReady === true && tr.normalizedUrl;
+    const ext = useFlac ? '.flac' : '.mp3';
+    return `${songId}_${name}${ext}`;
+}
+
+function buildDesktopManifestTrackEntries(song) {
+    return (song.tracks || []).map((t) => {
+        const nm = (t.name || '').toLowerCase();
+        const fn = t.cacheKey || t.localPath || desktopStemCacheKey(song.id, t);
+        return {
+            ...t,
+            id: t.id || `${song.id}_${t.name}`,
+            cacheKey: fn,
+            localPath: t.localPath || fn,
+            duration: t.duration ?? song.duration,
+            isGuide: nm.includes('guide') || nm.includes('guia') || nm.includes('cue'),
+            isClick: nm.includes('click'),
+        };
+    });
+}
+
+/** Batch para loadElectronZionWasmFromBatch desde manifiesto local (sin I/O de comprobación stem a stem). */
+function buildWasmBatchFromDesktopManifest(song) {
+    const batch = [];
+    for (const tr of song.tracks || []) {
+        const isPreview = tr.name === PREVIEW_TRACK_NAME;
+        const key = String(tr.cacheKey || tr.localPath || desktopStemCacheKey(song.id, tr) || '').trim();
+        if (!key) continue;
+        const trackId = tr.id || `${song.id}_${tr.name}`;
+        batch.push({
+            id: trackId,
+            name: tr.name,
+            filename: key,
+            path: key,
+            audioBuffer: tr.audioBuffer || null,
+            sourceData: tr.sourceData || null,
+            isVisualOnly: isPreview,
+        });
+    }
+    return batch;
+}
+
+/** ¿Hace falta regrabar tracks_json con cacheKey/localPath v1? */
+function desktopSongManifestNeedsMigration(row) {
+    if (!row?.id || !row.tracks_json) return false;
+    try {
+        const p = JSON.parse(row.tracks_json);
+        if (Array.isArray(p)) return true;
+        if (!p || typeof p !== 'object') return false;
+        if (p.version !== 1) return true;
+        if (p.tracks?.length && !p.downloaded) return true;
+        const tracks = p.tracks || [];
+        for (const t of tracks) {
+            if (!t?.name) continue;
+            if (!t.cacheKey || !String(t.cacheKey).trim()) return true;
+            if (!t.localPath || !String(t.localPath).trim()) return true;
+        }
+        return false;
+    } catch {
+        return true;
+    }
+}
+
+function buildMigratedDesktopManifestTracks(row) {
+    const parsed = parseDesktopLibraryManifest(row.tracks_json);
+    const tracks = (parsed.tracks || []).filter((t) => t?.name);
+    const enriched = tracks.map((t) => {
+        const nm = (t.name || '').toLowerCase();
+        const fn = desktopStemCacheKey(row.id, t);
+        const cacheKey = (t.cacheKey && String(t.cacheKey).trim()) ? String(t.cacheKey).trim() : fn;
+        const localPath = (t.localPath && String(t.localPath).trim()) ? String(t.localPath).trim() : cacheKey;
+        return {
+            ...t,
+            id: t.id || `${row.id}_${t.name}`,
+            cacheKey,
+            localPath,
+            duration: t.duration ?? undefined,
+            isGuide: !!(t.isGuide ?? (nm.includes('guide') || nm.includes('guia') || nm.includes('cue'))),
+            isClick: !!(t.isClick ?? nm.includes('click')),
+        };
+    });
+    const previewMixLocalPath = parsed.previewMixLocalPath
+        || enriched.find((x) => x.name === PREVIEW_TRACK_NAME)?.cacheKey
+        || null;
+    return { enriched, previewMixLocalPath };
+}
+
+/** Una pasada al abrir la app: normaliza manifiestos viejos en SQLite (sin tocar caché cifrada). */
+async function migrateDesktopLibraryRowsInSqlite(localSongs) {
+    if (!window.zionNative?.saveSong || !window.zionNative?.getSongs) return localSongs;
+    let any = false;
+    for (const row of localSongs) {
+        if (!desktopSongManifestNeedsMigration(row)) continue;
+        const { enriched, previewMixLocalPath } = buildMigratedDesktopManifestTracks(row);
+        if (!enriched.length) continue;
+        try {
+            await window.zionNative.saveSong({
+                id: row.id,
+                name: row.name,
+                artist: row.artist,
+                tempo: row.tempo,
+                key: row.key,
+                tracks: enriched,
+                downloaded: true,
+                previewMixLocalPath,
+            });
+            any = true;
+            console.log('[LOCAL LIB] manifest migrated', row.id, enriched.length, 'tracks');
+        } catch (e) {
+            console.warn('[LOCAL LIB] manifest migrate failed', row.id, e);
+        }
+    }
+    if (any) return await window.zionNative.getSongs();
+    return localSongs;
+}
 
 // --- LOCAL LIBRARY SERVICE (ABSTRACTION FOR DESKTOP/MOBILE) ---
 const LocalLibraryService = {
+    getSong: async (songId) => {
+        if (window.zionNative?.getSong) {
+            return await window.zionNative.getSong(songId);
+        }
+        return null;
+    },
     isTrackDownloaded: async (songId, trackName, isNormalized = false) => {
         const ext = isNormalized ? '.flac' : '.mp3';
         const filename = `${songId}_${trackName}${ext}`;
@@ -365,7 +614,10 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                         onClick={() => onTabChange('global')}
                         style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                     >
-                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
+                        🌐 Global ({(() => {
+                            const n = globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length;
+                            return globalCatalogLoading && n === 0 ? '…' : n;
+                        })()})
                     </button>
                 </div>
 
@@ -399,7 +651,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                             Tu suscripción incluye usar tus propios multitracks en este equipo. El catálogo en línea de la base de datos requiere{' '}
                             <strong>PRO Online</strong> (US$5.99/mes). Pulsa <strong>Hazte PRO</strong> en la barra superior para cambiar de plan.
                         </div>
-                    ) : globalCatalogLoading ? (
+                    ) : globalCatalogLoading && libraryTab === 'global' ? (
                         <div style={{ textAlign: 'center', color: '#666', marginTop: '40px', fontSize: '0.95rem' }}>
                             Cargando catálogo Global…
                         </div>
@@ -501,9 +753,7 @@ export default function Multitrack({ session }) {
 
     const isOnline = navigator.onLine;
     const useLocalLibrary = !!window.zionNative;
-    
-    console.log(`[DESKTOP] Mode: ${isOnline ? 'Online' : 'Offline'}, Local Library: ${useLocalLibrary ? 'Yes' : 'No'}`);
-    
+
     useEffect(() => {
         if (typeof window !== 'undefined' && window.zionNative && window.zionNative.getLicense) {
             window.zionNative.getLicense().then((lic) => {
@@ -524,8 +774,19 @@ export default function Multitrack({ session }) {
         const loadLocalData = async () => {
             if (typeof window !== 'undefined' && window.zionNative) {
                 try {
-                    const localSongs = await window.zionNative.getSongs();
-                    setLibrarySongs(localSongs.map(s => ({ ...s, tracks: s.tracks_json ? JSON.parse(s.tracks_json) : [] })));
+                    let localSongs = await window.zionNative.getSongs();
+                    if (window.zionNative.isDesktop) {
+                        localSongs = await migrateDesktopLibraryRowsInSqlite(localSongs);
+                    }
+                    setLibrarySongs(localSongs.map((row) => {
+                        const parsed = parseDesktopLibraryManifest(row.tracks_json);
+                        return {
+                            ...row,
+                            tracks: parsed.tracks,
+                            downloaded: parsed.downloaded,
+                            previewMixLocalPath: parsed.previewMixLocalPath,
+                        };
+                    }));
                     
                     const localSetlists = await window.zionNative.getSetlists();
                     setSetlists(localSetlists.map(s => ({ ...s, songs: s.songs_json ? JSON.parse(s.songs_json) : [] })));
@@ -628,27 +889,47 @@ export default function Multitrack({ session }) {
     }, [proxyUrl]);
 
     /** No bloquea la sesión NextGen: guarda __PreviewMix en disco para waveform/otros usos. */
-    const deferPreviewMixDownload = useCallback((song) => {
-        if (!isAppNative) return;
-        const preview = (song.tracks || []).find(t => t.name === PREVIEW_TRACK_NAME);
-        if (!preview?.url || preview.url === 'undefined') return;
+    /** No bloquea play: preview / overview en segundo plano. */
+    const loadWaveformInBackground = useCallback((song) => {
+        if (!isAppNative || !song?.id) return;
+        const previewPath =
+            song.previewMixLocalPath
+            || (song.tracks || []).find((t) => t.name === PREVIEW_TRACK_NAME)?.localPath
+            || (song.tracks || []).find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey
+            || '';
+        console.log('[WAVEFORM] songId', song.id);
+        console.log('[WAVEFORM] previewMixLocalPath', previewPath || '(none)');
+        console.log('[WAVEFORM] peaks cache exists', !!localStorage.getItem(`peaks_${song.id}`));
+        console.log('[WAVEFORM] loading background');
         void (async () => {
             try {
-                if (await LocalLibraryService.isTrackDownloaded(song.id, PREVIEW_TRACK_NAME)) {
-                    console.log('[WAVEFORM] loaded from local preview');
+                if (song.previewMixLocalPath && await LocalLibraryService.isTrackDownloaded(song.id, PREVIEW_TRACK_NAME)) {
+                    setPreviewMixOnDisk(true);
+                    console.log('[WAVEFORM] ready');
                     return;
                 }
-                console.log('[PreviewMix] deferred download start');
+                if (await LocalLibraryService.isTrackDownloaded(song.id, PREVIEW_TRACK_NAME)) {
+                    setPreviewMixOnDisk(true);
+                    console.log('[WAVEFORM] ready');
+                    return;
+                }
+                const preview = (song.tracks || []).find((t) => t.name === PREVIEW_TRACK_NAME);
+                if (!preview?.url || preview.url === 'undefined') {
+                    console.log('[WAVEFORM] ready');
+                    return;
+                }
                 const dl = await fetchBlobNative(preview.url);
                 if (dl && dl.size > 500) {
                     await LocalLibraryService.saveTrack(song.id, PREVIEW_TRACK_NAME, dl);
-                    console.log('[PreviewMix] deferred download done');
+                    setPreviewMixOnDisk(true);
                 }
+                console.log('[WAVEFORM] ready');
             } catch (e) {
-                console.warn('[WAVEFORM] preview missing, using stems fallback', e);
+                console.warn('[WAVEFORM] background error (non-blocking)', e);
+                console.log('[WAVEFORM] ready');
             }
         })();
-    }, [fetchBlobNative]);
+    }, [fetchBlobNative, isAppNative]);
 
     /**
      * Nativo: si cada pista ya está en disco, arma el Map para el motor.
@@ -981,14 +1262,19 @@ export default function Multitrack({ session }) {
         return deviceRAM; // fallback to navigator.deviceMemory
     })();
 
-    // APK: sin precarga en segundo plano — no usar este límite en nativo (preloadSetlistSongs es no-op).
+    // APK (Capacitor): 1 canción decodificada en RAM. Electron (zionNative sin Capacitor): como web.
     // Web: AudioBuffers decodificados → limitamos por RAM disponible.
-    const MAX_DECODED_SONGS = isAppNative
-        ? 1
-        : estimatedRAM <= 4 ? 3
+    const MAX_DECODED_SONGS = (typeof window !== 'undefined' && window.zionNative && !isCapacitorNative)
+        ? (estimatedRAM <= 4 ? 3
             : estimatedRAM <= 8 ? 4
                 : estimatedRAM <= 16 ? 5
-                    : 6;
+                    : 6)
+        : isAppNative
+            ? 1
+            : estimatedRAM <= 4 ? 3
+                : estimatedRAM <= 8 ? 4
+                    : estimatedRAM <= 16 ? 5
+                        : 6;
 
 
     // preloadCache: Map<songId, Map<trackName, {audioBuf, rawBuf}>>
@@ -1100,15 +1386,17 @@ export default function Multitrack({ session }) {
 
                 const qSetlists = query(collection(db, "setlists"), where("userId", "==", user.uid));
                 const unsubSetlists = onSnapshot(qSetlists, (snapshot) => {
-                    const onlineList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-                    setSetlists(prev => {
-                        const merged = [...prev.filter(sl => sl.synced === 0)];
-                        onlineList.forEach(ol => {
-                            const localIdx = merged.findIndex(l => l.id === ol.id);
-                            if (localIdx !== -1) merged[localIdx] = ol;
-                            else merged.push(ol);
-                        });
-                        return merged;
+                    const onlineList = snapshot.docs.map((d) => {
+                        const data = d.data();
+                        return { id: d.id, ...data, songs: data.songs || [] };
+                    });
+                    setSetlists((prev) => {
+                        const pending = prev.filter((sl) => Number(sl?.synced) === 0);
+                        const byId = new Map(pending.map((sl) => [sl.id, sl]));
+                        for (const ol of onlineList) {
+                            byId.set(ol.id, ol);
+                        }
+                        return Array.from(byId.values());
                     });
                     setActiveSetlist(prev => {
                         if (!prev) return prev;
@@ -1150,7 +1438,10 @@ export default function Multitrack({ session }) {
             async (snap) => {
                 const data = snap.data();
                 const tier = data?.desktopLicenseTier;
-                if (tier === 'pro_local' || tier === 'pro_online') {
+                const revoked = data?.desktopProActive === false;
+                const hasTier = tier === 'pro_local' || tier === 'pro_online';
+
+                if (hasTier && !revoked) {
                     try {
                         await window.zionNative.saveLicense(currentUser.uid, tier);
                     } catch (e) {
@@ -1158,6 +1449,14 @@ export default function Multitrack({ session }) {
                     }
                     setDesktopLicenseTier(tier);
                     setIsDemo(false);
+                } else if (revoked) {
+                    try {
+                        await window.zionNative.saveLicense(currentUser.uid, 'demo');
+                    } catch (e) {
+                        console.warn('[desktop] revoke license from cloud', e);
+                    }
+                    setDesktopLicenseTier('demo');
+                    setIsDemo(true);
                 }
             },
             (err) => console.error('users profile', err)
@@ -1165,10 +1464,14 @@ export default function Multitrack({ session }) {
         return () => unsub();
     }, [currentUser?.uid]);
 
-    // APK: catálogo Global solo al elegir la pestaña (getDocs acotado). Al volver a "Mi librería" se vacía para liberar RAM.
+    // APK: catálogo Global solo al elegir la pestaña (getDocs + RAM). Escritorio (Electron): precarga al abrir "+ Canciones"
+    // para que el contador Global y la lista estén listos sin pulsar la pestaña.
     useEffect(() => {
         if (!isAppNative) return;
-        if (libraryTab !== 'global') {
+        const isElectronDesktop = typeof window !== 'undefined' && window.zionNative?.isDesktop === true;
+        const shouldLoadGlobal =
+            libraryTab === 'global' || (isElectronDesktop && isLibraryMenuOpen);
+        if (!shouldLoadGlobal) {
             setGlobalSongs([]);
             setGlobalCatalogLoading(false);
             return;
@@ -1214,7 +1517,7 @@ export default function Multitrack({ session }) {
             }
         })();
         return () => { cancelled = true; };
-    }, [libraryTab, isAppNative, currentUser, desktopLicenseTier]);
+    }, [libraryTab, isAppNative, currentUser, desktopLicenseTier, isLibraryMenuOpen]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -1228,34 +1531,36 @@ export default function Multitrack({ session }) {
     
     const handleCreateSetlist = async (name) => {
         if (!name.trim()) return;
+        const demoSetlistCount = new Set((setlists || []).map((s) => s.id)).size;
+        if (isDemo && demoSetlistCount >= 1) {
+            alert('Zion Stage (plan gratis): solo puedes crear 1 setlist.');
+            return;
+        }
         
 
 
         try {
+            const u = auth.currentUser;
             const newSl = {
                 id: 'sl_' + Date.now(),
                 name: name,
                 songs: [],
-                synced: (navigator.onLine && auth.currentUser && !auth.currentUser.isAnonymous) ? 1 : 0
+                synced: u && !u.isAnonymous ? 1 : 0
             };
+
+            if (u && !u.isAnonymous) {
+                await setDoc(doc(db, 'setlists', newSl.id), {
+                    name: newSl.name,
+                    userId: u.uid,
+                    songs: [],
+                    updatedAt: new Date().toISOString()
+                });
+            }
 
             if (window.zionNative) {
                 await window.zionNative.saveSetlist(newSl);
             }
-            setSetlists(prev => [...prev, newSl]);
-
-            // Si hay internet y usuario real, guardar en Firestore
-            console.log("[DEBUG] Sync Firestore conditions:", { online: navigator.onLine, user: !!auth.currentUser, anon: auth.currentUser?.isAnonymous });
-            if (navigator.onLine && auth.currentUser && !auth.currentUser.isAnonymous) {
-                console.log("[DEBUG] Saving to Firestore...");
-                await setDoc(doc(db, 'setlists', newSl.id), {
-                    name: newSl.name,
-                    userId: auth.currentUser.uid,
-                    songs: [],
-                    updatedAt: new Date().toISOString()
-                });
-                console.log("[DEBUG] Firestore save success!");
-            }
+            setSetlists((prev) => [...prev, newSl]);
 
             setNewSetlistName('');
             setIsCreatingSetlist(false);
@@ -1316,12 +1621,23 @@ export default function Multitrack({ session }) {
         e.stopPropagation(); // Avoid triggering selection
         if (window.confirm(`¿Seguro que deseas ELIMINAR permanentemente el setlist "${name}"? Esta acción no se puede deshacer.`)) {
             try {
+                const u = auth.currentUser;
+                if (u && !u.isAnonymous) {
+                    try {
+                        await deleteDoc(doc(db, 'setlists', id));
+                    } catch (err) {
+                        console.error('Error borrando setlist en Firestore:', err);
+                        alert('No se pudo eliminar el setlist en la nube. Revisa la conexión e inténtalo de nuevo.');
+                        return;
+                    }
+                }
                 if (window.zionNative) {
                     await window.zionNative.saveSetlist({ id, _delete: true });
-                    setSetlists(prev => prev.filter(s => s.id !== id));
-                    if (activeSetlist && activeSetlist.id === id) {
-                        setActiveSetlist(null);
-                    }
+                }
+                setSetlists((prev) => prev.filter((s) => s.id !== id));
+                if (activeSetlist && activeSetlist.id === id) {
+                    setActiveSetlist(null);
+                    clearMixerLastSetlistId();
                 }
             } catch (error) {
                 console.error("Error borrando setlist:", error);
@@ -1366,6 +1682,14 @@ export default function Multitrack({ session }) {
             console.log("[DOWNLOAD LOCK] acquired - already downloading");
             return;
         }
+        if (isDemo && activeSetlist) {
+            const alreadyInSetlist = (activeSetlist.songs || []).some((s) => s.id === song.id);
+            const currentCount = (activeSetlist.songs || []).length;
+            if (!alreadyInSetlist && currentCount >= FREE_SETLIST_SONG_LIMIT) {
+                alert(`Zion Stage (plan gratis): máximo ${FREE_SETLIST_SONG_LIMIT} canciones por setlist.`);
+                return;
+            }
+        }
 
         const isDownloaded = await LocalLibraryService.isSongDownloaded(song);
         if (isDownloaded) {
@@ -1402,21 +1726,33 @@ export default function Multitrack({ session }) {
             setDownloadProgress({ songId: song.id, text: "Finalizando..." });
             
             if (isAppNative) {
-                // Actualizar tracks para marcar como descargados localmente
+                const manifestTracks = buildDesktopManifestTrackEntries(song).map((t) => ({ ...t, isDownloaded: true }));
+                const previewMixLocalPath = manifestTracks.find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey || null;
                 const localSong = {
                     ...song,
                     isLocal: true,
+                    downloaded: true,
                     downloadedAt: new Date().toISOString(),
-                    tracks: (song.tracks || []).map(t => ({ ...t, isDownloaded: true }))
+                    previewMixLocalPath,
+                    tracks: manifestTracks,
                 };
 
                 if (window.zionNative) {
-                    await window.zionNative.saveSong(localSong);
+                    await window.zionNative.saveSong({
+                        id: localSong.id,
+                        name: localSong.name,
+                        artist: localSong.artist,
+                        tempo: localSong.tempo,
+                        key: localSong.key || getSongMusicalKey(localSong),
+                        tracks: manifestTracks,
+                        downloaded: true,
+                        previewMixLocalPath,
+                    });
                     console.log(`[LOCAL LIBRARY] saved song ${song.id} tracks count: ${localSong.tracks.length}`);
                 }
 
-                setLibrarySongs(prev => {
-                    const filtered = prev.filter(s => s.id !== song.id);
+                setLibrarySongs((prev) => {
+                    const filtered = prev.filter((s) => s.id !== song.id);
                     return [...filtered, localSong];
                 });
 
@@ -1464,6 +1800,13 @@ export default function Multitrack({ session }) {
 
     const handleLoadSong = async (songArg) => {
         let song = songArg;
+        if (isDemo && activeSetlist?.songs?.length) {
+            const idx = activeSetlist.songs.findIndex((s) => s.id === songArg?.id);
+            if (idx >= FREE_SETLIST_SONG_LIMIT) {
+                alert(`Zion Stage (plan gratis): solo puedes cargar las primeras ${FREE_SETLIST_SONG_LIMIT} canciones del setlist.`);
+                return;
+            }
+        }
         // Fallback: si el objeto song no trae pistas (ej. guardado previo corrupto o setlist viejo)
         // intentamos buscarlas en la librería local o catálogo global.
         if (!song.tracks || song.tracks.length === 0) {
@@ -1479,14 +1822,83 @@ export default function Multitrack({ session }) {
             return;
         }
 
-        // --- INICIO DE LÓGICA SOLICITADA POR EL USUARIO ---
-        // Simular el clic en el botón "Stop" y esperar 1 segundo antes de cambiar
-        console.log("[SELECT] Ejecutando STOP manual y esperando 1 segundo...");
+        // Parar transporte al cambiar de canción (sin espera artificial: retrasa cada cambio ~1s).
         await audioEngine.stop();
         setIsPlaying(false);
         progressRef.current = 0;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // --- FIN DE LÓGICA SOLICITADA POR EL USUARIO ---
+
+        const isElectronDesktop = isElectronDesktopMixer();
+
+        if (isElectronDesktop && isPreparingSong) {
+            console.log('[DESKTOP NATIVE] ignored, already preparing');
+            return;
+        }
+        if (isElectronDesktop) {
+            const tFast0 = performance.now();
+            try {
+                const row = await LocalLibraryService.getSong(song.id);
+                const parsed = parseDesktopLibraryManifest(row?.tracks_json);
+                const mergedSong = {
+                    ...song,
+                    name: row?.name || song.name,
+                    artist: row?.artist || song.artist,
+                    tempo: row?.tempo ?? song.tempo,
+                    key: row?.key || song.key,
+                    tracks: (row && parsed.tracks?.length) ? parsed.tracks : buildDesktopManifestTrackEntries(song),
+                    downloaded: !!(row && parsed.downloaded),
+                    previewMixLocalPath: parsed.previewMixLocalPath,
+                };
+                console.log('[DESKTOP NATIVE] using JUCE engine');
+                console.log('[FAST LOAD] local manifest found', song.id);
+                console.log('[FAST LOAD] skipping download');
+                console.log('[FAST LOAD] skipping Firestore');
+                console.log('[FAST LOAD] skipping stem-by-stem delay');
+                setActiveSongId(song.id);
+                setViewedSongId(song.id);
+                setSnapshotDurationSec(0);
+                setPreloadStatus((prev) => ({ ...prev, [song.id]: 'loading' }));
+                const skeleton = (mergedSong.tracks || [])
+                    .filter((tr) => tr.name !== '__PreviewMix')
+                    .map((tr) => ({
+                        id: `${mergedSong.id}_${tr.name}`,
+                        name: tr.name,
+                        isPlaceholder: true,
+                    }));
+                setTracks(skeleton);
+                setLoading(false);
+
+                await audioEngine.init();
+                const batch = buildWasmBatchFromDesktopManifest(mergedSong);
+                const stemCount = batch.filter((b) => !b.isVisualOnly).length;
+                console.log('[DESKTOP NATIVE] load paths count', stemCount);
+                const { ok } = await loadDesktopNativeFromBatch(batch, mergedSong);
+                if (!ok) throw new Error('[DESKTOP AUDIO] Native JUCE bridge missing');
+
+                const newTracks = batch
+                    .filter((b) => !b.isVisualOnly)
+                    .map((b) => ({ id: b.id, name: b.name }));
+                setTracks(newTracks);
+                setPreloadStatus((prev) => ({ ...prev, [song.id]: 'ready' }));
+                setAudioReady((prev) => prev + 1);
+                setNativeLoadProgress(null);
+                try {
+                    const snap = await window.zionNative.getSnapshot();
+                    const s = JSON.parse(snap);
+                    const d = s.durationSec;
+                    if (Number.isFinite(d) && d > 1) setSnapshotDurationSec(d);
+                } catch { /* ignore */ }
+                console.log('[JUCE] session ready in', Math.round(performance.now() - tFast0), 'ms');
+                console.log('[DESKTOP NATIVE] ready in', Math.round(performance.now() - tFast0), 'ms');
+                loadWaveformInBackground(mergedSong);
+                setDownloadProgress({ songId: null, text: '' });
+                return;
+            } catch (e) {
+                console.error('[DESKTOP AUDIO] native load failed', e?.message || e);
+                setPreloadStatus((prev) => ({ ...prev, [song.id]: 'error' }));
+                setDownloadProgress({ songId: null, text: '' });
+                return;
+            }
+        }
 
         const isAppNativeLoad = isAppNative;
 
@@ -1549,9 +1961,21 @@ export default function Multitrack({ session }) {
                 console.log('[CACHE] all stems local =', allStemsLocal);
                 if (allStemsLocal) {
                     const diskMap = await tryBuildNativeTrackMapFromDisk(song, nativeFormatPlan);
-                    cachedBuffers = diskMap && diskMap.size > 0 ? diskMap : null;
-                    if (cachedBuffers) {
+                    let merged = diskMap && diskMap.size > 0 ? new Map(diskMap) : null;
+                    if (merged) {
+                        const prev = preloadCache.current.get(song.id);
+                        if (prev && prev.size > 0) {
+                            for (const [name, ent] of merged.entries()) {
+                                const old = prev.get(name);
+                                if (old?.audioBuf?.sampleRate > 0 && old.path === ent.path) {
+                                    merged.set(name, { ...ent, audioBuf: old.audioBuf, rawBuf: old.rawBuf ?? null });
+                                }
+                            }
+                        }
+                        cachedBuffers = merged;
                         preloadCache.current.set(song.id, new Map(cachedBuffers));
+                    } else {
+                        cachedBuffers = null;
                     }
                 } else {
                     // Si no están todas localmente, y estamos en Desktop sin internet, avisar
@@ -1574,6 +1998,10 @@ export default function Multitrack({ session }) {
 
             if (cachedBuffers && cachedBuffers.size > 0) {
                 if (!isAppNativeLoad) touchLRU(song.id);
+                if (isAppNativeLoad && window.zionNative) {
+                    touchLRU(song.id);
+                    evictOldestIfNeeded();
+                }
 
                 const batch = [];
                 const newTracks = [];
@@ -1605,11 +2033,14 @@ export default function Multitrack({ session }) {
                     await prepareYield();
                 }
                 if (isAppNativeLoad && window.zionNative) {
-                    const ok = await loadElectronZionWasmFromBatch(batch, song);
+                    const { ok, enriched } = await loadDesktopMixerFromBatch(batch, song);
                     if (!ok) {
                         setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
-                        throw new Error('No se pudo cargar el mezclador WASM (tono/tempo como en la web).');
+                        throw new Error(isElectronDesktopMixer()
+                            ? 'No se pudo cargar el motor de audio nativo (JUCE).'
+                            : 'No se pudo cargar el mezclador WASM.');
                     }
+                    mergeZionEnrichedIntoPreload(preloadCache.current, song.id, enriched);
                 } else {
                     await audioEngine.addTracksBatch(batch);
                 }
@@ -1617,7 +2048,7 @@ export default function Multitrack({ session }) {
                     await prepareYield();
                     console.log('[LOAD] ready');
                     setNativeLoadProgress(null);
-                    deferPreviewMixDownload(song);
+                    loadWaveformInBackground(song);
                 }
 
                 // ALWAYS: click/guide = left ear (-1), all other tracks = right ear (+1)
@@ -1789,11 +2220,14 @@ export default function Multitrack({ session }) {
                     await prepareYield();
                 }
                 if (isAppNativeLoad && window.zionNative) {
-                    const ok = await loadElectronZionWasmFromBatch(batchMove, song);
+                    const { ok, enriched } = await loadDesktopMixerFromBatch(batchMove, song);
                     if (!ok) {
                         setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
-                        throw new Error('No se pudo cargar el mezclador WASM (tono/tempo como en la web).');
+                        throw new Error(isElectronDesktopMixer()
+                            ? 'No se pudo cargar el motor de audio nativo (JUCE).'
+                            : 'No se pudo cargar el mezclador WASM.');
                     }
+                    mergeZionEnrichedIntoPreload(preloadCache.current, song.id, enriched);
                 } else {
                     await audioEngine.addTracksBatch(batchMove);
                 }
@@ -1801,7 +2235,7 @@ export default function Multitrack({ session }) {
                     await prepareYield();
                     console.log('[LOAD] ready');
                     setNativeLoadProgress(null);
-                    deferPreviewMixDownload(song);
+                    loadWaveformInBackground(song);
                 }
                 if (!isAppNativeLoad && !(audioEngine._durationHint > 1)) {
                     const previewEntry = trackBuffers.get(PREVIEW_TRACK_NAME);
@@ -2467,7 +2901,7 @@ export default function Multitrack({ session }) {
     if (isAuthChecking) {
         return (
             <div style={{ position: 'fixed', inset: 0, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/logo2blanco.png" alt="Zion" style={{ height: '40px', opacity: 0.5, animation: 'pulse 2s infinite' }} />
+                <img src={LOGO_BLANCO_PNG} alt="Zion" style={{ height: '40px', opacity: 0.5, animation: 'pulse 2s infinite' }} />
             </div>
         );
     }
@@ -2481,7 +2915,7 @@ export default function Multitrack({ session }) {
                     <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '320px', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
                         <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
                         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-                            <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
+                            <img src={LOGO_BLANCO_PNG} alt="Zion Stage" style={{ height: '36px' }} />
                         </div>
                         <h2 style={{ color: 'white', marginTop: 0, marginBottom: '10px', textAlign: 'center', fontWeight: '800' }}>Activar Zion Stage</h2>
                         <p style={{color: '#aaa', fontSize: '0.85rem', textAlign: 'center', marginBottom: '15px'}}>Ingresa tu serial para desbloquear la versión completa.</p>
@@ -2516,7 +2950,7 @@ export default function Multitrack({ session }) {
                 }}>
                     {/* Logo */}
                     <div style={{ display: 'flex', alignItems: 'center', marginBottom: '52px' }}>
-                        <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '45px', animation: 'pulse 2s infinite' }} className="preloader-text" />
+                        <img src={LOGO_BLANCO_PNG} alt="Zion Stage" style={{ height: '45px', animation: 'pulse 2s infinite' }} className="preloader-text" />
                     </div>
 
                     {/* Spinner + Countdown stacked */}
@@ -2615,7 +3049,7 @@ export default function Multitrack({ session }) {
                         flexWrap: 'wrap'
                     }}
                 >
-                    <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '28px', flexShrink: 0 }} />
+                    <img src={LOGO_BLANCO_PNG} alt="Zion Stage" style={{ height: '28px', flexShrink: 0 }} />
                     <span style={{ fontSize: '0.95rem', fontWeight: 800, letterSpacing: '0.2px' }}>
                         Instalar en escritorio
                     </span>
@@ -3095,7 +3529,7 @@ export default function Multitrack({ session }) {
                                         : nativeLoadProgress.label}
                                 </span>
                             </div>
-                        ) : activeSongId && preloadStatus[activeSongId] === 'ready' && tracks.length > 0 ? (
+                        ) : activeSongId ? (
                             <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }}>
                                 <ProgressBar
                                     songId={activeSongId || ''}
@@ -3107,6 +3541,16 @@ export default function Multitrack({ session }) {
                                         !!(activeSong?.tracks?.some((t) => t.name === PREVIEW_TRACK_NAME)
                                             || previewMixOnDisk)
                                     }
+                                    previewMixLocalPath={
+                                        activeSong?.previewMixLocalPath
+                                        || activeSong?.tracks?.find((t) => t.name === PREVIEW_TRACK_NAME)?.localPath
+                                        || activeSong?.tracks?.find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey
+                                        || ''
+                                    }
+                                    localWaveformFallbacks={(activeSong?.tracks || [])
+                                        .filter((t) => t?.name && t.name !== PREVIEW_TRACK_NAME)
+                                        .map((t) => t.localPath || t.cacheKey || '')
+                                        .filter(Boolean)}
                                 />
                             </div>
                         ) : (
@@ -3504,8 +3948,8 @@ export default function Multitrack({ session }) {
                 </div>
 
                 {/* Panel derecho escritorio: altura fija, scroll solo en canciones; pads abajo (ver .desktop-* en index.css) */}
-                <aside className="sidebar desktop-only desktop-right-panel">
-                    <div className="setlist-panel desktop-setlist-card">
+                <aside className="desktop-right-panel">
+                    <div className="desktop-setlist-card">
                         <div className="desktop-setlist-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <ListMusic size={20} color="#00bcd4" />
@@ -3587,7 +4031,7 @@ export default function Multitrack({ session }) {
                         </div>
                     </div>
 
-                    <div className="pads-panel desktop-pads-card">
+                    <div className="desktop-pads-card">
                         <div className="pads-header" style={{ marginBottom: '10px' }}>
                             <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '45px', height: '45px' }}>
                                 <Power size={22} />

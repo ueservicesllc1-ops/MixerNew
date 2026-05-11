@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('zionNative', {
     
     // Base de Datos Local (OFFLINE)
     getSongs: () => ipcRenderer.invoke('db:get-songs'),
+    getSong: (id) => ipcRenderer.invoke('db:get-song', id),
     saveSong: (song) => ipcRenderer.invoke('db:save-song', song),
     deleteSong: (id) => ipcRenderer.invoke('db:delete-song', id),
     getSetlists: () => ipcRenderer.invoke('db:get-setlists'),
@@ -37,4 +38,19 @@ contextBridge.exposeInMainWorld('zionNative', {
     isTrackDownloaded: (filename) => ipcRenderer.invoke('cache:exists', filename),
     
     isDesktop: true
+});
+
+contextBridge.exposeInMainWorld('electronAPI', {
+    isDesktop: true,
+    play: () => ipcRenderer.send('audio:play'),
+    pause: () => ipcRenderer.send('audio:pause'),
+    stop: () => ipcRenderer.send('audio:stop'),
+    seek: (pos) => ipcRenderer.send('audio:seek', pos),
+    loadSong: (tracks) => ipcRenderer.invoke('audio:load', tracks),
+    getSnapshot: () => ipcRenderer.invoke('audio:get-snapshot'),
+    setPitchSemitones: (semi) => ipcRenderer.invoke('audio:set-pitch', semi),
+    setTempoRatio: (ratio) => ipcRenderer.invoke('audio:set-tempo', ratio),
+    setTrackVolume: (id, vol) => ipcRenderer.send('audio:set-volume', id, vol),
+    setTrackMute: (id, muted) => ipcRenderer.send('audio:set-mute', id, muted),
+    setTrackSolo: (id, solo) => ipcRenderer.send('audio:set-solo', id, solo),
 });

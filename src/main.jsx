@@ -9,9 +9,16 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()))
 }
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Electron carga `dist/index.html` por `file:` — el SW con `/sw.js` no aplica y puede interferir.
+const canUseServiceWorker =
+  import.meta.env.PROD &&
+  typeof window !== 'undefined' &&
+  window.location.protocol !== 'file:' &&
+  'serviceWorker' in navigator
+
+if (canUseServiceWorker) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {})
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {})
   })
 }
 

@@ -5,11 +5,9 @@ import LanguageSwitch from '../components/LanguageSwitch';
 import { db, auth } from '../firebase';
 import { collection, doc, query, where, getDocs, updateDoc, arrayUnion } from 'firebase/firestore';
 import { ShoppingCart, ArrowLeft, X, Loader2, CheckCircle2, ChevronRight, Music2, ShieldCheck, Mail, CreditCard, LogOut, Globe } from 'lucide-react';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import Footer from '../components/Footer';
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
+import { stripeJsPromise as stripePromise } from '../stripeClient.js';
 
 const StripeCheckoutForm = ({ total, subtotal, discount, onPaymentSuccess }) => {
     const stripe = useStripe();

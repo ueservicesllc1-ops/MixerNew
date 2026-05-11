@@ -46,6 +46,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  height: 100%;
   min-height: 100vh;
   min-height: 100dvh;
   width: 100%;
@@ -61,6 +62,7 @@ body.dark-mode {
 
 #root {
   width: 100%;
+  height: 100%;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -250,20 +252,22 @@ div:has(> .avatar-overlay):hover {
  * Scroll únicamente en .desktop-setlist-songs; pads fuera del flujo scrolleable del setlist.
  */
 .multitrack-main-layout .sidebar.desktop-only.desktop-right-panel {
-  height: calc(100vh - 150px) !important;
-  height: calc(100dvh - 150px) !important;
-  max-height: calc(100dvh - 150px) !important;
+  height: 100% !important;
+  max-height: 100% !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
   gap: 0 !important;
-  align-self: flex-start !important;
+  align-self: stretch !important;
   box-sizing: border-box !important;
 }
 
 .multitrack-main-layout .desktop-setlist-card {
   flex: 1 1 0% !important;
   min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -285,10 +289,11 @@ div:has(> .avatar-overlay):hover {
 }
 
 .multitrack-main-layout .desktop-pads-card {
-  flex: 0 0 230px !important;
-  margin-top: 12px !important;
+  margin-top: auto !important;
+  min-height: 120px !important;
+  max-height: 220px !important;
+  align-self: stretch !important;
   overflow: hidden !important;
-  min-height: 0 !important;
 }
 
 .multitrack-main-layout .master-fader-mini {
@@ -1666,6 +1671,15 @@ body.dark-mode .song-index-badge {
   right: 0;
 }
 
+/* Drawers cerrados siguen ocupando un trozo del viewport (right negativo + ancho).
+   Con z-index más alto (p. ej. settings 1002 > setlist 1001) robaban clics y foco
+   al input del setlist hasta que otro re-render “liberaba” la UI. */
+.setlist-drawer:not(.open),
+.library-drawer:not(.open),
+.settings-drawer:not(.open) {
+  pointer-events: none;
+}
+
 /* Settings sections */
 .settings-section {
   padding: 18px 0;
@@ -2241,6 +2255,8 @@ body.dark-mode .pad-ms-btn {
 body .multitrack-main-layout .main-content {
   flex: 1 1 0% !important;
   min-height: 0 !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
 }
 
 body .multitrack-main-layout .main-stage-wrapper {
@@ -2249,6 +2265,49 @@ body .multitrack-main-layout .main-stage-wrapper {
   min-height: 0 !important;
   height: auto !important;
   overflow: hidden !important;
+}
+
+/* Desktop route: keep right panel anchored full-height at the right side */
+body .multitrack-main-layout .desktop-right-panel {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: clamp(252px, 30vw, 560px) !important;
+  min-width: 220px !important;
+  max-width: min(560px, 46vw) !important;
+  overflow: hidden !important;
+  align-self: stretch !important;
+}
+
+body .multitrack-main-layout .desktop-right-panel .desktop-setlist-card {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body .multitrack-main-layout .desktop-right-panel .desktop-pads-card {
+  flex: 0 0 210px !important;
+  min-height: 210px !important;
+  max-height: 210px !important;
+  margin-top: 0 !important;
+  overflow: hidden !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: inherit !important;
+}
+
+body .multitrack-main-layout .desktop-right-panel .desktop-setlist-header {
+  flex: 0 0 auto !important;
+}
+
+body .multitrack-main-layout .desktop-right-panel .desktop-setlist-songs {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 body .multitrack-main-layout .mixer-wrapper.desktop-mixer-scroll-host {

@@ -53,9 +53,19 @@ module.exports = {
     // Canciones
     saveSong: (song) => {
         const stmt = db.prepare('INSERT OR REPLACE INTO songs (id, name, artist, tempo, key, tracks_json) VALUES (?, ?, ?, ?, ?, ?)');
-        return stmt.run(song.id, song.name, song.artist, song.tempo, song.key, JSON.stringify(song.tracks));
+        let payload = song.tracks;
+        if (Array.isArray(payload)) {
+            payload = {
+                version: 1,
+                downloaded: song.downloaded !== false,
+                previewMixLocalPath: song.previewMixLocalPath ?? null,
+                tracks: payload,
+            };
+        }
+        return stmt.run(song.id, song.name, song.artist, song.tempo, song.key, JSON.stringify(payload));
     },
     getSongs: () => db.prepare('SELECT * FROM songs').all(),
+    getSong: (id) => db.prepare('SELECT * FROM songs WHERE id = ?').get(id),
     deleteSong: (id) => db.prepare('DELETE FROM songs WHERE id = ?').run(id),
 
     // Setlists

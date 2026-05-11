@@ -12,13 +12,14 @@ import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import os from 'os';
 import Stripe from 'stripe';
+import admin from 'firebase-admin';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
 // URL pública de este servidor (Railway). Used to build normalizedUrl proxy links.
 const PROXY_SELF = process.env.PROXY_URL || 'https://mixernew-production.up.railway.app';
 
-// Usando la clave secreta de Stripe:
+// Una sola clave secreta (misma cuenta/modo que la clave publicable del front: test+test o live+live).
 let stripe = null;
 const initStripe = () => {
     if (process.env.STRIPE_SECRET_KEY) {
@@ -36,6 +37,26 @@ const initStripe = () => {
 };
 initStripe();
 
+/** Firestore server-side (mismas credenciales que otros scripts: FIREBASE_SERVICE_ACCOUNT base64 o GOOGLE_APPLICATION_CREDENTIALS). */
+let dbAdmin = null;
+try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const saJson = Buffer.from(process.env.FIREBASE_SERVICE_ACCOUNT, 'base64').toString('utf8');
+        const sa = JSON.parse(saJson);
+        if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.cert(sa) });
+        dbAdmin = admin.firestore();
+        console.log('✅ Firebase Admin listo (webhook Stripe / users).');
+    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        if (!admin.apps.length) admin.initializeApp({ credential: admin.credential.applicationDefault() });
+        dbAdmin = admin.firestore();
+        console.log('✅ Firebase Admin listo (applicationDefault).');
+    } else {
+        console.warn('⚠️ Firebase Admin no configurado: STRIPE_WEBHOOK_SECRET no podrá escribir en users hasta que exista FIREBASE_SERVICE_ACCOUNT o GOOGLE_APPLICATION_CREDENTIALS.');
+    }
+} catch (e) {
+    console.warn('⚠️ Firebase Admin init falló:', e?.message || e);
+}
+
 // Configuración de productos/precios para sincronizar con Stripe
 const STRIPE_PLANS_CONFIG = {
     'seller': { name: 'Suscripción Vendedor MixCommunity', monthly: 199, annual: 1990 }, // Vendedor anual opcional
@@ -45,10 +66,120 @@ const STRIPE_PLANS_CONFIG = {
     'vip1': { name: 'Plan Básico VIP MixCommunity', monthly: 799, annual: 6712 },
     'vip2': { name: 'Plan Estándar VIP MixCommunity', monthly: 999, annual: 8392 },
     'vip3': { name: 'Plan Plus VIP MixCommunity', monthly: 1299, annual: 10912 },
-    /** Escritorio Zion Stage — mismos planId que envía DesktopProSubscribeModal */
-    'zion_desktop_pro_local': { name: 'Zion Stage PRO (PC)', monthly: 199, annual: 1990 }, // US$1.99/mes · US$19.90/año
-    'zion_desktop_pro_online': { name: 'Zion Stage PRO Online', monthly: 599, annual: 5990 }, // US$5.99/mes · US$59.90/año
+    /** Deben coincidir con `DESKTOP_PRO_PLANS[].id` en `src/desktop/desktopProPlans.js` (sin otra config Stripe). */
+    'zion_desktop_pro_local': { name: 'Zion Stage PRO (PC)', monthly: 199, annual: 1990 },
+    'zion_desktop_pro_online': { name: 'Zion Stage PRO Online', monthly: 599, annual: 5990 },
 };
+
+const DESKTOP_STRIPE_PLAN_IDS = new Set(['zion_desktop_pro_local', 'zion_desktop_pro_online']);
+const PAID_STORAGE_PLAN_IDS = new Set(['std1', 'std2', 'std3', 'vip1', 'vip2', 'vip3']);
+
+function desktopTierFromStripePlanId(planId) {
+    if (planId === 'zion_desktop_pro_online') return 'pro_online';
+    if (planId === 'zion_desktop_pro_local') return 'pro_local';
+    return null;
+}
+
+/**
+ * Sincroniza suscripción Stripe → Firestore users/{uid}. No toca checkout HTTP ni confirmPayment del front.
+ * Planes escritorio: desktopLicenseTier + desktopProActive. Almacenamiento web: planId + stripeSubscriptionId.
+ */
+async function syncSubscriptionToFirestore(subscriptionRef) {
+    if (!dbAdmin || !stripe) return;
+    const sub = typeof subscriptionRef === 'string'
+        ? await stripe.subscriptions.retrieve(subscriptionRef)
+        : subscriptionRef;
+
+    let userId = sub.metadata?.userId;
+    let planId = sub.metadata?.planId;
+    const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+
+    if (!userId && customerId) {
+        const cust = await stripe.customers.retrieve(customerId);
+        userId = cust.metadata?.userId;
+    }
+    if (!userId) {
+        console.warn('[stripe webhook] Suscripción sin userId en metadata ni customer:', sub.id);
+        return;
+    }
+
+    const { FieldValue } = admin.firestore;
+    const status = sub.status;
+    const patch = {
+        stripeSubscriptionId: sub.id,
+        stripeCustomerId: customerId || null,
+        stripeSubscriptionStatus: status,
+        updatedAt: FieldValue.serverTimestamp(),
+    };
+
+    if (planId && DESKTOP_STRIPE_PLAN_IDS.has(planId)) {
+        const tier = desktopTierFromStripePlanId(planId);
+        if (status === 'active' || status === 'trialing') {
+            patch.planId = planId;
+            patch.desktopLicenseTier = tier;
+            patch.desktopProActive = true;
+            patch.desktopBillingIssue = FieldValue.delete();
+        } else if (status === 'past_due') {
+            patch.desktopBillingIssue = true;
+            if (tier) patch.desktopLicenseTier = tier;
+            patch.desktopProActive = true;
+        } else {
+            patch.desktopLicenseTier = FieldValue.delete();
+            patch.desktopProActive = false;
+            patch.desktopBillingIssue = FieldValue.delete();
+            patch.planId = 'free';
+        }
+    } else if (planId && PAID_STORAGE_PLAN_IDS.has(planId)) {
+        if (status === 'active' || status === 'trialing') {
+            patch.planId = planId;
+        } else if (status === 'canceled' || status === 'unpaid' || status === 'incomplete_expired') {
+            patch.planId = 'free';
+            patch.stripeSubscriptionId = FieldValue.delete();
+        }
+    } else if (planId === 'seller') {
+        if (status === 'active' || status === 'trialing') {
+            patch.planId = 'seller';
+        }
+    }
+
+    await dbAdmin.collection('users').doc(String(userId)).set(patch, { merge: true });
+    console.log('[stripe webhook] users/%s ← subscription %s (%s)', userId, sub.id, status);
+}
+
+async function handleStripeWebhookEvent(event) {
+    switch (event.type) {
+        case 'checkout.session.completed': {
+            const session = event.data.object;
+            if (session.mode === 'subscription' && session.subscription) {
+                const subId = typeof session.subscription === 'string' ? session.subscription : session.subscription.id;
+                const sub = await stripe.subscriptions.retrieve(subId);
+                const meta = { ...sub.metadata };
+                if (session.metadata?.userId && !meta.userId) meta.userId = session.metadata.userId;
+                if (session.metadata?.planId && !meta.planId) meta.planId = session.metadata.planId;
+                if (meta.userId !== sub.metadata?.userId || meta.planId !== sub.metadata?.planId) {
+                    await stripe.subscriptions.update(sub.id, { metadata: meta });
+                }
+                await syncSubscriptionToFirestore(sub.id);
+            }
+            break;
+        }
+        case 'invoice.payment_succeeded':
+        case 'invoice.payment_failed': {
+            const invoice = event.data.object;
+            const subId = invoice.subscription;
+            if (subId) await syncSubscriptionToFirestore(typeof subId === 'string' ? subId : subId.id);
+            break;
+        }
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted': {
+            const sub = event.data.object;
+            await syncSubscriptionToFirestore(sub.id);
+            break;
+        }
+        default:
+            break;
+    }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -65,6 +196,42 @@ app.use(cors({
     exposedHeaders: ['Content-Length', 'Content-Range', 'Accept-Ranges'],
     credentials: true
 }));
+
+// Webhook Stripe: body crudo + firma (obligatorio antes de express.json).
+app.post(
+    '/api/stripe/webhook',
+    express.raw({ type: 'application/json', limit: '2mb' }),
+    async (req, res) => {
+        if (!stripe) {
+            return res.status(503).send('Stripe no configurado');
+        }
+        const whSecret = process.env.STRIPE_WEBHOOK_SECRET;
+        if (!whSecret) {
+            console.error('[stripe webhook] Falta STRIPE_WEBHOOK_SECRET en Railway');
+            return res.status(503).send('Webhook secret no configurado');
+        }
+        if (!dbAdmin) {
+            console.error('[stripe webhook] Firestore Admin no disponible');
+            return res.status(503).send('Firestore no configurado');
+        }
+        const sig = req.headers['stripe-signature'];
+        let event;
+        try {
+            event = stripe.webhooks.constructEvent(req.body, sig, whSecret);
+        } catch (err) {
+            console.error('[stripe webhook] Firma inválida:', err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+        try {
+            await handleStripeWebhookEvent(event);
+        } catch (e) {
+            console.error('[stripe webhook] Error procesando evento:', e);
+            return res.status(500).send('Error interno');
+        }
+        return res.json({ received: true });
+    }
+);
+
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
@@ -585,7 +752,11 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         if (!email || !userId) return res.status(400).json({ error: 'Faltan datos de usuario' });
 
         const planConfig = STRIPE_PLANS_CONFIG[planId];
-        if (!planConfig) return res.status(400).json({ error: 'Plan no válido' });
+        if (!planConfig) {
+            return res.status(400).json({
+                error: `Plan no válido: "${planId}". Añade la misma clave en STRIPE_PLANS_CONFIG (b2-proxy.mjs); no es un fallo de claves Stripe.`,
+            });
+        }
 
         const amount = isAnnual ? planConfig.annual : planConfig.monthly;
         const interval = isAnnual ? 'year' : 'month';
@@ -595,7 +766,11 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         const customers = await stripe.customers.list({ email: email, limit: 1 });
         let customer = customers.data[0];
         if (!customer) {
-            customer = await stripe.customers.create({ email, name, metadata: { userId } });
+            customer = await stripe.customers.create({ email, name, metadata: { userId: String(userId) } });
+        } else if (!customer.metadata?.userId) {
+            await stripe.customers.update(customer.id, {
+                metadata: { ...customer.metadata, userId: String(userId) },
+            });
         }
 
         // 2. Obtener o crear el Producto y Precio de Suscripción
@@ -628,10 +803,11 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
             }
         }
 
-        // 3. Crear Suscripción
+        // 3. Crear Suscripción (metadata para webhooks: sin cambiar el flujo confirmPayment del cliente)
         const subscription = await stripe.subscriptions.create({
             customer: customer.id,
             items: [{ price: priceId }],
+            metadata: { userId: String(userId), planId: String(planId) },
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.payment_intent'],
@@ -1044,6 +1220,7 @@ app.use((req, res, next) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor listo escuchando en puerto ${PORT}`);
+    console.log(`📌 Stripe webhook (configurar en Dashboard): POST ${PROXY_SELF}/api/stripe/webhook`);
 });
 
 

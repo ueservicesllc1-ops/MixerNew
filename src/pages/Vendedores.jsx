@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { stripeJsPromise as stripePromise } from '../stripeClient.js';
+import { getMixerApiBase } from '../mixerApiBase.js';
 import { useNavigate } from 'react-router-dom';
 import JSZip from 'jszip';
 import { db, auth } from '../firebase';
@@ -14,9 +15,6 @@ import {
     AlertCircle, ArrowLeft, Wallet, Star, ShoppingBag, CheckCircle2 as CheckIcon,
     FileText, Trash2
 } from 'lucide-react';
-
-// Usando clave LIVE de Stripe 
-const stripePromise = loadStripe('pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y');
 
 const StripeCheckoutForm = ({ onPaymentSuccess }) => {
     const stripe = useStripe();
@@ -257,8 +255,7 @@ function Vendedores() {
         if (!file || !currentUser) return;
         setIsUploadingPhoto(true);
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             const formData = new FormData();
             formData.append('audioFile', file);
@@ -281,8 +278,7 @@ function Vendedores() {
         if (!file || !currentUser) return;
         setIsUploadingCover(true);
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             const formData = new FormData();
             formData.append('audioFile', file);
@@ -389,8 +385,7 @@ function Vendedores() {
         setStep('uploading');
         const uploadedTracksInfo = [];
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             for (let i = 0; i < fileList.length; i++) {
                 const track = fileList[i];
@@ -469,8 +464,7 @@ function Vendedores() {
     const handleGoToPayment = async () => {
         setRegStep('payment');
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             const res = await fetch(`${devProxy}/api/stripe/create-subscription`, {
                 method: 'POST',
@@ -503,8 +497,7 @@ function Vendedores() {
         if (!pvFile || !pvInstrument || !pvTitle || !currentUser) return;
         setPvUploading(true);
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
             const formData = new FormData();
             formData.append('audioFile', pvFile);
             formData.append('fileName', `partitura_venta_${currentUser.uid}_${Date.now()}_${pvInstrument.replace(/\s+/g,'_')}.pdf`);

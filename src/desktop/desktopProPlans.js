@@ -1,6 +1,6 @@
 /**
- * Planes de suscripción escritorio. Los `id` se envían a `/api/stripe/create-subscription`
- * (Railway). Hay que mapear cada id a un Price ID de Stripe en el backend.
+ * Planes escritorio: los `id` deben existir tal cual en `STRIPE_PLANS_CONFIG` de `b2-proxy.mjs`
+ * (mismo endpoint `/api/stripe/create-subscription` que la web).
  */
 export const DESKTOP_PRO_PLANS = [
     {
@@ -20,10 +20,3 @@ export const DESKTOP_PRO_PLANS = [
         blurb: 'Incluye acceso al catálogo multitrack en línea de nuestra base de datos.',
     },
 ];
-
-export function getStripeApiBase() {
-    if (typeof window === 'undefined') return 'https://mixernew-production.up.railway.app';
-    return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-        ? 'http://localhost:3001'
-        : 'https://mixernew-production.up.railway.app';
-}

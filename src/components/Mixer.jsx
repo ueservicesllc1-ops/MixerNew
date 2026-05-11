@@ -35,8 +35,9 @@ function VUMeter({ trackId, muted }) {
     useEffect(() => {
         const poll = () => {
             const raw = audioEngine.getTrackLevel(trackId);
-            // Web: analizador da picos bajos → boost alto. Nativo: niveles ya vienen escalados (~0–0.2).
-            const boost = Capacitor.isNativePlatform() ? 3.2 : 6.5;
+            // Web: analizador da picos bajos → boost alto. Nativo: bridge. Zion WASM: picos ya ~lineales post-fader.
+            const isZionWasm = !!(audioEngine.isWASMReady && audioEngine.wasm);
+            const boost = Capacitor.isNativePlatform() ? 3.2 : isZionWasm ? 2.85 : 6.5;
             levelRef.current = Math.min(1, raw * boost);
             
             draw();

@@ -17,6 +17,9 @@ public:
             InstanceMethod("loadStemsFromPaths", &ZionAudioBridge::LoadStemsFromPaths),
             InstanceMethod("setPitchSemitones", &ZionAudioBridge::SetPitchSemitones),
             InstanceMethod("setTempoRatio", &ZionAudioBridge::SetTempoRatio),
+            InstanceMethod("setTrackVolume", &ZionAudioBridge::SetTrackVolume),
+            InstanceMethod("setTrackMute", &ZionAudioBridge::SetTrackMute),
+            InstanceMethod("setTrackSolo", &ZionAudioBridge::SetTrackSolo),
             InstanceMethod("getPlaybackSnapshot", &ZionAudioBridge::GetPlaybackSnapshot),
             InstanceMethod("loadEncryptedSong", &ZionAudioBridge::LoadEncryptedSong),
             InstanceMethod("getHardwareId", &ZionAudioBridge::GetHardwareId),
@@ -78,36 +81,36 @@ private:
         }
 
         Napi::Array arr = info[0].As<Napi::Array>();
-        std::vector<std::pair<juce::String, juce::String>> entries;
+        std::vector<DesktopStemLoadSpec> entries;
         const uint32_t len = arr.Length();
         entries.reserve((size_t) len);
 
         for (uint32_t i = 0; i < len; ++i) {
             Napi::Value item = arr[i];
-            juce::String ps;
-            juce::String stemName;
+            DesktopStemLoadSpec row;
 
             if (item.IsString()) {
-                ps = juce::String(item.As<Napi::String>().Utf8Value());
+                row.path = juce::String(item.As<Napi::String>().Utf8Value());
             } else if (item.IsObject()) {
                 Napi::Object o = item.As<Napi::Object>();
                 if (o.Has("path")) {
-                    ps = juce::String(o.Get("path").ToString().Utf8Value());
+                    row.path = juce::String(o.Get("path").ToString().Utf8Value());
                 } else if (o.Has("filename")) {
-                    ps = juce::String(o.Get("filename").ToString().Utf8Value());
+                    row.path = juce::String(o.Get("filename").ToString().Utf8Value());
                 }
+                if (o.Has("id"))
+                    row.clientTrackId = juce::String(o.Get("id").ToString().Utf8Value());
                 if (o.Has("name")) {
-                    stemName = juce::String(o.Get("name").ToString().Utf8Value());
-                } else if (o.Has("id")) {
-                    juce::String id = juce::String(o.Get("id").ToString().Utf8Value());
-                    const int u = id.lastIndexOfChar('_');
-                    if (u >= 0 && u + 1 < id.length())
-                        stemName = id.substring(u + 1);
+                    row.stemNameHint = juce::String(o.Get("name").ToString().Utf8Value());
+                } else if (row.clientTrackId.isNotEmpty()) {
+                    const int u = row.clientTrackId.lastIndexOfChar('_');
+                    if (u >= 0 && u + 1 < row.clientTrackId.length())
+                        row.stemNameHint = row.clientTrackId.substring(u + 1);
                 }
             }
 
-            if (ps.isNotEmpty())
-                entries.push_back({ ps, stemName });
+            if (row.path.isNotEmpty())
+                entries.push_back(row);
         }
 
         if (entries.empty()) {
@@ -153,12 +156,45 @@ private:
         return info.Env().Undefined();
     }
 
+    Napi::Value SetTrackVolume(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2) return env.Undefined();
+        const std::string id = info[0].IsString() ? info[0].As<Napi::String>().Utf8Value() : std::string();
+        float v = 1.f;
+        if (info.Length() > 1) {
+            Napi::Value x = info[1];
+            if (x.IsNumber()) v = (float) x.As<Napi::Number>().DoubleValue();
+            else v = (float) x.ToNumber().DoubleValue();
+        }
+        mixSession.setTrackVolumeForClientId(juce::String(id), v);
+        return env.Undefined();
+    }
+
+    Napi::Value SetTrackMute(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2) return env.Undefined();
+        const std::string id = info[0].IsString() ? info[0].As<Napi::String>().Utf8Value() : std::string();
+        const bool m = info[1].IsBoolean() ? info[1].As<Napi::Boolean>().Value() : info[1].ToBoolean().Value();
+        mixSession.setTrackMutedForClientId(juce::String(id), m);
+        return env.Undefined();
+    }
+
+    Napi::Value SetTrackSolo(const Napi::CallbackInfo& info) {
+        Napi::Env env = info.Env();
+        if (info.Length() < 2) return env.Undefined();
+        const std::string id = info[0].IsString() ? info[0].As<Napi::String>().Utf8Value() : std::string();
+        const bool s = info[1].IsBoolean() ? info[1].As<Napi::Boolean>().Value() : info[1].ToBoolean().Value();
+        mixSession.setTrackSoloForClientId(juce::String(id), s);
+        return env.Undefined();
+    }
+
     Napi::Value GetPlaybackSnapshot(const Napi::CallbackInfo& info) {
         juce::ignoreUnused(info);
         const auto& tr = Zion::ZionCore::getInstance().getTransport();
         juce::DynamicObject::Ptr o = new juce::DynamicObject();
         o->setProperty("positionSec", tr.getCurrentPosition());
         o->setProperty("durationSec", tr.getLengthInSeconds());
+        o->setProperty("trackLevelsCsv", mixSession.getTrackLevelsCsv());
         const juce::String json = juce::JSON::toString(juce::var(o.get()));
         return Napi::String::New(info.Env(), json.toStdString());
     }

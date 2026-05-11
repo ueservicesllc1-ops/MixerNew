@@ -4,6 +4,9 @@ const fs = require('fs');
 const db = require('./db.cjs');
 const encCache = require('./EncryptedCacheService.cjs');
 
+/** Título de diálogos nativos (alert/confirm del renderer) y nombre visible de la app. */
+app.setName('Zion Stage');
+
 /**
  * Escritorio Electron = app aparte del sitio en :3000.
  * - Si existe dist/index.html → file:// (tras `npm run build`), sin servidor.
@@ -50,27 +53,177 @@ if (!nativeMod) {
     console.error('[Zion] No se cargó zion_audio_bridge.node — compila ZionAudioCore (cmake-js / CMake) y vuelve a abrir.');
 }
 
+/** Icono ventana / barra de tareas: mismo asset que la web (`public/logo2.png` tras build → `dist/logo2.png`). */
+function resolveZionWindowIcon() {
+    const candidates = [
+        path.join(__dirname, 'icon.ico'),
+        path.join(__dirname, 'icon.png'),
+        path.join(__dirname, '../public/logo2.png'),
+        path.join(__dirname, '../dist/logo2.png'),
+        path.join(__dirname, '../public/logo2blanco.png'),
+        path.join(__dirname, '../dist/logo2blanco.png'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return p;
+        } catch (_) { /* ignore */ }
+    }
+    return undefined;
+}
+
+function resolveSplashLogoPath() {
+    const candidates = [
+        path.join(__dirname, '../public/logo2blanco.png'),
+        path.join(__dirname, '../dist/logo2blanco.png'),
+        path.join(__dirname, '../public/logo2blanco.webp'),
+        path.join(__dirname, '../dist/logo2blanco.webp'),
+        path.join(__dirname, '../public/logo2blanco.jpg'),
+        path.join(__dirname, '../public/logo2blanco.jpeg'),
+        path.join(__dirname, '../dist/logo2blanco.jpg'),
+        path.join(__dirname, '../dist/logo2blanco.jpeg'),
+        path.join(__dirname, '../public/logo2blanco'),
+        path.join(__dirname, '../dist/logo2blanco'),
+        path.join(__dirname, '../dist/logo2.png'),
+        path.join(__dirname, '../public/logo2.png'),
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return p;
+        } catch (_) { /* ignore */ }
+    }
+    return undefined;
+}
+
+function buildSplashHtml() {
+    const logoPath = resolveSplashLogoPath();
+    let logoDataUrl = '';
+    try {
+        if (logoPath && fs.existsSync(logoPath)) {
+            const buf = fs.readFileSync(logoPath);
+            const lower = logoPath.toLowerCase();
+            let mime = 'image/png';
+            if (lower.endsWith('.svg')) mime = 'image/svg+xml';
+            else if (lower.endsWith('.webp')) mime = 'image/webp';
+            else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) mime = 'image/jpeg';
+            logoDataUrl = `data:${mime};base64,${buf.toString('base64')}`;
+        }
+    } catch (_) {
+        logoDataUrl = '';
+    }
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Zion Stage</title>
+  <style>
+    @keyframes logoIntro {
+      0% {
+        opacity: 0;
+        transform: translateY(8px) scale(0.94);
+        filter: drop-shadow(0 0 0 rgba(0, 210, 211, 0));
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        filter: drop-shadow(0 0 14px rgba(0, 210, 211, 0.28));
+      }
+    }
+    @keyframes logoPulse {
+      0%, 100% {
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.028);
+      }
+    }
+    @keyframes brandFade {
+      0% { opacity: 0; letter-spacing: 0.2em; }
+      100% { opacity: 0.72; letter-spacing: 0.12em; }
+    }
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    .wrap {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .logo {
+      width: min(42vw, 280px);
+      max-width: 280px;
+      object-fit: contain;
+      filter: drop-shadow(0 0 14px rgba(0, 210, 211, 0.25));
+      animation:
+        logoIntro 420ms ease-out both,
+        logoPulse 1800ms ease-in-out 500ms infinite;
+      transform-origin: center;
+    }
+    .brand {
+      color: #e5e7eb;
+      letter-spacing: 0.12em;
+      font-weight: 700;
+      font-size: 12px;
+      opacity: 0.72;
+      animation: brandFade 520ms ease-out both;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    ${logoDataUrl ? `<img class="logo" src="${logoDataUrl}" alt="Zion Stage" />` : ''}
+  </div>
+</body>
+</html>`;
+}
+
 function createWindow() {
+    const icon = resolveZionWindowIcon();
     const win = new BrowserWindow({
         width: 1280,
         height: 800,
-        title: 'Zion Stage Desktop (OFFLINE)',
+        title: 'Zion Stage Desktop',
         backgroundColor: '#0a0a12',
+        ...(icon ? { icon } : {}),
         webPreferences: {
             preload: path.join(__dirname, 'preload.cjs'),
             contextIsolation: true,
         },
     });
 
-    const { mode, target } = resolveLoadTarget();
-    if (mode === 'file') {
-        win.loadFile(target, { hash: '/desktop' });
-    } else {
-        win.loadURL(target);
-    }
+    // Splash de arranque: pantalla negra con logo Zion por 3 segundos.
+    win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(buildSplashHtml()));
+    setTimeout(() => {
+        if (win.isDestroyed()) return;
+        const { mode, target } = resolveLoadTarget();
+        if (mode === 'file') {
+            win.loadFile(target, { hash: '/desktop' });
+        } else {
+            win.loadURL(target);
+        }
+    }, 3000);
 }
 
 app.whenReady().then(() => {
+    if (process.platform === 'win32') {
+        app.setAppUserModelId('com.zionstage.desktop');
+    }
+    const dockIcon = resolveZionWindowIcon();
+    if (dockIcon && app.dock) {
+        try {
+            app.dock.setIcon(dockIcon);
+        } catch (_) { /* no dock (Windows/Linux) */ }
+    }
+
     encCache.cleanTemp();
 
     let engine = null;
@@ -80,9 +233,11 @@ app.whenReady().then(() => {
             engine.initialize();
             const proto = Object.getPrototypeOf(engine);
             const names = proto ? Object.getOwnPropertyNames(proto) : [];
-            if (!names.includes('setPitchSemitones') || !names.includes('setTempoRatio')) {
+            if (!names.includes('setPitchSemitones') || !names.includes('setTempoRatio')
+                || !names.includes('setTrackVolume') || !names.includes('setTrackMute')
+                || !names.includes('setTrackSolo')) {
                 console.error(
-                    '[Zion] El .node no expone setPitchSemitones/setTempoRatio. Cierra Electron, ejecuta npm run rebuild:native y vuelve a abrir.'
+                    '[Zion] El .node está desactualizado (faltan setTrackVolume/mute/solo o pitch/tempo). Cierra Zion Stage, ejecuta npm run rebuild:native y vuelve a abrir.'
                 );
             }
         } catch (e) {
@@ -92,6 +247,7 @@ app.whenReady().then(() => {
     }
 
     ipcMain.handle('db:get-songs', () => db.getSongs());
+    ipcMain.handle('db:get-song', (e, id) => db.getSong(id));
     ipcMain.handle('db:save-song', (e, song) => db.saveSong(song));
     ipcMain.handle('db:delete-song', (e, id) => db.deleteSong(id));
     ipcMain.handle('db:get-setlists', () => db.getSetlists());
@@ -158,16 +314,58 @@ app.whenReady().then(() => {
         }
     });
 
+    function basenameKey(p) {
+        if (!p || typeof p !== 'string') return '';
+        const s = String(p).trim();
+        const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+        return i >= 0 ? s.slice(i + 1) : s;
+    }
+
+    function inferSongIdFromTrack(t) {
+        const id = String(t?.id || '');
+        const name = String(t?.name || '');
+        if (!id || !name) return '';
+        const suffix = `_${name}`;
+        if (id.endsWith(suffix)) return id.slice(0, -suffix.length);
+        const u = id.indexOf('_');
+        return u > 0 ? id.slice(0, u) : '';
+    }
+
+    async function resolveEncryptedCacheKey(track) {
+        const keys = [];
+        const direct = basenameKey(track?.filename || track?.path || '');
+        if (direct) {
+            keys.push(direct);
+            if (!direct.includes('.')) {
+                keys.push(`${direct}.mp3`, `${direct}.flac`);
+            }
+        }
+        const songId = inferSongIdFromTrack(track);
+        if (songId && track?.name) {
+            const base = `${songId}_${track.name}`;
+            keys.push(`${base}.mp3`, `${base}.flac`);
+        } else if (track?.id) {
+            keys.push(`${track.id}.mp3`, `${track.id}.flac`);
+        }
+        // dedupe preserving order
+        const seen = new Set();
+        for (const key of keys) {
+            const k = basenameKey(key);
+            if (!k || seen.has(k)) continue;
+            seen.add(k);
+            const decPath = await encCache.getDecryptedTempPath(k);
+            if (decPath) return { key: k, decPath };
+        }
+        return null;
+    }
+
     ipcMain.handle('audio:load', async (_e, tracks) => {
         if (!engine || !Array.isArray(tracks)) return false;
         const decryptedTracks = [];
         for (const t of tracks) {
-            const nameKey = t.filename || (t.id && t.name ? `${t.id}_${t.name}` : null);
-            if (!nameKey) continue;
-            const decPath = await encCache.getDecryptedTempPath(nameKey);
-            if (decPath) {
-                decryptedTracks.push({ ...t, path: decPath });
-            }
+            const resolved = await resolveEncryptedCacheKey(t);
+            if (!resolved) continue;
+            decryptedTracks.push({ ...t, filename: resolved.key, path: resolved.decPath });
         }
         if (decryptedTracks.length === 0) {
             console.warn('[Zion] audio:load — sin stems desencriptados (¿faltan archivos en .zionpack?)');
@@ -190,9 +388,36 @@ app.whenReady().then(() => {
         }
     });
 
-    ipcMain.on('audio:set-volume', () => {});
-    ipcMain.on('audio:set-mute', () => {});
-    ipcMain.on('audio:set-solo', () => {});
+    ipcMain.on('audio:set-volume', (_e, id, vol) => {
+        try {
+            if (!engine || typeof engine.setTrackVolume !== 'function') return;
+            const tid = id != null ? String(id) : '';
+            const v = typeof vol === 'number' ? vol : parseFloat(String(vol));
+            engine.setTrackVolume(tid, Number.isFinite(v) ? v : 1);
+        } catch (e) {
+            console.error('[Zion] audio:set-volume', e);
+        }
+    });
+    ipcMain.on('audio:set-mute', (_e, id, muted) => {
+        try {
+            if (!engine || typeof engine.setTrackMute !== 'function') return;
+            const tid = id != null ? String(id) : '';
+            const m = muted === true || muted === 1 || muted === '1' || muted === 'true';
+            engine.setTrackMute(tid, m);
+        } catch (e) {
+            console.error('[Zion] audio:set-mute', e);
+        }
+    });
+    ipcMain.on('audio:set-solo', (_e, id, solo) => {
+        try {
+            if (!engine || typeof engine.setTrackSolo !== 'function') return;
+            const tid = id != null ? String(id) : '';
+            const s = solo === true || solo === 1 || solo === '1' || solo === 'true';
+            engine.setTrackSolo(tid, s);
+        } catch (e) {
+            console.error('[Zion] audio:set-solo', e);
+        }
+    });
 
     ipcMain.handle('audio:get-hwid', () => (engine ? engine.getHardwareId() : 'NO-ENGINE'));
 

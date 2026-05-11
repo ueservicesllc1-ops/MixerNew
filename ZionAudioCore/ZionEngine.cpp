@@ -17,8 +17,33 @@
 #include <cmath>
 #include <algorithm>
 #include <memory>
+#include <sstream>
+#include <iomanip>
 
 using namespace emscripten;
+
+namespace {
+
+constexpr float kVuSmooth = 0.8f;   // smoothed = smoothed * kVuSmooth + instant * (1 - kVuSmooth)
+constexpr float kVuMuteDecay = 0.85f;
+
+static std::string floatToJson(float v) {
+    std::ostringstream o;
+    o << std::fixed << std::setprecision(4) << v;
+    return o.str();
+}
+
+static std::string jsonEscapeTrackId(const std::string& id) {
+    std::string o;
+    o.reserve(id.size() + 8);
+    for (char c : id) {
+        if (c == '"' || c == '\\') o += '\\';
+        o += c;
+    }
+    return o;
+}
+
+} // namespace
 
 struct Track {
     std::vector<float> samplesL;
@@ -28,6 +53,9 @@ struct Track {
     bool  solo     = false;
     bool  loaded   = false;
     bool  isGuide  = false;
+    /** Smoothed per-block peak / RMS of post-fader samples (respects mute/solo). */
+    float smoothedPeak = 0.0f;
+    float smoothedRms  = 0.0f;
 };
 
 class ZionEngine {
@@ -96,6 +124,32 @@ public:
         return maxDur;
     }
 
+    float getTrackMeterPeak(const std::string& id) const {
+        auto it = tracks.find(id);
+        if (it == tracks.end() || !it->second.loaded) return 0.0f;
+        return it->second.smoothedPeak;
+    }
+
+    float getTrackMeterRms(const std::string& id) const {
+        auto it = tracks.find(id);
+        if (it == tracks.end() || !it->second.loaded) return 0.0f;
+        return it->second.smoothedRms;
+    }
+
+    std::string getTrackLevelsJson() const {
+        std::string j = "[";
+        bool first = true;
+        for (const auto& kv : tracks) {
+            if (!kv.second.loaded) continue;
+            if (!first) j += ",";
+            first = false;
+            j += "{\"trackId\":\"" + jsonEscapeTrackId(kv.first) + "\",\"peak\":" + floatToJson(kv.second.smoothedPeak)
+               + ",\"rms\":" + floatToJson(kv.second.smoothedRms) + "}";
+        }
+        j += "]";
+        return j;
+    }
+
     // ---------- Audio processing ----------
     // Called by JS ScriptProcessorNode every audio block.
     // Returns pointer to output buffer (4 interleaved floats: MusicL, MusicR, GuideL, GuideR).
@@ -107,26 +161,38 @@ public:
         // Clear output
         std::fill(outputBuffer.begin(), outputBuffer.begin() + frames * 4, 0.0f);
 
-        if (!playing) {
-            return reinterpret_cast<uintptr_t>(outputBuffer.data());
-        }
-
-        // Detect any solo track
+        // Detect any solo track (same rule as mix: muted or non-solo when any solo → no audio)
         bool anySolo = false;
         for (auto& kv : tracks) {
             if (kv.second.solo) { anySolo = true; break; }
         }
 
-        // Mix all tracks
+        if (!playing) {
+            for (auto& kv : tracks) {
+                kv.second.smoothedPeak *= 0.92f;
+                kv.second.smoothedRms *= 0.92f;
+            }
+            return reinterpret_cast<uintptr_t>(outputBuffer.data());
+        }
+
+        // Mix all tracks + real per-track VU (post-fader, pre-bus; obeys mute/solo)
         for (auto& kv : tracks) {
-            const Track& t = kv.second;
+            Track& t = kv.second;
             if (!t.loaded) continue;
 
             bool effectiveMute = t.muted || (anySolo && !t.solo);
-            if (effectiveMute) continue;
-
             float vol = t.volume * masterVolume;
             long long trackLen = static_cast<long long>(t.samplesL.size());
+
+            if (effectiveMute) {
+                t.smoothedPeak = t.smoothedPeak * kVuMuteDecay;
+                t.smoothedRms = t.smoothedRms * kVuMuteDecay;
+                continue;
+            }
+
+            float blockPeak = 0.0f;
+            double sumSq = 0.0;
+            int nSamp = 0;
 
             for (int i = 0; i < frames; i++) {
                 double exactPos = playPosition + (i * tempoRatio);
@@ -134,9 +200,14 @@ public:
                 double frac = exactPos - posInt;
 
                 if (posInt >= 0 && posInt < trackLen - 1) {
-                    // Linear interpolation
                     float sL = t.samplesL[posInt] + frac * (t.samplesL[posInt + 1] - t.samplesL[posInt]);
                     float sR = t.samplesR[posInt] + frac * (t.samplesR[posInt + 1] - t.samplesR[posInt]);
+
+                    float mono = 0.5f * (std::fabs(sL) + std::fabs(sR));
+                    float lev = mono * vol;
+                    blockPeak = std::max(blockPeak, lev);
+                    sumSq += static_cast<double>(lev) * static_cast<double>(lev);
+                    nSamp++;
 
                     if (t.isGuide) {
                         outputBuffer[i * 4 + 2] += sL * vol;
@@ -146,6 +217,15 @@ public:
                         outputBuffer[i * 4 + 1] += sR * vol;
                     }
                 }
+            }
+
+            if (nSamp > 0) {
+                float rms = static_cast<float>(std::sqrt(sumSq / static_cast<double>(nSamp)));
+                t.smoothedPeak = t.smoothedPeak * kVuSmooth + blockPeak * (1.0f - kVuSmooth);
+                t.smoothedRms = t.smoothedRms * kVuSmooth + rms * (1.0f - kVuSmooth);
+            } else {
+                t.smoothedPeak *= 0.9f;
+                t.smoothedRms *= 0.9f;
             }
         }
 
@@ -205,4 +285,7 @@ EMSCRIPTEN_BINDINGS(zion_audio_core) {
                                       }));
     function("processBlock",          optional_override([](int frames) { return g_engine.processBlock(frames); }));
     function("allocateBuffer",        optional_override([](int count) { return g_engine.allocateBuffer(count); }));
+    function("getTrackMeterPeak",     optional_override([](std::string id) { return g_engine.getTrackMeterPeak(id); }));
+    function("getTrackMeterRms",      optional_override([](std::string id) { return g_engine.getTrackMeterRms(id); }));
+    function("getTrackLevelsJson",    optional_override([]() { return g_engine.getTrackLevelsJson(); }));
 }

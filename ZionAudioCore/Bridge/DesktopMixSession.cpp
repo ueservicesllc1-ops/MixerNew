@@ -1,5 +1,11 @@
 #include "DesktopMixSession.h"
 #include <cmath>
+#include <iostream>
+
+static void NativeLog(const juce::String& msg) {
+    juce::Logger::writeToLog(msg);
+    std::cerr << msg << std::endl;
+}
 
 // --- PositionableSoundTouchBridge ---
 
@@ -24,12 +30,16 @@ void PositionableSoundTouchBridge::prepareToPlay(int samplesPerBlockExpected, do
     blockSize = juce::jmax(256, samplesPerBlockExpected);
     readerPull.setSize(numChannels, blockSize);
     readerInterleaved.resize((size_t) blockSize * (size_t) numChannels);
+    if (reader != nullptr)
+        reader->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
     configureStretch();
     prepared = true;
 }
 
 void PositionableSoundTouchBridge::releaseResources() {
     prepared = false;
+    if (reader != nullptr)
+        reader->releaseResources();
     readerPull.setSize(0, 0);
     interleavedOut.clear();
     readerInterleaved.clear();
@@ -37,13 +47,19 @@ void PositionableSoundTouchBridge::releaseResources() {
 }
 
 void PositionableSoundTouchBridge::setTempoRatio(double ratio) {
-    tempoRatio = juce::jlimit(0.5, 1.5, ratio);
+    const double next = juce::jlimit(0.5, 1.5, ratio);
+    if (prepared && std::abs(next - tempoRatio) > 1.0e-6)
+        stretch.clear();
+    tempoRatio = next;
     if (prepared)
         configureStretch();
 }
 
 void PositionableSoundTouchBridge::setPitchSemitones(double semitones) {
-    pitchSemitones = juce::jlimit(-12.0, 12.0, semitones);
+    const double next = juce::jlimit(-12.0, 12.0, semitones);
+    if (prepared && std::abs(next - pitchSemitones) > 1.0e-6)
+        stretch.clear();
+    pitchSemitones = next;
     if (prepared)
         configureStretch();
 }
@@ -58,6 +74,9 @@ void PositionableSoundTouchBridge::pullFromReader(int frames) {
 void PositionableSoundTouchBridge::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) {
     if (!prepared || bufferToFill.buffer == nullptr || reader == nullptr) return;
 
+    // Siempre pasar por SoundTouch para stems de música (incluso tono/tempo nominal).
+    // Un atajo "neutral" que leía directo del reader cambiaba la latencia y el consumo del
+    // buffer al volver de ±semitonos a 0 → click/guías (sin ST) y stems quedaban desfasados.
     const int ch = numChannels;
     const int framesOut = bufferToFill.numSamples;
     if (framesOut <= 0) return;
@@ -138,6 +157,15 @@ static bool classifyGuideStem(const juce::String& name) {
     auto s = name.toLowerCase();
     return s.contains("click") || s.contains("guide") || s.contains("guia") || s.contains("cue");
 }
+static bool classifyClickStem(const juce::String& name) {
+    return name.toLowerCase().contains("click");
+}
+
+// Transparent desktop mix gains (no auto normalization/compression).
+constexpr float kMusicBusGain = 1.0f;
+constexpr float kGuideBusGain = 1.0f;
+constexpr float kClickBusGain = 0.90f;
+constexpr float kMasterTrim = 0.92f;
 
 DesktopMixSession::DesktopMixSession() = default;
 
@@ -160,7 +188,33 @@ void DesktopMixSession::clear() {
     scratch.setSize(0, 0);
 }
 
+void DesktopMixSession::resyncTransportsToGuide() {
+    juce::AudioTransportSource* ref = nullptr;
+    for (auto& s : stemSlots) {
+        if (s.isGuide && s.transport != nullptr) {
+            ref = s.transport.get();
+            break;
+        }
+    }
+    if (ref == nullptr) {
+        for (auto& s : stemSlots) {
+            if (s.transport != nullptr) {
+                ref = s.transport.get();
+                break;
+            }
+        }
+    }
+    if (ref == nullptr) return;
+    const double t = ref->getCurrentPosition();
+    for (auto& s : stemSlots) {
+        if (s.transport == nullptr) continue;
+        if (s.transport.get() == ref) continue;
+        s.transport->setPosition(t);
+    }
+}
+
 void DesktopMixSession::setPitchSemitones(float semitones) {
+    const double prevPitch = pitchSemitones;
     pitchSemitones = (double) juce::jlimit(-12.0f, 12.0f, semitones);
     const double pitchRatio = std::pow(2.0, pitchSemitones / 12.0);
     juce::Logger::writeToLog("[PITCH] requested semitones: " + juce::String(pitchSemitones, 2));
@@ -169,6 +223,9 @@ void DesktopMixSession::setPitchSemitones(float semitones) {
     juce::Logger::writeToLog("[PITCH] GuideBus bypassed");
     juce::Logger::writeToLog("[PITCH] Click/Guide remain original");
     updateMusicSoundTouchParams();
+    // SoundTouch deja cola desalineada vs. click (sin ST); al volver a 0 alineamos reloj de todos los transports.
+    if (std::abs(prevPitch) >= 1.0e-3 && std::abs(pitchSemitones) < 1.0e-3)
+        resyncTransportsToGuide();
 }
 
 void DesktopMixSession::setTempoRatio(float ratio) {
@@ -189,31 +246,72 @@ void DesktopMixSession::updateMusicSoundTouchParams() {
     }
 }
 
+juce::String DesktopMixSession::getTrackLevelsCsv() const {
+    juce::String out;
+    for (const auto& s : stemSlots) {
+        const juce::String key = s.clientTrackId.isNotEmpty() ? s.clientTrackId : s.logName;
+        if (key.isEmpty()) continue;
+        if (out.isNotEmpty()) out << ',';
+        out << key << ':' << juce::String(s.lastMeterLevel, 5);
+    }
+    return out;
+}
+
+DesktopMixSession::StemSlot* DesktopMixSession::findStemForClientId(const juce::String& id) {
+    if (id.isEmpty()) return nullptr;
+    for (auto& s : stemSlots) {
+        if (s.clientTrackId.isNotEmpty() && s.clientTrackId == id) return &s;
+    }
+    for (auto& s : stemSlots) {
+        if (s.logName == id) return &s;
+    }
+    return nullptr;
+}
+
+void DesktopMixSession::setTrackVolumeForClientId(const juce::String& clientTrackId, float linearGain) {
+    auto* s = findStemForClientId(clientTrackId);
+    if (s == nullptr) return;
+    s->gain = juce::jlimit(0.0f, 4.0f, linearGain);
+}
+
+void DesktopMixSession::setTrackMutedForClientId(const juce::String& clientTrackId, bool muted) {
+    auto* s = findStemForClientId(clientTrackId);
+    if (s == nullptr) return;
+    s->muted = muted;
+}
+
+void DesktopMixSession::setTrackSoloForClientId(const juce::String& clientTrackId, bool solo) {
+    auto* s = findStemForClientId(clientTrackId);
+    if (s == nullptr) return;
+    s->solo = solo;
+}
+
 bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
                                   const juce::File& stemsRoot,
-                                  const std::vector<std::pair<juce::String, juce::String>>& pathAndStemName) {
+                                  const std::vector<DesktopStemLoadSpec>& specs) {
     clear();
 
     bool any = false;
     juce::int64 maxLen = 0;
 
-    for (const auto& entry : pathAndStemName) {
-        const juce::String& p = entry.first;
-        const juce::String& stemNameIn = entry.second;
+    for (const auto& spec : specs) {
+        const juce::String& p = spec.path;
+        const juce::String& stemNameIn = spec.stemNameHint;
         if (p.isEmpty()) continue;
 
         juce::File file(juce::File::isAbsolutePath(p) ? juce::File(p) : stemsRoot.getChildFile(p));
 
         if (!file.existsAsFile()) {
-            juce::Logger::writeToLog("DesktopMixSession: missing file " + file.getFullPathName());
+        NativeLog("DesktopMixSession: missing file " + file.getFullPathName());
             continue;
         }
 
         juce::AudioFormatReader* raw = fm.createReaderFor(file);
         if (raw == nullptr) {
-            juce::Logger::writeToLog("DesktopMixSession: cannot read " + file.getFullPathName());
+            NativeLog("DesktopMixSession: cannot read " + file.getFullPathName());
             continue;
         }
+        NativeLog("[JUCE] opened reader: " + file.getFullPathName());
 
         auto frs = std::make_unique<juce::AudioFormatReaderSource>(raw, true);
         const juce::int64 len = frs->getTotalLength();
@@ -227,8 +325,13 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
 
         StemSlot slot;
         slot.isGuide = guide;
+        slot.isClick = classifyClickStem(stemLabel);
         slot.logName = stemLabel;
+        slot.clientTrackId = spec.clientTrackId;
+        slot.lastMeterLevel = 0.f;
         slot.numChannels = nCh;
+        // Keep music centered by default to preserve clarity/stereo image.
+        slot.pan = guide ? -1.0f : 0.0f;
         slot.reader = std::move(frs);
 
         juce::AudioFormatReaderSource* readerPtr = slot.reader.get();
@@ -236,11 +339,11 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
 
         if (guide) {
             slot.transport->setSource(readerPtr, 0, nullptr, readerSr);
-            juce::Logger::writeToLog("[AUDIO ROUTING] track " + stemLabel + " -> GuideBus LEFT DRY");
+            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> GuideBus LEFT DRY");
         } else {
             slot.musicBridge = std::make_unique<PositionableSoundTouchBridge>(std::move(slot.reader), nCh, readerSr);
             slot.transport->setSource(slot.musicBridge.get(), 0, nullptr, readerSr);
-            juce::Logger::writeToLog("[AUDIO ROUTING] track " + stemLabel + " -> MusicBus RIGHT (SoundTouch tempo)");
+            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> MusicBus RIGHT (SoundTouch tempo)");
         }
 
         stemSlots.push_back(std::move(slot));
@@ -264,6 +367,7 @@ void DesktopMixSession::setStemsPlaying(bool shouldPlay) {
 
 void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sampleRate) {
     hostSampleRate = sampleRate > 0 ? sampleRate : 44100.0;
+    debugBlockCounter = 0;
 
     int maxCh = 2;
     for (auto& s : stemSlots)
@@ -275,6 +379,11 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
             s.transport->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
     }
     updateMusicSoundTouchParams();
+    NativeLog(
+        "[JUCE AUDIO] device_sr=" + juce::String(hostSampleRate, 2) +
+        " buffer_size=" + juce::String(samplesPerBlockExpected) +
+        " output_channels=2 track_count=" + juce::String((int) stemSlots.size())
+    );
 }
 
 void DesktopMixSession::releaseResources() {
@@ -296,6 +405,20 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
     const int outChannels = bufferToFill.buffer->getNumChannels();
     float* outR = outChannels > 1 ? bufferToFill.buffer->getWritePointer(1, start) : outL;
 
+    ++debugBlockCounter;
+    const bool emitDebug = (debugBlockCounter % 24) == 0; // ~2 times/s at 48k, 1024 block
+    float masterPeak = 0.0f;
+    double masterSumSq = 0.0;
+    int masterSamples = 0;
+
+    bool anySolo = false;
+    for (const auto& s : stemSlots) {
+        if (s.solo) {
+            anySolo = true;
+            break;
+        }
+    }
+
     for (auto& s : stemSlots) {
         if (s.transport == nullptr) continue;
 
@@ -304,21 +427,77 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         juce::AudioSourceChannelInfo info(&scratch, 0, nSamp);
         s.transport->getNextAudioBlock(info);
 
-        if (s.isGuide) {
-            for (int i = 0; i < nSamp; ++i) {
-                float sum = 0.f;
-                for (int c = 0; c < useCh; ++c)
-                    sum += scratch.getSample(c, i);
-                outL[i] += sum / (float) useCh;
+        const bool audible = !s.muted && (!anySolo || s.solo);
+        float trackPeak = 0.0f;
+
+        if (audible) {
+            const float pan = juce::jlimit(-1.0f, 1.0f, s.pan);
+            const float panL = std::sqrt(0.5f * (1.0f - pan));
+            const float panR = std::sqrt(0.5f * (1.0f + pan));
+            if (s.isGuide) {
+                const float guideGain = s.isClick ? kClickBusGain : kGuideBusGain;
+                for (int i = 0; i < nSamp; ++i) {
+                    const float inL = scratch.getSample(0, i);
+                    const float inR = (useCh > 1) ? scratch.getSample(1, i) : inL;
+                    const float mono = 0.5f * (inL + inR);
+                    const float gL = mono * s.gain * guideGain * panL;
+                    const float gR = mono * s.gain * guideGain * panR;
+                    outL[i] += gL;
+                    outR[i] += gR;
+                    const float ag = juce::jmax(std::abs(gL), std::abs(gR));
+                    if (ag > trackPeak) trackPeak = ag;
+                }
+            } else {
+                for (int i = 0; i < nSamp; ++i) {
+                    const float inL = scratch.getSample(0, i);
+                    const float inR = (useCh > 1) ? scratch.getSample(1, i) : inL;
+                    const float mL = inL * s.gain * kMusicBusGain * panL;
+                    const float mR = inR * s.gain * kMusicBusGain * panR;
+                    outL[i] += mL;
+                    outR[i] += mR;
+                    const float am = juce::jmax(std::abs(mL), std::abs(mR));
+                    if (am > trackPeak) trackPeak = am;
+                }
             }
+            s.lastMeterLevel = juce::jlimit(0.f, 1.5f, juce::jmax(trackPeak, s.lastMeterLevel * 0.94f));
         } else {
-            for (int i = 0; i < nSamp; ++i) {
-                float sum = 0.f;
-                for (int c = 0; c < useCh; ++c)
-                    sum += scratch.getSample(c, i);
-                outR[i] += sum / (float) useCh;
-            }
+            s.lastMeterLevel = juce::jmax(0.f, s.lastMeterLevel * 0.92f);
         }
+
+        if (emitDebug) {
+            NativeLog(
+                "[JUCE AUDIO] track=" + s.logName +
+                " peak=" + juce::String(trackPeak, 4) +
+                " gain=" + juce::String(s.gain, 3) +
+                " pan=" + juce::String(s.pan, 2) +
+                " muted=" + juce::String((int) s.muted) +
+                " solo=" + juce::String((int) s.solo) +
+                " audible=" + juce::String((int) audible)
+            );
+        }
+    }
+
+    for (int i = 0; i < nSamp; ++i) {
+        // Fixed transparent trim to keep headroom without compression/limiting.
+        outL[i] *= kMasterTrim;
+        outR[i] *= kMasterTrim;
+        const float l = outL[i];
+        const float r = outR[i];
+        const float p = juce::jmax(std::abs(l), std::abs(r));
+        if (p > masterPeak) masterPeak = p;
+        masterSumSq += (double) l * (double) l + (double) r * (double) r;
+        masterSamples += 2;
+    }
+
+    if (masterPeak > 1.0f) {
+        NativeLog("[CLIPPING DETECTED] masterPeak=" + juce::String(masterPeak, 4));
+    }
+    if (emitDebug && masterSamples > 0) {
+        const float masterRms = (float) std::sqrt(masterSumSq / (double) masterSamples);
+        NativeLog(
+            "[JUCE AUDIO] master peak=" + juce::String(masterPeak, 4) +
+            " master RMS=" + juce::String(masterRms, 4)
+        );
     }
 }
 

@@ -17,10 +17,11 @@
     "release": "npm run build:android && npm run upload:apk",
     "lint": "eslint .",
     "preview": "vite preview",
-    "desktop": "electron electron/main.cjs",
+    "desktop": "npm run build && electron electron/main.cjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "zion-stage": "node scripts/launch-zion-stage.mjs",
-    "rebuild:native": "cmake-js compile --directory ZionAudioCore"
+    "rebuild:native": "cmake-js compile --directory ZionAudioCore",
+    "build:wasm": "powershell -ExecutionPolicy Bypass -File ZionAudioCore/build_wasm.ps1"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.0",

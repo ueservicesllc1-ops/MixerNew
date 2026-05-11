@@ -4,7 +4,7 @@
  */
 
 import { NextGenMixerBridge } from './NextGenNativeEngine.js';
-import ZionAudioCoreModule from './wasm/zion_audio_core_wasm.js';
+import { DesktopAudioBridge } from './DesktopAudioBridge.js';
 import soundtouchWorkletUrl from './worklets/soundtouch-worklet.js?url';
 
 let _nativeEngine = null;
@@ -17,6 +17,9 @@ async function getNative() {
 }
 
 const IS_NATIVE = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+const IS_DESKTOP = typeof window !== 'undefined' && (
+    window.electronAPI?.isDesktop === true || window.zionNative?.isDesktop === true
+);
 
 class AudioEngine {
     constructor() {
@@ -47,13 +50,19 @@ class AudioEngine {
         this._durationHint = 0;
         /** Stems loaded into Zion WASM (Electron desktop mixer). */
         this._wasmTrackCount = 0;
+        /** Desktop WASM: throttled [VU] console logs (~3/s). */
+        this._wasmVuLogInterval = null;
+        /** ~30fps batch read of WASM VU peaks (reduces per-LED FFI churn). */
+        this._wasmVuPollInterval = null;
+        this._wasmVuPeakMap = new Map();
+        this._wasmVuLastBatchLog = 0;
 
         // WASM State
         this.wasm = null;
         this.isWASMReady = false;
         this._wasmScriptProcessor = null; // ScriptProcessorNode that calls C++ processBlock
 
-        if (!IS_NATIVE) {
+        if (!IS_NATIVE && !IS_DESKTOP) {
             this._initWebAudio();
         }
     }
@@ -148,9 +157,20 @@ class AudioEngine {
     }
 
     async init() {
-        if (!IS_NATIVE && !this.isWASMReady) {
+        if (IS_DESKTOP) {
+            if (!DesktopAudioBridge.isDesktop()) {
+                console.warn('[DESKTOP AUDIO] zionNative.loadSong not available — carga fallará hasta que el preload exponga el bridge');
+            }
+            this.isWASMReady = false;
+            this.wasm = null;
+            console.log('[DESKTOP AUDIO] JUCE native path — WASM not loaded');
+            return;
+        }
+
+        if (!IS_NATIVE && !IS_DESKTOP && !this.isWASMReady) {
             try {
                 console.log("[AudioEngine] Initializing Zion Core C++ WASM...");
+                const ZionAudioCoreModule = (await import('./wasm/zion_audio_core_wasm.js')).default;
                 this.wasm = await ZionAudioCoreModule({
                     locateFile: (path) => {
                         if (path.endsWith('.wasm')) {
@@ -205,6 +225,45 @@ class AudioEngine {
     // ---- Track loading ----
     async addTracksBatch(tracksArray) {
         this.resetTiming();
+
+        if (IS_DESKTOP) {
+            if (!DesktopAudioBridge.isDesktop()) {
+                const msg = '[DESKTOP AUDIO] Native JUCE bridge missing (zionNative.loadSong)';
+                console.error(msg);
+                throw new Error(msg);
+            }
+            console.log('[DESKTOP AUDIO] loading native JUCE engine, not WASM');
+            this._trackMeta.clear();
+            const payload = [];
+            for (const t of tracksArray) {
+                if (t.isVisualOnly) continue;
+                const filename = t.filename || t.path || t.cacheKey || t.localPath;
+                if (!filename || typeof filename !== 'string') continue;
+                const fn = String(filename).trim();
+                this._trackMeta.set(t.id, {
+                    path: fn,
+                    volume: 1,
+                    muted: false,
+                    solo: false,
+                    isVisualOnly: false,
+                    buffer: null,
+                });
+                const nm = (t.name || t.id || '').toLowerCase();
+                payload.push({
+                    id: t.id,
+                    name: t.name,
+                    filename: fn,
+                    isGuide: !!t.isGuide || nm.includes('guide') || nm.includes('guia') || nm.includes('cue'),
+                    isClick: !!t.isClick || nm.includes('click'),
+                });
+            }
+            await DesktopAudioBridge.loadSongFromPaths(payload);
+            try {
+                const d = await DesktopAudioBridge.getDuration();
+                if (typeof d === 'number' && d > 1) this._durationHint = d;
+            } catch { /* ignore */ }
+            return;
+        }
 
         if (this.isWASMReady && this.wasm) {
             this._wasmTrackCount = 0;
@@ -276,6 +335,7 @@ class AudioEngine {
     }
 
     async addTrack(id, audioBuffer, sourceData = null, options = {}) {
+        if (IS_DESKTOP) return;
         if (this.isWASMReady && this.wasm) {
             if (!options.isVisualOnly) await this._loadTrackToWASM(id, audioBuffer, sourceData);
             return;
@@ -321,6 +381,13 @@ class AudioEngine {
 
     async clear() {
         this.resetTiming();
+        if (IS_DESKTOP) {
+            this._trackMeta.clear();
+            try {
+                DesktopAudioBridge.stop();
+            } catch { /* ignore */ }
+            return;
+        }
         if (this.isWASMReady && this.wasm) {
             this.wasm.clearTracks();
             this._wasmTrackCount = 0;
@@ -346,37 +413,54 @@ class AudioEngine {
     // ---- Volume / Mute / Solo / Pan ----
     setMasterVolume(vol) {
         const v = Math.max(0, Math.min(1, isFinite(vol) ? vol : 1));
+        if (IS_DESKTOP) { /* IPC master TBD en main process */ return; }
         if (this.isWASMReady && this.wasm) { this.wasm.setVolume(v); }
         else if (IS_NATIVE) { void NextGenMixerBridge.setMasterVolume({ volume: v }); }
         else if (this.masterGain) { this.masterGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.015); }
     }
 
     setTrackVolume(id, vol) {
+        if (IS_DESKTOP) {
+            const m = this._trackMeta.get(id);
+            if (m) { m.volume = vol; DesktopAudioBridge.setTrackVolume(id, vol); }
+            return;
+        }
         if (this.isWASMReady && this.wasm) { this.wasm.setTrackVolume(id, vol); }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.volume = vol; getNative().then(n => n.setTrackVolume(id, vol)); } }
         else { const t = this.tracks.get(id); if (t) { t.volume = vol; this._updateMuteSoloState(); } }
     }
 
     setTrackMute(id, val) {
+        if (IS_DESKTOP) {
+            const m = this._trackMeta.get(id);
+            if (m) { m.muted = val; DesktopAudioBridge.setTrackMute(id, val); }
+            return;
+        }
         if (this.isWASMReady && this.wasm) { this.wasm.setTrackMute(id, val); }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.muted = val; getNative().then(n => n.setTrackMute(id, val)); } }
         else { const t = this.tracks.get(id); if (t) { t.muted = val; this._updateMuteSoloState(); } }
     }
 
     setTrackPan(id, pan) {
+        if (IS_DESKTOP) { return; }
         if (this.isWASMReady && this.wasm) { /* future C++ pan */ }
         else if (IS_NATIVE) { getNative().then(n => n.setTrackPan?.(id, pan)); }
         else { const t = this.tracks.get(id); if (t?.panner) t.panner.pan.setTargetAtTime(pan, this.ctx.currentTime, 0.05); }
     }
 
     setTrackSolo(id, val) {
+        if (IS_DESKTOP) {
+            const m = this._trackMeta.get(id);
+            if (m) { m.solo = val; DesktopAudioBridge.setTrackSolo(id, val); }
+            return;
+        }
         if (this.isWASMReady && this.wasm) { this.wasm.setTrackSolo(id, val); }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.solo = val; getNative().then(n => n.setTrackSolo?.(id, val)); } }
         else { const t = this.tracks.get(id); if (t) { t.solo = val; this._updateMuteSoloState(); } }
     }
 
     _updateMuteSoloState() {
-        if (IS_NATIVE || (this.isWASMReady && this.wasm)) return;
+        if (IS_NATIVE || IS_DESKTOP || (this.isWASMReady && this.wasm)) return;
         let anySolo = false;
         for (const t of this.tracks.values()) { if (t.solo) { anySolo = true; break; } }
         for (const t of this.tracks.values()) { this._updateTrackNodeGain(t, anySolo); }
@@ -389,8 +473,27 @@ class AudioEngine {
     }
 
     getTrackLevel(id) {
+        if (IS_DESKTOP) {
+            if (!this.isPlaying) return 0;
+            const m = this._trackMeta.get(id);
+            if (!m || m.muted) return 0;
+            return this._nativeLevels.get(id) ?? 0;
+        }
+        if (this.isWASMReady && this.wasm?.getTrackMeterPeak) {
+            if (!this.isPlaying) return 0;
+            if (this._wasmVuPollInterval && this._wasmVuPeakMap.has(id)) {
+                const p = this._wasmVuPeakMap.get(id);
+                return Math.min(1, Math.max(0, typeof p === 'number' ? p : 0));
+            }
+            try {
+                const p = this.wasm.getTrackMeterPeak(id);
+                if (typeof p !== 'number' || !Number.isFinite(p)) return 0;
+                return Math.min(1, Math.max(0, p));
+            } catch {
+                return 0;
+            }
+        }
         if (!this.isPlaying) return 0;
-        if (this.isWASMReady && this.wasm) return 0; // future: implement RMS in C++
         if (IS_NATIVE) { const m = this._trackMeta.get(id); if (!m || m.muted) return 0; return this._nativeLevels.get(id) ?? 0; }
         const t = this.tracks.get(id);
         if (!t?.analyser) return 0;
@@ -401,15 +504,110 @@ class AudioEngine {
         return max * t.volume;
     }
 
+    /**
+     * Zion Desktop (WASM): snapshot of per-track peak/rms from C++ engine (real audio, not simulated).
+     * @returns {{ trackId: string, peak: number, rms: number }[]}
+     */
+    getTrackLevels() {
+        if (IS_DESKTOP) return [];
+        if (!this.isWASMReady || !this.wasm?.getTrackLevelsJson) return [];
+        try {
+            return JSON.parse(this.wasm.getTrackLevelsJson());
+        } catch {
+            return [];
+        }
+    }
+
+    _startWasmVuLogging() {
+        if (this._wasmVuLogInterval || !this.isWASMReady || !this.wasm?.getTrackLevelsJson) return;
+        this._wasmVuLogInterval = setInterval(() => {
+            if (!this.isPlaying || !this.isWASMReady || !this.wasm?.getTrackLevelsJson) return;
+            try {
+                const levels = JSON.parse(this.wasm.getTrackLevelsJson());
+                if (!levels.length) return;
+                console.log('[VU] levels updated', levels.length, 'tracks');
+                for (const row of levels) {
+                    const pk = typeof row.peak === 'number' ? row.peak : 0;
+                    const rm = typeof row.rms === 'number' ? row.rms : 0;
+                    if (pk > 0.01 || rm > 0.01) {
+                        console.log(`[VU] track ${row.trackId} peak ${pk.toFixed(2)} rms ${rm.toFixed(2)}`);
+                    }
+                }
+            } catch { /* ignore */ }
+        }, 330);
+    }
+
+    _stopWasmVuLogging() {
+        if (this._wasmVuLogInterval) {
+            clearInterval(this._wasmVuLogInterval);
+            this._wasmVuLogInterval = null;
+        }
+    }
+
+    _startWasmVuPoll() {
+        if (this._wasmVuPollInterval || !this.isWASMReady || !this.wasm?.getTrackLevelsJson) return;
+        this._wasmVuPollInterval = setInterval(() => {
+            if (!this.isPlaying || !this.isWASMReady || !this.wasm?.getTrackLevelsJson) return;
+            try {
+                const levels = JSON.parse(this.wasm.getTrackLevelsJson());
+                this._wasmVuPeakMap.clear();
+                for (const row of levels) {
+                    const tid = row.trackId || row.id;
+                    if (tid) this._wasmVuPeakMap.set(tid, Math.min(1, Math.max(0, row.peak ?? 0)));
+                }
+                const now = performance.now();
+                if (now - this._wasmVuLastBatchLog > 450) {
+                    this._wasmVuLastBatchLog = now;
+                    console.log('[VU] native levels received', levels.length);
+                    console.log('[VU] mapped track levels count', this._wasmVuPeakMap.size);
+                }
+            } catch { /* ignore */ }
+        }, 33);
+    }
+
+    _stopWasmVuPoll() {
+        if (this._wasmVuPollInterval) {
+            clearInterval(this._wasmVuPollInterval);
+            this._wasmVuPollInterval = null;
+        }
+        this._wasmVuPeakMap.clear();
+    }
+
     setSongPreparationActive(preparing) {
-        if (!IS_NATIVE) return;
+        if (!IS_NATIVE && !IS_DESKTOP) return;
         this._songPreparationActive = !!preparing;
         if (this._songPreparationActive) {
             if (this._levelPollInterval) { clearInterval(this._levelPollInterval); this._levelPollInterval = null; }
             if (this._updater) { cancelAnimationFrame(this._updater); this._updater = null; }
         } else if (this.isPlaying) {
-            getNative().then(n => { if (this.isPlaying) { this._startRAF(this._sessionId); this._startNativeLevelPoll(n); } });
+            if (IS_NATIVE) {
+                getNative().then(n => { if (this.isPlaying) { this._startRAF(this._sessionId); this._startNativeLevelPoll(n); } });
+            } else if (IS_DESKTOP) {
+                this._startRAF(this._sessionId);
+                this._startDesktopLevelPoll();
+            }
         }
+    }
+
+    _startDesktopLevelPoll() {
+        if (this._levelPollInterval) clearInterval(this._levelPollInterval);
+        this._levelPollInterval = setInterval(async () => {
+            if (!this.isPlaying || this._songPreparationActive) return;
+            try {
+                const raw = await DesktopAudioBridge.getTrackLevels();
+                if (raw) {
+                    raw.split(',').forEach((entry) => {
+                        const colon = entry.indexOf(':');
+                        if (colon > 0) {
+                            this._nativeLevels.set(
+                                entry.slice(0, colon),
+                                parseFloat(entry.slice(colon + 1)) || 0
+                            );
+                        }
+                    });
+                }
+            } catch { /* ignore */ }
+        }, 50);
     }
 
     _startNativeLevelPoll(native) {
@@ -433,6 +631,7 @@ class AudioEngine {
 
     removeTrack(id) {
         if (this.isWASMReady && this.wasm) { this.wasm.removeTrack(id); return; }
+        if (IS_DESKTOP) { this._trackMeta.delete(id); return; }
         if (IS_NATIVE) { this._trackMeta.delete(id); getNative().then(n => n.removeTrack?.(id)); return; }
         const t = this.tracks.get(id);
         if (t) {
@@ -445,6 +644,10 @@ class AudioEngine {
     // ---- Tempo / Pitch ----
     setTempo(ratio) {
         this.tempoRatio = ratio;
+        if (IS_DESKTOP) {
+            DesktopAudioBridge.setTempoRatio(ratio);
+            return;
+        }
         if (IS_NATIVE) { getNative().then(n => n.setSpeed(ratio)); return; }
         
         if (this.isWASMReady && this.wasm) {
@@ -470,6 +673,10 @@ class AudioEngine {
 
     setPitch(semitones) {
         this.pitchSemitones = semitones;
+        if (IS_DESKTOP) {
+            DesktopAudioBridge.setPitchSemitones(semitones);
+            return;
+        }
         if (IS_NATIVE) { void NextGenMixerBridge.setPitchSemiTones({ semitones }); return; }
         
         this._updateWorkletGraph();
@@ -536,12 +743,26 @@ class AudioEngine {
         this.isPlaying = true;
         const sessionId = ++this._sessionId;
 
+        if (IS_DESKTOP) {
+            if (this.pausePosition > 0) DesktopAudioBridge.seek(this.pausePosition);
+            DesktopAudioBridge.play();
+            this._playStartWall = performance.now();
+            this._playStartPos = this.pausePosition;
+            this.lastFetchPos = this.pausePosition;
+            this.lastFetchTime = performance.now();
+            this._startRAF(sessionId);
+            this._startDesktopLevelPoll();
+            return;
+        }
+
         if (this.isWASMReady && this.wasm) {
             if (this.ctx?.state === 'suspended') await this.ctx.resume();
             this.wasm.seek(this.pausePosition); // Ensure we start at the seeked position
             this.wasm.play();
             this._playStartWall = performance.now();
             this._playStartPos = this.pausePosition;
+            this._startWasmVuLogging();
+            this._startWasmVuPoll();
             this._startRAF(sessionId);
             return;
         }
@@ -593,6 +814,20 @@ class AudioEngine {
         if (this.isWASMReady && this.wasm) {
             this.pausePosition = this.wasm.getCurrentPosition();
             this.wasm.pause();
+            this._stopWasmVuLogging();
+            this._stopWasmVuPoll();
+            if (this._updater) cancelAnimationFrame(this._updater);
+            return;
+        }
+
+        if (IS_DESKTOP) {
+            try {
+                this.pausePosition = await DesktopAudioBridge.getPosition();
+            } catch {
+                this.pausePosition = this.lastFetchPos;
+            }
+            DesktopAudioBridge.pause();
+            this._stopNativeLevelPoll();
             if (this._updater) cancelAnimationFrame(this._updater);
             return;
         }
@@ -621,6 +856,13 @@ class AudioEngine {
         if (this.isWASMReady && this.wasm) {
             this.wasm.seek(seconds);
             if (this.isPlaying) this._startRAF(this._sessionId);
+        } else if (IS_DESKTOP) {
+            DesktopAudioBridge.seek(seconds);
+            if (this.isPlaying) {
+                this._playStartWall = performance.now();
+                this._playStartPos = seconds;
+                this._startRAF(this._sessionId);
+            }
         } else if (IS_NATIVE) {
             const n = await getNative();
             await n.seek(seconds);
@@ -641,6 +883,11 @@ class AudioEngine {
 
         if (this.isWASMReady && this.wasm) {
             this.wasm.stop();
+            this._stopWasmVuLogging();
+            this._stopWasmVuPoll();
+        } else if (IS_DESKTOP) {
+            DesktopAudioBridge.stop();
+            this._stopNativeLevelPoll();
         } else if (IS_NATIVE) {
             const native = await getNative();
             await native.stop();
@@ -685,6 +932,7 @@ class AudioEngine {
     getCurrentTime() {
         if (this.isDragging) return this.dragTime;
         if (!this.isPlaying) return this.progress;
+        if (IS_DESKTOP) return Math.max(0, this.lastFetchPos);
         if (this.isWASMReady && this.wasm) return this.wasm.getCurrentPosition();
         const delta = Math.max(0, Math.min(0.5, (performance.now() - this.lastFetchTime) / 1000));
         return Math.max(0, this.lastFetchPos + delta * (this.tempoRatio || 1));
@@ -693,11 +941,13 @@ class AudioEngine {
     _startRAF(sessionId) {
         const update = async () => {
             if (!this.isPlaying || sessionId !== this._sessionId) return;
-            if (IS_NATIVE && this._songPreparationActive) return;
+            if ((IS_NATIVE || IS_DESKTOP) && this._songPreparationActive) return;
             try {
                 let currentPos = 0;
                 if (this.isWASMReady && this.wasm) {
                     currentPos = this.wasm.getCurrentPosition();
+                } else if (IS_DESKTOP) {
+                    currentPos = await DesktopAudioBridge.getPosition();
                 } else if (IS_NATIVE) {
                     const n = await getNative();
                     currentPos = await n.getPosition();
@@ -719,7 +969,7 @@ class AudioEngine {
     /** Stem count in the active engine (WASM, Capacitor native meta, or Web Audio map). */
     getTrackCount() {
         if (this.isWASMReady && this.wasm) return this._wasmTrackCount;
-        if (IS_NATIVE) return this._trackMeta.size;
+        if (IS_NATIVE || IS_DESKTOP) return this._trackMeta.size;
         return this.tracks.size;
     }
 

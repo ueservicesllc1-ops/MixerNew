@@ -50,6 +50,47 @@ function readCachedPeaksFromStorage(songId) {
     }
 }
 
+function basenameKey(p) {
+    if (!p || typeof p !== 'string') return '';
+    const s = String(p).trim();
+    const i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+    return i >= 0 ? s.slice(i + 1) : s;
+}
+
+function toArrayBufferMaybe(raw) {
+    if (!raw) return null;
+    if (raw instanceof ArrayBuffer) return raw.slice(0);
+    if (raw?.buffer instanceof ArrayBuffer && typeof raw.byteLength === 'number') {
+        const offset = raw.byteOffset || 0;
+        return raw.buffer.slice(offset, offset + raw.byteLength);
+    }
+    return null;
+}
+
+async function decodeWaveformArrayBuffer(arrayBuffer) {
+    if (!arrayBuffer) return null;
+
+    // 1) Reuse engine context if available (web paths).
+    if (audioEngine?.ctx && typeof audioEngine.ctx.decodeAudioData === 'function') {
+        return await audioEngine.ctx.decodeAudioData(arrayBuffer.slice(0));
+    }
+
+    // 2) Desktop native path: create a dedicated decode context.
+    const AC = (typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)) || null;
+    if (AC) {
+        const ctx = new AC();
+        try {
+            return await ctx.decodeAudioData(arrayBuffer.slice(0));
+        } finally {
+            if (typeof ctx.close === 'function') {
+                try { await ctx.close(); } catch { /* ignore */ }
+            }
+        }
+    }
+
+    throw new Error('No decodeAudioData context available');
+}
+
 /** Picos normalizados desde AudioBuffer (canal 0) — misma lógica que WaveformCanvas. */
 function buildPeaksFromAudioBuffer(buffer) {
     const data = buffer.getChannelData(0);
@@ -163,7 +204,16 @@ function traceZionWaveSilhouette(ctx, peaks, w, h) {
 }
 
 export const ProgressBar = React.memo(
-    ({ duration: durationProp, onSnapshot, nativeUi, disabled, songId, hasPreviewMix = false }) => {
+    ({
+        duration: durationProp,
+        onSnapshot,
+        nativeUi,
+        disabled,
+        songId,
+        hasPreviewMix = false,
+        previewMixLocalPath = '',
+        localWaveformFallbacks = [],
+    }) => {
         const fillRef = useRef(null);
         const timeRef = useRef(null);
         const trackRef = useRef(null);
@@ -269,8 +319,16 @@ export const ProgressBar = React.memo(
 
             const applySyntheticPlaceholder = (reason) => {
                 if (realWaveformActiveRef.current) return;
+                // Desktop must never render a synthetic waveform. Keep canvas neutral
+                // until real local peaks are available (cache / preview / local stem fallback).
+                if (isDesktop) {
+                    fakePeaksRef.current = null;
+                    console.log('[WAVEFORM] waiting for real local waveform', songId, reason);
+                    requestAnimationFrame(() => redrawZion());
+                    return;
+                }
                 fakePeaksRef.current = makeZionFakePeaks(songId, 720);
-                console.log('[WAVEFORM] using fallback waveform', songId, reason);
+                console.log('[WAVEFORM] using synthetic fallback waveform', songId, reason);
                 requestAnimationFrame(() => redrawZion());
             };
 
@@ -282,16 +340,11 @@ export const ProgressBar = React.memo(
             };
 
             const cached = readCachedPeaksFromStorage(songId);
+            console.log('[WAVEFORM] songId', songId);
+            console.log('[WAVEFORM] previewMixLocalPath', previewMixLocalPath || '(none)');
+            console.log('[WAVEFORM] peaks cache exists', !!cached);
             if (cached) {
                 applyCachedPeaks(cached);
-                return () => {
-                    cancelled = true;
-                    if (retryTimer) clearTimeout(retryTimer);
-                };
-            }
-
-            if (!hasPreviewMix) {
-                applySyntheticPlaceholder('no __PreviewMix for this song');
                 return () => {
                     cancelled = true;
                     if (retryTimer) clearTimeout(retryTimer);
@@ -329,26 +382,62 @@ export const ProgressBar = React.memo(
                     return;
                 }
 
-                console.log('[WAVEFORM] decoding PreviewMix', songId);
+                console.log('[WAVEFORM] decoding local source', songId);
 
                 try {
                     await audioEngine.init();
                     let ab = null;
+                    let usedSource = '';
 
                     if (isDesktop && window.zionNative?.readEncryptedTrack) {
-                        const filename = `${songId}_${PREVIEW_MIX_TRACK}.mp3`;
-                        const buffer = await window.zionNative.readEncryptedTrack(filename);
-                        if (buffer) {
-                            ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
+                        const previewCandidates = [
+                            previewMixLocalPath,
+                            `${songId}_${PREVIEW_MIX_TRACK}.mp3`,
+                            `${songId}_${PREVIEW_MIX_TRACK}.flac`,
+                            `${songId}___PreviewMix.mp3`,
+                            `${songId}___PreviewMix.flac`,
+                        ]
+                            .map((x) => basenameKey(x))
+                            .filter(Boolean);
+
+                        for (const key of [...new Set(previewCandidates)]) {
+                            const maybe = toArrayBufferMaybe(await window.zionNative.readEncryptedTrack(key));
+                            if (maybe) {
+                                ab = maybe;
+                                usedSource = key;
+                                break;
+                            }
+                        }
+
+                        if (!ab) {
+                            const fallbackKeys = (Array.isArray(localWaveformFallbacks) ? localWaveformFallbacks : [])
+                                .map((x) => basenameKey(x))
+                                .filter(Boolean);
+                            if (fallbackKeys.length > 0) {
+                                console.log('[WAVEFORM] preview missing, using first local stem fallback');
+                            }
+                            for (const key of [...new Set(fallbackKeys)]) {
+                                const maybe = toArrayBufferMaybe(await window.zionNative.readEncryptedTrack(key));
+                                if (maybe) {
+                                    ab = maybe;
+                                    usedSource = key;
+                                    break;
+                                }
+                            }
                         }
                     } else {
                         const raw = await NativeEngine.readTrackBlob(songId, PREVIEW_MIX_TRACK);
                         if (raw) {
                             ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
+                            usedSource = `${songId}_${PREVIEW_MIX_TRACK}`;
                         }
                     }
 
                     if (!ab) {
+                        if (isDesktop) {
+                            console.warn('[WAVEFORM ERROR] no local preview, no peaks, no fallback stem');
+                            return;
+                        }
                         attempt += 1;
                         if (!cancelled && attempt < maxAttempts) {
                             retryTimer = setTimeout(() => {
@@ -362,20 +451,23 @@ export const ProgressBar = React.memo(
                     await waitUntilIdleForDecode();
                     if (cancelled || realWaveformActiveRef.current) return;
 
-                    const buf = await audioEngine.ctx.decodeAudioData(ab);
+                    const buf = await decodeWaveformArrayBuffer(ab);
                     const peaks = buildPeaksFromAudioBuffer(buf);
                     try {
                         localStorage.setItem(`peaks_${songId}`, JSON.stringify(Array.from(peaks)));
                     } catch {
                         /* storage full */
                     }
-                    console.log('[WAVEFORM] saved peaks cache', songId);
+                    console.log('[WAVEFORM] saved peaks cache', songId, usedSource || '(unknown source)');
                     if (cancelled) return;
                     fakePeaksRef.current = peaks;
                     realWaveformActiveRef.current = true;
                     requestAnimationFrame(() => redrawZion());
                 } catch (e) {
                     console.warn('[WAVEFORM] PreviewMix decode failed', songId, e);
+                    if (String(e?.message || '').includes('No decodeAudioData context available')) {
+                        console.warn('[WAVEFORM ERROR] no local decoder context available');
+                    }
                     attempt += 1;
                     if (!cancelled && attempt < maxAttempts) {
                         retryTimer = setTimeout(() => {
@@ -391,7 +483,7 @@ export const ProgressBar = React.memo(
                 cancelled = true;
                 if (retryTimer) clearTimeout(retryTimer);
             };
-        }, [nativeUi, songId, hasPreviewMix, redrawZion]);
+        }, [nativeUi, songId, hasPreviewMix, previewMixLocalPath, localWaveformFallbacks, redrawZion]);
 
         useEffect(() => {
             if (nativeUi) return undefined;

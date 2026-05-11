@@ -3,6 +3,7 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'fire
 import { auth } from '../firebase';
 import { LocalAuthService } from './LocalAuthService';
 import { DesktopSessionService } from './DesktopSessionService';
+import { LOGO_BLANCO_PNG } from '../utils/publicAssets.js';
 
 export default function DesktopLoginGate({ onLoginSuccess }) {
     const [email, setEmail] = useState('');
@@ -92,7 +93,7 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
                 boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
                 textAlign: 'center'
             }}>
-                <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '50px', marginBottom: '30px' }} />
+                <img src={LOGO_BLANCO_PNG} alt="Zion Stage" style={{ height: '50px', marginBottom: '30px' }} />
                 
                 {!isOnline && (
                     <div style={{

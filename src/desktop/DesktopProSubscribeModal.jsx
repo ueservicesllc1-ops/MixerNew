@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
+import { stripeJsPromise as stripePromise } from '../stripeClient.js';
+import { getMixerApiBase } from '../mixerApiBase.js';
 import { X, Loader2, ArrowLeft } from 'lucide-react';
-import { DESKTOP_PRO_PLANS, getStripeApiBase } from './desktopProPlans';
-
-const STRIPE_PUBLISHABLE =
-    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-    'pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y';
-
-const stripePromise = STRIPE_PUBLISHABLE ? loadStripe(STRIPE_PUBLISHABLE) : null;
+import { DESKTOP_PRO_PLANS } from './desktopProPlans';
 
 function CheckoutForm({ onPaid }) {
     const stripe = useStripe();
@@ -88,7 +83,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
         setPreparing(true);
         setSelected(plan);
         try {
-            const base = getStripeApiBase();
+            const base = getMixerApiBase();
             const res = await fetch(`${base}/api/stripe/create-subscription`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -123,6 +118,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                 {
                     planId: selected.id,
                     desktopLicenseTier: selected.tier,
+                    desktopProActive: true,
                     stripeSubscriptionId: subscriptionId || null,
                     updatedAt: serverTimestamp(),
                 },

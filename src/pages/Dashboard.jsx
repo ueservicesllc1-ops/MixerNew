@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { stripeJsPromise as stripePromise } from '../stripeClient.js';
+import { getMixerApiBase } from '../mixerApiBase.js';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitch from '../components/LanguageSwitch';
@@ -19,12 +20,6 @@ import {
 function isFirestoreDocMissing(err) {
     return err?.code === 'not-found';
 }
-
-// Clave publicable: VITE_STRIPE_PUBLISHABLE_KEY en .env o fallback (live). En http://localhost Stripe avisa HTTPS — normal en dev.
-const STRIPE_PUBLISHABLE =
-    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||
-    'pk_live_51S37NBId1DsVBhR7DBfuwJHCjLo2KzUWPxEKew3JdyI5ypBwgt420B9pXM6qQuHRscOLyNeLjxumZHwVfWdZsMQp003Gc0ne2Y';
-const stripePromise = STRIPE_PUBLISHABLE ? loadStripe(STRIPE_PUBLISHABLE) : null;
 
 const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
     const stripe = useStripe();
@@ -230,8 +225,7 @@ function Dashboard() {
         if (!partituraFile || !partituraInstrument || !partituraSongId || !currentUser) return;
         setPartituraUploading(true);
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
             const formData = new FormData();
             formData.append('audioFile', partituraFile);
             formData.append('fileName', `partitura_${currentUser.uid}_${Date.now()}_${partituraInstrument.replace(/\s+/g,'_')}.pdf`);
@@ -435,9 +429,7 @@ function Dashboard() {
         setIsUploading(true);
         setStep('uploading');
         const uploadedTracksInfo = [];
-        const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-            ? 'http://localhost:3001'
-            : 'https://mixernew-production.up.railway.app';
+        const devProxy = getMixerApiBase();
 
         const uploadFile = (blob, fileName, displayName, originalName, onProgress, generatePreview = false) => {
             return new Promise((resolve, reject) => {
@@ -667,9 +659,7 @@ function Dashboard() {
         setIsScraping(true);
         setChords(''); // Limpiar contenido anterior para dar feedback visual
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001'
-                : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             const res = await fetch(`${devProxy}/api/scrape-chords?url=${encodeURIComponent(importUrl)}`);
             if (!res.ok) throw new Error("Error al obtener el contenido");
@@ -690,8 +680,7 @@ function Dashboard() {
         setPendingPaymentPlan(plan);
         setIsProcessingStripe(true);
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+            const devProxy = getMixerApiBase();
 
             const res = await fetch(`${devProxy}/api/stripe/create-subscription`, {
                 method: 'POST',

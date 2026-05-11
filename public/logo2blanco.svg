@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="220" viewBox="0 0 640 220" fill="none">
+  <rect width="640" height="220" fill="#000000"/>
+  <g transform="translate(40,34)">
+    <rect x="0" y="8" width="72" height="72" rx="16" fill="#06B6D4"/>
+    <path d="M20 44h32M20 56h24M20 32h16" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <text x="132" y="94" fill="#FFFFFF" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="74" font-weight="800" letter-spacing="2">
+    ZION
+  </text>
+  <text x="134" y="144" fill="#94A3B8" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="30" font-weight="600" letter-spacing="7">
+    STAGE
+  </text>
+</svg>
