@@ -3482,9 +3482,9 @@ export default function Multitrack({ session }) {
                 </div>
             )}
 
-            {/* WAVEFORM OVERVIEW / SCRUBBER — web: WaveformCanvas; native: NextGen ProgressBar + lightweight fake overview (no decode pipeline) */}
-            <div className="waveform-section" style={{ height: isAppNative ? '96px' : '115px' }}>
-                {isAppNative ? (
+            {/* WAVEFORM OVERVIEW / SCRUBBER — Android nativo: ProgressBar; web y Electron: WaveformCanvas (marcas intro/verso/coro, etc.) */}
+            <div className="waveform-section" style={{ height: isAppNative && !isElectronDesktopMixer() ? '96px' : '115px' }}>
+                {isAppNative && !isElectronDesktopMixer() ? (
                     <div
                         style={{
                             height: '100%',
@@ -3551,6 +3551,90 @@ export default function Multitrack({ session }) {
                                         .filter((t) => t?.name && t.name !== PREVIEW_TRACK_NAME)
                                         .map((t) => t.localPath || t.cacheKey || '')
                                         .filter(Boolean)}
+                                />
+                            </div>
+                        ) : (
+                            <div
+                                style={{
+                                    flex: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'rgba(255,255,255,0.25)',
+                                    fontSize: 12,
+                                }}
+                            >
+                                <span>Overview (off)</span>
+                            </div>
+                        )}
+                    </div>
+                ) : isElectronDesktopMixer() ? (
+                    <div
+                        style={{
+                            height: '100%',
+                            width: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            minHeight: 0,
+                            padding: '0 4px',
+                        }}
+                    >
+                        {nativeLoadProgress?.songId === activeSongId && nativeLoadProgress.phase ? (
+                            <div
+                                style={{
+                                    flex: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'rgba(255,255,255,0.55)',
+                                    fontSize: 12,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                <span style={{ lineHeight: 1.35 }}>
+                                    {nativeLoadPhaseLabelEs(nativeLoadProgress.phase, nativeLoadProgress.loaded, nativeLoadProgress.total)}
+                                </span>
+                            </div>
+                        ) : nativeLoadProgress?.songId === activeSongId && nativeLoadProgress.label ? (
+                            <div
+                                style={{
+                                    flex: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    color: 'rgba(255,255,255,0.55)',
+                                    fontSize: 12,
+                                    textAlign: 'center',
+                                }}
+                            >
+                                <span style={{ lineHeight: 1.35 }}>
+                                    {nativeLoadProgress.phase === 'downloading' && nativeLoadProgress.total > 0
+                                        ? `${nativeLoadProgress.label} ${nativeLoadProgress.loaded}/${nativeLoadProgress.total}`
+                                        : nativeLoadProgress.label}
+                                </span>
+                            </div>
+                        ) : activeSongId ? (
+                            <div style={{ flex: 1, minHeight: 0, width: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <WaveformCanvas
+                                    songId={activeSong?.id}
+                                    tracks={tracks}
+                                    isPlaying={isPlaying}
+                                    duration={totalDuration}
+                                    hasPreview={activeSong?.tracks?.some(t => t.name === '__PreviewMix')}
+                                    suppressHeavyWork={nativePrepareBusy}
+                                    markers={localMarkerOverrides[activeSong?.id] || activeSong?.markers || (() => { try { return JSON.parse(localStorage.getItem(`markers_${activeSong?.id}`) || '[]'); } catch { return []; } })()}
+                                    onUpdateMarkers={async (newMarkers) => {
+                                        if (!activeSong?.id) return;
+                                        setLocalMarkerOverrides(prev => ({ ...prev, [activeSong.id]: newMarkers }));
+                                        try {
+                                            localStorage.setItem(`markers_${activeSong.id}`, JSON.stringify(newMarkers));
+                                        } catch (e) {}
+                                        try {
+                                            await updateDoc(doc(db, 'multitracks', activeSong.id), { markers: newMarkers });
+                                        } catch (e) {
+                                            console.log('Sincronización en la nube omitida: Guardado localmente (Pista Global de Solo-Lectura).');
+                                        }
+                                    }}
                                 />
                             </div>
                         ) : (

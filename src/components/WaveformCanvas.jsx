@@ -10,6 +10,24 @@ function formatTime(s) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+/** JUCE desktop: no hay `audioEngine.ctx`; mismo patrón que ProgressBar.jsx */
+async function decodeArrayBufferToAudioBuffer(ab) {
+    const slice = ab instanceof ArrayBuffer ? ab.slice(0) : ab;
+    if (audioEngine?.ctx && typeof audioEngine.ctx.decodeAudioData === 'function') {
+        return await audioEngine.ctx.decodeAudioData(slice);
+    }
+    const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+    if (!AC) throw new Error('No decodeAudioData context available');
+    const ctx = new AC();
+    try {
+        return await ctx.decodeAudioData(slice);
+    } finally {
+        if (typeof ctx.close === 'function') {
+            try { await ctx.close(); } catch { /* ignore */ }
+        }
+    }
+}
+
 export default function WaveformCanvas({ songId, tracks, duration, hasPreview, suppressHeavyWork, markers = [], onUpdateMarkers }) {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -24,7 +42,10 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
     const [contextMenu, setContextMenu] = useState(null);
 
     const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
-    const actualDuration = isNative
+    const isZionElectronDesktop = typeof window !== 'undefined'
+        && !!window.zionNative
+        && !window.Capacitor?.isNativePlatform?.();
+    const actualDuration = (isNative || isZionElectronDesktop)
         ? ((duration && duration > 0)
             ? duration
             : (peakDuration > 0 ? peakDuration : Math.max(audioEngine.getCurrentTime() || 0, 1)))
@@ -105,7 +126,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
             let bufferToUse = pickBufferFromEngine();
 
             // Desktop / Native: __PreviewMix desde disco + decodeAudioData
-            if (!bufferToUse && (isNative || window.zionNative) && audioEngine.ctx && !suppressHeavyWork) {
+            if (!bufferToUse && (isNative || window.zionNative) && !suppressHeavyWork) {
                 try {
                     await new Promise((r) => setTimeout(r, 0));
                     
@@ -120,11 +141,21 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
 
                     let ab = null;
                     if (window.zionNative?.readEncryptedTrack) {
-                        const filename = `${songId}___PreviewMix.mp3`;
-                        console.log(`[WAVEFORM] Desktop read start: ${filename}`);
-                        const buffer = await window.zionNative.readEncryptedTrack(filename);
-                        if (buffer) {
-                            ab = buffer instanceof ArrayBuffer ? buffer : buffer.buffer;
+                        const candidates = [
+                            `${songId}___PreviewMix.mp3`,
+                            `${songId}___PreviewMix.flac`,
+                            `${songId}___PreviewMix`,
+                        ];
+                        for (const filename of [...new Set(candidates)]) {
+                            console.log(`[WAVEFORM] Desktop read try: ${filename}`);
+                            const buffer = await window.zionNative.readEncryptedTrack(filename);
+                            if (buffer) {
+                                ab = buffer instanceof ArrayBuffer ? buffer.slice(0)
+                                    : (buffer.buffer && typeof buffer.byteLength === 'number'
+                                        ? buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+                                        : null);
+                                if (ab) break;
+                            }
                         }
                     } else if (isNative) {
                         const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
@@ -134,7 +165,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                     }
 
                     if (ab) {
-                        bufferToUse = await audioEngine.ctx.decodeAudioData(ab);
+                        bufferToUse = await decodeArrayBufferToAudioBuffer(ab);
                     }
                 } catch (e) {
                     console.warn('[WAVEFORM] decode failed', e);
