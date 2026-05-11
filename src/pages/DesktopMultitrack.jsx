@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import LanguageSwitch from '../components/LanguageSwitch'
 import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine.js'
+import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js'
 
 /**
  * Electron: mismos offsets que la UI para reaplicar tempo/pitch tras cargar stems
@@ -50,14 +51,13 @@ async function loadDesktopNativeFromBatch(batch, song) {
         if (t.isVisualOnly) continue;
         const fn = t.filename || t.path || t.cacheKey || t.localPath;
         if (!fn || typeof fn !== 'string') continue;
-        const nm = (t.name || '').toLowerCase();
         stemBatch.push({
             id: t.id,
             name: t.name,
             filename: String(fn).trim(),
             path: String(fn).trim(),
-            isGuide: nm.includes('guide') || nm.includes('guia') || nm.includes('cue'),
-            isClick: nm.includes('click'),
+            isGuide: isMixerGuideStem(t.name),
+            isClick: isMixerClickStem(t.name),
             isVisualOnly: false,
         });
     }
@@ -273,6 +273,20 @@ function parseDesktopLibraryManifest(tracksJsonStr) {
     }
 }
 
+/** Filas SQLite `songs` → objetos de UI para Mi librería (tracks parseados). */
+function mapSqliteLibraryRowsToSongs(localSongs) {
+    return (localSongs || []).map((row) => {
+        const parsed = parseDesktopLibraryManifest(row.tracks_json);
+        return {
+            ...row,
+            tracks: parsed.tracks,
+            downloaded: parsed.downloaded,
+            previewMixLocalPath: parsed.previewMixLocalPath,
+            isPcImport: (parsed.tracks || []).some((t) => t.isPcImportStem),
+        };
+    });
+}
+
 function desktopStemCacheKey(songId, tr) {
     const name = tr?.name;
     if (!name) return '';
@@ -302,7 +316,11 @@ function buildWasmBatchFromDesktopManifest(song) {
     const batch = [];
     for (const tr of song.tracks || []) {
         const isPreview = tr.name === PREVIEW_TRACK_NAME;
-        const key = String(tr.cacheKey || tr.localPath || desktopStemCacheKey(song.id, tr) || '').trim();
+        const abs = String(tr.sourceAbsolutePath || '').trim();
+        const isAbs = abs && (/^[a-zA-Z]:[\\/]/.test(abs) || abs.startsWith('/'));
+        const key = isAbs
+            ? abs
+            : String(tr.cacheKey || tr.localPath || desktopStemCacheKey(song.id, tr) || '').trim();
         if (!key) continue;
         const trackId = tr.id || `${song.id}_${tr.name}`;
         batch.push({
@@ -330,6 +348,8 @@ function desktopSongManifestNeedsMigration(row) {
         const tracks = p.tracks || [];
         for (const t of tracks) {
             if (!t?.name) continue;
+            const src = String(t.sourceAbsolutePath || '').trim();
+            if (src) continue;
             if (!t.cacheKey || !String(t.cacheKey).trim()) return true;
             if (!t.localPath || !String(t.localPath).trim()) return true;
         }
@@ -353,8 +373,8 @@ function buildMigratedDesktopManifestTracks(row) {
             cacheKey,
             localPath,
             duration: t.duration ?? undefined,
-            isGuide: !!(t.isGuide ?? (nm.includes('guide') || nm.includes('guia') || nm.includes('cue'))),
-            isClick: !!(t.isClick ?? nm.includes('click')),
+            isGuide: !!(t.isGuide ?? isMixerGuideStem(t.name)),
+            isClick: !!(t.isClick ?? isMixerClickStem(t.name)),
         };
     });
     const previewMixLocalPath = parsed.previewMixLocalPath
@@ -401,10 +421,22 @@ const LocalLibraryService = {
         return null;
     },
     isTrackDownloaded: async (songId, trackName, isNormalized = false) => {
+        if (window.zionNative?.resolveStem) {
+            try {
+                const r = await window.zionNative.resolveStem(songId, trackName, !!isNormalized);
+                if (r && typeof r.ok === 'boolean') return r.ok;
+            } catch { /* ignore */ }
+        }
         const ext = isNormalized ? '.flac' : '.mp3';
         const filename = `${songId}_${trackName}${ext}`;
         if (window.zionNative?.isTrackDownloaded) {
-            return await window.zionNative.isTrackDownloaded(filename);
+            if (await window.zionNative.isTrackDownloaded(filename)) return true;
+            if (!isNormalized) {
+                const base = `${songId}_${trackName}`;
+                if (await window.zionNative.isTrackDownloaded(`${base}.wav`)) return true;
+                if (await window.zionNative.isTrackDownloaded(`${base}.mp3`)) return true;
+            }
+            return false;
         }
         return isNormalized 
             ? await NativeEngine.isNormalizedDownloaded(songId, trackName)
@@ -412,8 +444,20 @@ const LocalLibraryService = {
     },
     getTrackPath: async (songId, trackName, isNormalized = false) => {
         const ext = isNormalized ? '.flac' : '.mp3';
+        const base = `${songId}_${trackName}`;
+        if (window.zionNative?.resolveStem) {
+            try {
+                const r = await window.zionNative.resolveStem(songId, trackName, !!isNormalized);
+                if (r?.ok && r.ref) return r.ref;
+            } catch { /* ignore */ }
+        }
+        if (window.zionNative) {
+            if (await window.zionNative.isTrackDownloaded(`${base}.mp3`)) return `${base}.mp3`;
+            if (await window.zionNative.isTrackDownloaded(`${base}.wav`)) return `${base}.wav`;
+            if (isNormalized && await window.zionNative.isTrackDownloaded(`${base}.flac`)) return `${base}.flac`;
+            return `${base}${ext}`;
+        }
         const filename = `${songId}_${trackName}${ext}`;
-        if (window.zionNative) return filename; // Desktop: use filename for bridge decryption
         return isNormalized
             ? await NativeEngine.getNormalizedPath(songId, trackName)
             : await NativeEngine.getTrackPath(songId, trackName);
@@ -451,9 +495,13 @@ const LocalLibraryService = {
     }
 };
 
-/** Stems required for NextGen playback; PreviewMix is visual-only and deferred. */
+/** Stems required for NextGen playback; PreviewMix is visual-only and deferred. Incluye import PC (`local-file`). */
 function filterCriticalDownloadableTracks(tracks) {
-    return (tracks || []).filter(tr => tr.url && tr.url !== 'undefined' && tr.name !== PREVIEW_TRACK_NAME);
+    return (tracks || []).filter((tr) => {
+        if (!tr || tr.name === PREVIEW_TRACK_NAME) return false;
+        if (tr.url === 'local-file' || tr.isPcImportStem) return true;
+        return tr.url && tr.url !== 'undefined';
+    });
 }
 
 /**
@@ -535,11 +583,27 @@ function isRemoteVersionNewer(remoteName, installedName) {
     return false;
 }
 
-/** Entre dos metadatos remotos, el de versión semver más alta (para combinar Firestore + app-latest.json). */
-function pickNewerMeta(a, b) {
-    if (!a?.versionName) return b || null;
-    if (!b?.versionName) return a || null;
-    return isRemoteVersionNewer(a.versionName, b.versionName) ? a : b;
+/** Metadato remoto: APK/web (`downloadUrl`) y opcional escritorio (`desktopDownloadUrl`). */
+function mapRemoteAppUpdateRow(data) {
+    if (!data || data.versionName == null) return null;
+    const versionName = String(data.versionName).trim();
+    if (!versionName) return null;
+    return {
+        versionName,
+        downloadUrl: data.downloadUrl != null ? String(data.downloadUrl).trim() : '',
+        desktopDownloadUrl: data.desktopDownloadUrl != null ? String(data.desktopDownloadUrl).trim() : '',
+        releaseNotes: data.releaseNotes != null ? String(data.releaseNotes).trim() : '',
+    };
+}
+
+/** URL del instalador Windows: campo dedicado o `downloadUrl` si ya apunta a .exe */
+function getDesktopInstallerUrl(row) {
+    if (!row) return '';
+    const d = (row.desktopDownloadUrl || '').trim();
+    if (d) return d;
+    const u = (row.downloadUrl || '').trim();
+    if (/\.exe(\?|$)/i.test(u)) return u;
+    return '';
 }
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
@@ -571,6 +635,8 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     downloadProgress, onDownloadAdd,
     globalCatalogDocCount,
     globalOnlineLocked,
+    canPcImport = false,
+    onPcImportOpen,
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -640,6 +706,31 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     )}
                 </div>
 
+                {libraryTab === 'mine' && canPcImport && typeof onPcImportOpen === 'function' && (
+                    <div style={{ marginBottom: '12px' }}>
+                        <button
+                            type="button"
+                            onClick={onPcImportOpen}
+                            style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                borderRadius: '10px',
+                                border: '1px solid rgba(14, 165, 233, 0.45)',
+                                background: 'linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%)',
+                                color: '#fff',
+                                fontWeight: 800,
+                                fontSize: '0.88rem',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Cargar MT de PC
+                        </button>
+                        <div style={{ fontSize: '0.68rem', color: '#64748b', marginTop: '6px', lineHeight: 1.35 }}>
+                            Elige archivos o una carpeta (.mp3 / .wav). Luego defines el título de la canción para Mi librería. Opcional: metadatos en la nube si hay sesión.
+                        </div>
+                    </div>
+                )}
+
                 <div style={{ flex: 1, backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #ccc', padding: '10px', overflowY: 'auto' }}>
                     {!currentUser ? (
                         <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
@@ -694,6 +785,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                 <h4 style={{ margin: '0 0 3px 0', color: '#333' }}>{song.name}</h4>
                                                 {isLocal && <span style={{ fontSize: '0.65rem', background: '#e0f7fa', color: '#00838f', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>OFFLINE</span>}
+                                                {song.isPcImport && <span style={{ fontSize: '0.65rem', background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold' }}>PC</span>}
                                             </div>
                                             <div style={{ fontSize: '0.75rem', color: '#888' }}>
                                                 {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
@@ -778,15 +870,7 @@ export default function Multitrack({ session }) {
                     if (window.zionNative.isDesktop) {
                         localSongs = await migrateDesktopLibraryRowsInSqlite(localSongs);
                     }
-                    setLibrarySongs(localSongs.map((row) => {
-                        const parsed = parseDesktopLibraryManifest(row.tracks_json);
-                        return {
-                            ...row,
-                            tracks: parsed.tracks,
-                            downloaded: parsed.downloaded,
-                            previewMixLocalPath: parsed.previewMixLocalPath,
-                        };
-                    }));
+                    setLibrarySongs(mapSqliteLibraryRowsToSongs(localSongs));
                     
                     const localSetlists = await window.zionNative.getSetlists();
                     setSetlists(localSetlists.map(s => ({ ...s, songs: s.songs_json ? JSON.parse(s.songs_json) : [] })));
@@ -1005,6 +1089,138 @@ export default function Multitrack({ session }) {
     const [quickTextSearch, setQuickTextSearch] = useState('');
     const [isSearchingTexts, setIsSearchingTexts] = useState(false);
 
+    /** Importar carpeta de stems desde el PC (solo Electron + bridge). */
+    const [pcImportOpen, setPcImportOpen] = useState(false);
+    const [pcImportStep, setPcImportStep] = useState(1);
+    const [pcPickResult, setPcPickResult] = useState(null);
+    const [pcImportSaving, setPcImportSaving] = useState(false);
+    const [pcSongTitle, setPcSongTitle] = useState('');
+    const [pcArtist, setPcArtist] = useState('');
+    const [pcTempo, setPcTempo] = useState('120');
+    const [pcMusicalKey, setPcMusicalKey] = useState('C');
+
+    const reloadLibraryFromSqlite = useCallback(async () => {
+        if (!window.zionNative?.getSongs) return;
+        try {
+            let localSongs = await window.zionNative.getSongs();
+            if (window.zionNative.isDesktop) {
+                localSongs = await migrateDesktopLibraryRowsInSqlite(localSongs);
+            }
+            setLibrarySongs(mapSqliteLibraryRowsToSongs(localSongs));
+        } catch (e) {
+            console.error('[LIB] reloadLibraryFromSqlite', e);
+        }
+    }, []);
+
+    const handlePcImportModalOpen = useCallback(() => {
+        setPcImportOpen(true);
+        setPcImportStep(1);
+        setPcPickResult(null);
+        setPcSongTitle('');
+        setPcArtist('');
+        setPcTempo('120');
+        setPcMusicalKey('C');
+    }, []);
+
+    const applyPcPickSuccess = useCallback((r) => {
+        setPcPickResult(r);
+        const sug = typeof r?.suggestedSongTitle === 'string' ? r.suggestedSongTitle.trim() : '';
+        setPcSongTitle(sug);
+        setPcImportStep(2);
+    }, []);
+
+    const handlePcPickFolder = useCallback(async () => {
+        if (!window.zionNative?.pickPcAudioFolder) return;
+        setPcImportSaving(true);
+        try {
+            const r = await window.zionNative.pickPcAudioFolder();
+            if (r?.canceled) return;
+            if (!r?.files?.length) {
+                alert('No se encontraron archivos .mp3 o .wav en esa carpeta.');
+                return;
+            }
+            applyPcPickSuccess(r);
+        } catch (e) {
+            console.error(e);
+            alert(String(e?.message || e));
+        } finally {
+            setPcImportSaving(false);
+        }
+    }, [applyPcPickSuccess]);
+
+    const handlePcPickFiles = useCallback(async () => {
+        if (!window.zionNative?.pickPcAudioFiles) return;
+        setPcImportSaving(true);
+        try {
+            const r = await window.zionNative.pickPcAudioFiles();
+            if (r?.canceled) {
+                if (r?.error) alert(r.error);
+                return;
+            }
+            if (!r?.files?.length) {
+                alert('No se seleccionaron archivos .mp3 o .wav.');
+                return;
+            }
+            applyPcPickSuccess(r);
+        } catch (e) {
+            console.error(e);
+            alert(String(e?.message || e));
+        } finally {
+            setPcImportSaving(false);
+        }
+    }, [applyPcPickSuccess]);
+
+    const handlePcImportSave = useCallback(async () => {
+        if (!pcPickResult?.files?.length) return;
+        if (!window.zionNative?.importPcSongFromFolder) return;
+        const songId = typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : `pc_${Date.now()}`;
+        setPcImportSaving(true);
+        try {
+            const titleTrim = pcSongTitle.trim();
+            if (!titleTrim) {
+                alert('Escribe el título de la canción: es el nombre que verás en Mi librería (no tiene por qué coincidir con la carpeta ni con los archivos).');
+                return;
+            }
+            const res = await window.zionNative.importPcSongFromFolder({
+                songId,
+                name: titleTrim,
+                artist: pcArtist.trim(),
+                tempo: parseInt(String(pcTempo), 10) || 120,
+                key: pcMusicalKey.trim() || 'C',
+                stems: pcPickResult.files,
+            });
+            if (!res?.ok) {
+                alert(res?.error || 'No se pudo importar');
+                return;
+            }
+            if (isOnline && auth.currentUser && !auth.currentUser.isAnonymous) {
+                void setDoc(doc(db, 'users', auth.currentUser.uid, 'pcLibrary', songId), {
+                    name: titleTrim,
+                    artist: pcArtist.trim(),
+                    tempo: parseInt(String(pcTempo), 10) || 120,
+                    key: pcMusicalKey.trim() || 'C',
+                    stemCount: pcPickResult.files.length,
+                    source: 'desktop_pc_import',
+                    updatedAt: serverTimestamp(),
+                }, { merge: true }).catch((fe) => {
+                    console.warn('[FIRESTORE] users/.../pcLibrary', fe);
+                });
+            }
+            await reloadLibraryFromSqlite();
+            setPcImportOpen(false);
+            setIsLibraryMenuOpen(true);
+            setLibraryTab('mine');
+            alert('Canción importada en Mi Librería.');
+        } catch (e) {
+            console.error(e);
+            alert(String(e?.message || e));
+        } finally {
+            setPcImportSaving(false);
+        }
+    }, [pcPickResult, pcSongTitle, pcArtist, pcTempo, pcMusicalKey, isOnline, reloadLibraryFromSqlite]);
+
     // ESC key closes fullscreen partitura
     useEffect(() => {
         const handleEsc = (e) => { if (e.key === 'Escape') setPvFullscreen(false); };
@@ -1054,8 +1270,9 @@ export default function Multitrack({ session }) {
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
 
-    /** APK nativo: aviso si en Firestore hay una versión más nueva que la embebida en el bundle. */
+    /** APK nativo / Electron: aviso si hay una versión más nueva (Firestore + app-latest.json). */
     const [appUpdateOffer, setAppUpdateOffer] = useState(null);
+    const [appUpdateDownloading, setAppUpdateDownloading] = useState(false);
     const [showPwaInstallBanner, setShowPwaInstallBanner] = useState(false);
     const [showPwaInstallHint, setShowPwaInstallHint] = useState(false);
     const [pwaHintCountdown, setPwaHintCountdown] = useState(5);
@@ -1080,6 +1297,56 @@ export default function Multitrack({ session }) {
         }, 5000);
         return () => clearTimeout(timer);
     }, [location.search, navigate]);
+
+    // Electron: misma fuente que el aviso móvil por JSON en el proxy — sin leer Firestore (no hace falta tocar app_versions).
+    useEffect(() => {
+        if (!isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative) return;
+        let cancelled = false;
+        (async () => {
+            let row = null;
+            try {
+                const savedProxy = typeof localStorage !== 'undefined'
+                    ? localStorage.getItem('mixer_proxyUrl')
+                    : null;
+                const bases = [...new Set([
+                    (savedProxy && savedProxy.startsWith('http')) ? savedProxy.replace(/\/$/, '') : null,
+                    DEFAULT_PROXY_FOR_UPDATES
+                ].filter(Boolean))];
+
+                for (const base of bases) {
+                    for (const jsonPath of ['/app-latest.json', '/api/app-latest']) {
+                        const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
+                        if (!r.ok) continue;
+                        const j = await r.json();
+                        const candidate = mapRemoteAppUpdateRow(j);
+                        if (candidate && getDesktopInstallerUrl(candidate)) {
+                            row = candidate;
+                            break;
+                        }
+                    }
+                    if (row) break;
+                }
+            } catch (e) {
+                console.warn('Update check desktop (app-latest):', e?.message || e);
+            }
+            if (cancelled) return;
+
+            const installerUrl = getDesktopInstallerUrl(row);
+            if (!row?.versionName || !installerUrl) return;
+
+            const dismissKey = `mixer_dismiss_update_${row.versionName}`;
+            if (localStorage.getItem(dismissKey) === '1') return;
+            if (!isRemoteVersionNewer(row.versionName, CURRENT_VERSION)) return;
+
+            setAppUpdateOffer({
+                versionName: row.versionName,
+                downloadUrl: installerUrl,
+                releaseNotes: row.releaseNotes || '',
+                isDesktopInstaller: true,
+            });
+        })();
+        return () => { cancelled = true; };
+    }, [CURRENT_VERSION]);
 
     const handleDesktopPwaInstall = async () => {
         const prompt = window._pwaInstallPrompt;
@@ -1152,6 +1419,27 @@ export default function Multitrack({ session }) {
     const [padVolume, setPadVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
     const [padSolo, setPadSolo] = useState(false); // (El modo Solo ser├¡a m├ís complejo de integrar contra el otro motor, por ahora sirve visual)
+
+    // Sincronizar pads con PadEngine (misma lógica que Multitrack.jsx / web)
+    useEffect(() => {
+        if (padActive) {
+            padEngine.start(padKey);
+        } else {
+            padEngine.stop();
+        }
+    }, [padActive, padKey]);
+
+    useEffect(() => {
+        if (padMute) {
+            padEngine.setVolume(0);
+        } else {
+            padEngine.setVolume(padVolume);
+        }
+    }, [padVolume, padMute]);
+
+    useEffect(() => {
+        padEngine.setPitch(padPitch);
+    }, [padPitch]);
 
     // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // ΓöÇΓöÇ DYNAMIC CLICK ENGINE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -1363,10 +1651,29 @@ export default function Multitrack({ session }) {
                 void trackUserUsage(user);
 
                 const qSongs = query(collection(db, "songs"), where("userId", "==", user.uid));
-                const unsubSongs = onSnapshot(qSongs, (snap) => {
-                    const songs = [];
-                    snap.forEach(doc => songs.push({ id: doc.id, ...doc.data() }));
-                    setLibrarySongs(songs);
+                const unsubSongs = onSnapshot(qSongs, async (snap) => {
+                    const cloud = [];
+                    snap.forEach((docu) => cloud.push({ id: docu.id, ...docu.data() }));
+                    if (!window.zionNative?.getSongs) {
+                        setLibrarySongs(cloud);
+                        return;
+                    }
+                    try {
+                        let rows = await window.zionNative.getSongs();
+                        if (window.zionNative.isDesktop) {
+                            rows = await migrateDesktopLibraryRowsInSqlite(rows);
+                        }
+                        const localMapped = mapSqliteLibraryRowsToSongs(rows);
+                        const byId = new Map(localMapped.map((s) => [s.id, s]));
+                        for (const c of cloud) {
+                            if (!byId.has(c.id)) {
+                                byId.set(c.id, { ...c, fromFirestoreLibrary: true });
+                            }
+                        }
+                        setLibrarySongs(Array.from(byId.values()));
+                    } catch (e) {
+                        console.error('[LIB] merge Firestore + SQLite', e);
+                    }
                 });
 
                 let unsubGlobal = () => {};
@@ -1708,6 +2015,11 @@ export default function Multitrack({ session }) {
                 for (let i = 0; i < tracks.length; i++) {
                     const tr = tracks[i];
                     if (!tr.url || tr.url === 'undefined' || tr.name === PREVIEW_TRACK_NAME) continue;
+                    if (tr.url === 'local-file' || tr.isPcImportStem) {
+                        const okLocal = await LocalLibraryService.isTrackDownloaded(song.id, tr.name);
+                        if (!okLocal) throw new Error(`Falta archivo local para la pista «${tr.name}». Vuelve a importar la carpeta.`);
+                        continue;
+                    }
 
                     setDownloadProgress({ songId: song.id, text: `Bajando pista ${i + 1}/${tracks.length}: ${tr.name}` });
 
@@ -2054,8 +2366,7 @@ export default function Multitrack({ session }) {
                 // ALWAYS: click/guide = left ear (-1), all other tracks = right ear (+1)
                 if (!isAppNativeLoad) {
                     for (const { id: tId, name: tName } of newTracks) {
-                        const nm = (tName || '').toLowerCase();
-                        const isClickOrGuide = nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue');
+                        const isClickOrGuide = isMixerClickStem(tName) || isMixerGuideStem(tName);
                         const pan = isClickOrGuide ? -1 : 1;
                         audioEngine.setTrackPan(tId, pan);
                     }
@@ -3118,7 +3429,26 @@ export default function Multitrack({ session }) {
                     </span>
                     <button
                         type="button"
-                        onClick={() => window.open(appUpdateOffer.downloadUrl, '_system')}
+                        disabled={appUpdateDownloading}
+                        onClick={async () => {
+                            const canNative = appUpdateOffer.isDesktopInstaller
+                                && typeof window.zionNative?.downloadAndLaunchDesktopUpdate === 'function';
+                            if (canNative) {
+                                setAppUpdateDownloading(true);
+                                try {
+                                    const r = await window.zionNative.downloadAndLaunchDesktopUpdate(
+                                        appUpdateOffer.downloadUrl
+                                    );
+                                    if (!r?.ok) {
+                                        window.alert(r?.error || 'No se pudo iniciar la actualización');
+                                    }
+                                } finally {
+                                    setAppUpdateDownloading(false);
+                                }
+                            } else {
+                                window.open(appUpdateOffer.downloadUrl, '_blank');
+                            }
+                        }}
                         style={{
                             background: '#00d2d3',
                             color: '#0f172a',
@@ -3126,11 +3456,14 @@ export default function Multitrack({ session }) {
                             padding: '8px 18px',
                             borderRadius: '8px',
                             fontWeight: '800',
-                            cursor: 'pointer',
-                            fontSize: '0.85rem'
+                            cursor: appUpdateDownloading ? 'wait' : 'pointer',
+                            fontSize: '0.85rem',
+                            opacity: appUpdateDownloading ? 0.75 : 1,
                         }}
                     >
-                        Descargar APK
+                        {appUpdateDownloading
+                            ? 'Descargando…'
+                            : (appUpdateOffer.isDesktopInstaller ? 'Descargar e instalar' : 'Descargar APK')}
                     </button>
                     <button
                         type="button"
@@ -4498,7 +4831,249 @@ export default function Multitrack({ session }) {
                 onDownloadAdd={handleDownloadAndAdd}
                 globalCatalogDocCount={globalSongs.length}
                 globalOnlineLocked={typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local'}
+                canPcImport={isElectronDesktopMixer() && (!!window.zionNative?.pickPcAudioFolder || !!window.zionNative?.pickPcAudioFiles)}
+                onPcImportOpen={handlePcImportModalOpen}
             />
+            {pcImportOpen && (
+                <div
+                    role="presentation"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 400000,
+                        background: 'rgba(0,0,0,0.65)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !pcImportSaving) setPcImportOpen(false);
+                    }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        style={{
+                            background: '#0f172a',
+                            borderRadius: 16,
+                            maxWidth: 460,
+                            width: '100%',
+                            padding: 22,
+                            border: '1px solid #334155',
+                            color: '#e2e8f0',
+                            boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <h3 style={{ margin: '0 0 12px', fontSize: '1.1rem' }}>Cargar multitrack desde tu PC</h3>
+                        {pcImportStep === 1 && (
+                            <>
+                                <p style={{ fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: 14 }}>
+                                    Stems en <strong>.mp3</strong> o <strong>.wav</strong>. El nombre de cada <em>archivo</em> (sin extensión) será el nombre de la pista en el mezclador. En el siguiente paso podrás poner el <strong>título de la canción</strong> para Mi librería.
+                                </p>
+                                {!!window.zionNative?.pickPcAudioFiles && (
+                                    <button
+                                        type="button"
+                                        disabled={pcImportSaving}
+                                        onClick={handlePcPickFiles}
+                                        style={{
+                                            width: '100%',
+                                            padding: 12,
+                                            borderRadius: 10,
+                                            border: 'none',
+                                            background: '#0ea5e9',
+                                            color: '#fff',
+                                            fontWeight: 800,
+                                            cursor: pcImportSaving ? 'wait' : 'pointer',
+                                            marginBottom: 10,
+                                        }}
+                                    >
+                                        {pcImportSaving ? 'Abriendo…' : 'Elegir archivos…'}
+                                    </button>
+                                )}
+                                {!!window.zionNative?.pickPcAudioFolder && (
+                                    <button
+                                        type="button"
+                                        disabled={pcImportSaving}
+                                        onClick={handlePcPickFolder}
+                                        style={{
+                                            width: '100%',
+                                            padding: 12,
+                                            borderRadius: 10,
+                                            border: '1px solid #38bdf8',
+                                            background: 'transparent',
+                                            color: '#e0f2fe',
+                                            fontWeight: 700,
+                                            cursor: pcImportSaving ? 'wait' : 'pointer',
+                                        }}
+                                    >
+                                        {pcImportSaving ? 'Abriendo…' : 'Elegir carpeta (todos los .mp3/.wav)'}
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    disabled={pcImportSaving}
+                                    onClick={() => setPcImportOpen(false)}
+                                    style={{
+                                        marginTop: 12,
+                                        width: '100%',
+                                        padding: 10,
+                                        borderRadius: 10,
+                                        border: '1px solid #475569',
+                                        background: 'transparent',
+                                        color: '#94a3b8',
+                                        cursor: 'pointer',
+                                    }}
+                                >
+                                    Cancelar
+                                </button>
+                            </>
+                        )}
+                        {pcImportStep === 2 && pcPickResult && (
+                            <>
+                                <p style={{ fontSize: '0.8rem', color: '#cbd5e1', marginBottom: 6, fontWeight: 700 }}>
+                                    Título en Mi librería
+                                </p>
+                                <p style={{ fontSize: '0.72rem', color: '#94a3b8', lineHeight: 1.45, marginBottom: 8 }}>
+                                    Este es el nombre de la <strong>canción</strong> en la lista (independiente del nombre de la carpeta o de los archivos).
+                                </p>
+                                <input
+                                    value={pcSongTitle}
+                                    onChange={(e) => setPcSongTitle(e.target.value)}
+                                    placeholder="Ej. Mi tema en vivo"
+                                    autoComplete="off"
+                                    style={{
+                                        width: '100%',
+                                        marginBottom: 12,
+                                        padding: 10,
+                                        borderRadius: 8,
+                                        border: '2px solid #38bdf8',
+                                        background: '#020617',
+                                        color: '#f8fafc',
+                                        boxSizing: 'border-box',
+                                        fontSize: '0.95rem',
+                                        fontWeight: 600,
+                                    }}
+                                />
+                                <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Artista</label>
+                                <input
+                                    value={pcArtist}
+                                    onChange={(e) => setPcArtist(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        marginBottom: 10,
+                                        padding: 8,
+                                        borderRadius: 8,
+                                        border: '1px solid #334155',
+                                        background: '#020617',
+                                        color: '#f8fafc',
+                                        boxSizing: 'border-box',
+                                    }}
+                                />
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Tempo (BPM)</label>
+                                        <input
+                                            value={pcTempo}
+                                            onChange={(e) => setPcTempo(e.target.value)}
+                                            type="number"
+                                            min={40}
+                                            max={300}
+                                            style={{
+                                                width: '100%',
+                                                padding: 8,
+                                                borderRadius: 8,
+                                                border: '1px solid #334155',
+                                                background: '#020617',
+                                                color: '#f8fafc',
+                                                boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label style={{ display: 'block', fontSize: '0.75rem', marginBottom: 4 }}>Tonalidad</label>
+                                        <input
+                                            value={pcMusicalKey}
+                                            onChange={(e) => setPcMusicalKey(e.target.value)}
+                                            placeholder="C, Am…"
+                                            style={{
+                                                width: '100%',
+                                                padding: 8,
+                                                borderRadius: 8,
+                                                border: '1px solid #334155',
+                                                background: '#020617',
+                                                color: '#f8fafc',
+                                                boxSizing: 'border-box',
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                                <p style={{ fontSize: '0.72rem', color: '#64748b', marginTop: 12, marginBottom: 6, wordBreak: 'break-all' }}>
+                                    Origen: {pcPickResult.folderPath}
+                                </p>
+                                <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginBottom: 6 }}>
+                                    {pcPickResult.files.length} pista(s) — nombre de cada pista según el archivo:
+                                </p>
+                                <div
+                                    style={{
+                                        maxHeight: 100,
+                                        overflowY: 'auto',
+                                        fontSize: '0.72rem',
+                                        color: '#94a3b8',
+                                        marginBottom: 4,
+                                        border: '1px solid #1e293b',
+                                        borderRadius: 8,
+                                        padding: 8,
+                                    }}
+                                >
+                                    {pcPickResult.files.map((f) => (
+                                        <div key={f.absolutePath}>{f.stemName}</div>
+                                    ))}
+                                </div>
+                                <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+                                    <button
+                                        type="button"
+                                        disabled={pcImportSaving}
+                                        onClick={() => {
+                                            setPcImportStep(1);
+                                            setPcPickResult(null);
+                                        }}
+                                        style={{
+                                            flex: 1,
+                                            padding: 10,
+                                            borderRadius: 10,
+                                            border: '1px solid #475569',
+                                            background: 'transparent',
+                                            color: '#e2e8f0',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        Atrás
+                                    </button>
+                                    <button
+                                        type="button"
+                                        disabled={pcImportSaving}
+                                        onClick={handlePcImportSave}
+                                        style={{
+                                            flex: 2,
+                                            padding: 10,
+                                            borderRadius: 10,
+                                            border: 'none',
+                                            background: '#22c55e',
+                                            color: '#052e16',
+                                            fontWeight: 800,
+                                            cursor: pcImportSaving ? 'wait' : 'pointer',
+                                        }}
+                                    >
+                                        {pcImportSaving ? 'Guardando…' : 'Guardar en Mi librería'}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
             <DesktopProSubscribeModal
                 open={showProSubscribeModal}
                 onClose={() => setShowProSubscribeModal(false)}

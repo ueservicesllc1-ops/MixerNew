@@ -45,13 +45,19 @@ export const DesktopAudioBridge = {
         const payload = (tracks || [])
             .filter((t) => !t?.isVisualOnly)
             .map((t) => {
-                const key0 = basenameKey(t.localPath || t.path || t.cacheKey || t.filename);
+                const rawPath = String(t.path || t.localPath || t.cacheKey || t.filename || '').trim();
+                const isWinAbs = /^[a-zA-Z]:[\\/]/.test(rawPath);
+                const isUnixAbs = rawPath.startsWith('/');
                 const songId = inferSongIdFromTrack(t);
                 const fallback = songId && t.name ? `${songId}_${t.name}.mp3` : '';
+                const key0 = basenameKey(t.localPath || t.path || t.cacheKey || t.filename);
+                const filename = (isWinAbs || isUnixAbs)
+                    ? rawPath
+                    : String(key0 || fallback || '').trim();
                 return {
                     id: t.id,
                     name: t.name,
-                    filename: key0 || fallback,
+                    filename,
                     isGuide: !!t.isGuide,
                     isClick: !!t.isClick,
                 };

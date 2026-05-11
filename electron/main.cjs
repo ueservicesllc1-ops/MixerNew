@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const db = require('./db.cjs');
@@ -258,12 +258,278 @@ app.whenReady().then(() => {
     ipcMain.handle('db:get-user', () => db.getUser());
     ipcMain.handle('db:delete-user', () => db.deleteUser());
 
+    /** Coma-separados; si está vacío, cualquier host https permitido (solo .exe). */
+    function parseAllowedDesktopUpdateHosts() {
+        const raw = process.env.ZION_DESKTOP_UPDATE_HOSTS || '';
+        if (!String(raw).trim()) return null;
+        return String(raw).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
+
+    ipcMain.handle('desktop:download-and-launch-update', async (_e, urlStr) => {
+        const urlNorm = (typeof urlStr === 'string' ? urlStr : '').trim();
+        let u;
+        try {
+            u = new URL(urlNorm);
+        } catch {
+            return { ok: false, error: 'URL no válida' };
+        }
+        if (u.protocol !== 'https:') {
+            return { ok: false, error: 'Solo se permiten enlaces https' };
+        }
+        const pathname = u.pathname.toLowerCase();
+        if (!pathname.endsWith('.exe')) {
+            return { ok: false, error: 'El instalador debe ser un archivo .exe' };
+        }
+        const allowed = parseAllowedDesktopUpdateHosts();
+        if (allowed?.length && !allowed.includes(u.hostname.toLowerCase())) {
+            return { ok: false, error: 'Dominio del instalador no permitido' };
+        }
+        const dest = path.join(app.getPath('temp'), `zion_stage_update_${Date.now()}.exe`);
+        try {
+            const res = await fetch(urlNorm, { redirect: 'follow' });
+            if (!res.ok) {
+                return { ok: false, error: `Descarga fallida (${res.status})` };
+            }
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.length < 50_000) {
+                return { ok: false, error: 'Archivo demasiado pequeño o corrupto' };
+            }
+            await fs.promises.writeFile(dest, buf, { mode: 0o644 });
+            const errMsg = await shell.openPath(dest);
+            if (errMsg) {
+                return { ok: false, error: errMsg };
+            }
+            return { ok: true, path: dest };
+        } catch (err) {
+            return { ok: false, error: String(err?.message || err) };
+        }
+    });
+
     ipcMain.handle('cache:save', async (e, filename, buffer) => {
         const nodeBuffer = Buffer.from(buffer);
         return await encCache.saveEncryptedFile(filename, nodeBuffer);
     });
     ipcMain.handle('cache:read', (e, filename) => encCache.readDecryptedBuffer(filename));
     ipcMain.handle('cache:exists', (e, filename) => encCache.fileExists(filename));
+
+    function sanitizePcStemName(raw) {
+        let s = String(raw || 'Stem').replace(/\.[^.]+$/i, '');
+        s = s.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ _-]/g, '').trim().replace(/\s+/g, '_');
+        if (!s) s = 'Stem';
+        return s.slice(0, 48);
+    }
+
+    function parseSongTracksFromRow(row) {
+        if (!row?.tracks_json) return [];
+        try {
+            const p = JSON.parse(row.tracks_json);
+            if (Array.isArray(p)) return p;
+            return Array.isArray(p.tracks) ? p.tracks : [];
+        } catch {
+            return [];
+        }
+    }
+
+    /** Stems en caché cifrada o import PC por ruta local (sin copiar a .zionpack). */
+    ipcMain.handle('desktop:resolve-stem', (_e, songId, stemName, isNormalized) => {
+        try {
+            const row = db.getSong(songId);
+            const tracks = parseSongTracksFromRow(row);
+            const tr = tracks.find((t) => t && t.name === stemName);
+            if (!tr) return { ok: false };
+
+            const src = String(tr.sourceAbsolutePath || '').trim();
+            if (!isNormalized && src && fs.existsSync(src)) {
+                const low = src.toLowerCase();
+                if (low.endsWith('.mp3') || low.endsWith('.wav') || low.endsWith('.flac')) {
+                    return { ok: true, ref: src };
+                }
+            }
+
+            const base = `${songId}_${stemName}`;
+            if (isNormalized) {
+                const fl = `${base}.flac`;
+                if (encCache.fileExists(fl)) return { ok: true, ref: fl };
+            } else {
+                for (const ext of ['.mp3', '.wav', '.flac']) {
+                    const k = base + ext;
+                    if (encCache.fileExists(k)) return { ok: true, ref: k };
+                }
+            }
+            return { ok: false };
+        } catch (e) {
+            console.error('[Zion] desktop:resolve-stem', e);
+            return { ok: false };
+        }
+    });
+
+    /** Un stem en bruto para decodificar la onda en el renderer (sin __PreviewMix). */
+    ipcMain.handle('desktop:read-waveform-stem-buffer', async (_e, songId) => {
+        try {
+            const row = db.getSong(songId);
+            const tracks = parseSongTracksFromRow(row).filter((t) => t && t.name && t.name !== '__PreviewMix');
+            const scoreStem = (tr) => {
+                const nm = (tr.name || '').toLowerCase();
+                if (nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue')) return -1;
+                if (nm.includes('drum') || nm.includes('bass') || nm.includes('kick')) return 50;
+                return 10;
+            };
+            let best = null;
+            let bestS = -999;
+            for (const tr of tracks) {
+                const s = scoreStem(tr);
+                if (s > bestS) {
+                    bestS = s;
+                    best = tr;
+                }
+            }
+            if (!best) return null;
+
+            const src = String(best.sourceAbsolutePath || '').trim();
+            if (src && fs.existsSync(src)) {
+                return fs.readFileSync(src);
+            }
+
+            const keyCandidates = [best.cacheKey, best.localPath, `${songId}_${best.name}.mp3`, `${songId}_${best.name}.wav`].filter(Boolean);
+            for (const k of keyCandidates) {
+                const bn = path.basename(String(k).trim());
+                if (!bn) continue;
+                const decPath = await encCache.getDecryptedTempPath(bn);
+                if (decPath && fs.existsSync(decPath)) {
+                    return fs.readFileSync(decPath);
+                }
+            }
+            return null;
+        } catch (e) {
+            console.error('[Zion] desktop:read-waveform-stem-buffer', e);
+            return null;
+        }
+    });
+
+    ipcMain.handle('desktop:pick-pc-audio-folder', async () => {
+        const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+        if (!win) return { canceled: true };
+        const r = await dialog.showOpenDialog(win, {
+            properties: ['openDirectory'],
+            title: 'Carpeta con stems (.mp3, .wav)',
+        });
+        if (r.canceled || !r.filePaths?.[0]) return { canceled: true };
+        const dir = r.filePaths[0];
+        let names;
+        try {
+            names = fs.readdirSync(dir);
+        } catch (e) {
+            console.error('[Zion] pick-pc-audio-folder readdir', e);
+            return { canceled: true, error: String(e.message || e) };
+        }
+        const files = [];
+        const seen = new Set();
+        for (const n of names) {
+            const low = n.toLowerCase();
+            if (!low.endsWith('.mp3') && !low.endsWith('.wav')) continue;
+            const stemRaw = path.basename(n, path.extname(n));
+            let stem = sanitizePcStemName(stemRaw);
+            let key = stem.toLowerCase();
+            let k = 2;
+            while (seen.has(key)) {
+                stem = `${stem}_${k}`;
+                key = stem.toLowerCase();
+                k += 1;
+            }
+            seen.add(key);
+            files.push({
+                stemName: stem,
+                absolutePath: path.join(dir, n),
+            });
+        }
+        const suggestedSongTitle = path.basename(dir) || '';
+        return { canceled: false, folderPath: dir, files, pickMode: 'folder', suggestedSongTitle };
+    });
+
+    /** Selección múltiple de .mp3 / .wav (no hace falta que estén en la misma carpeta). */
+    ipcMain.handle('desktop:pick-pc-audio-files', async () => {
+        const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+        if (!win) return { canceled: true };
+        const r = await dialog.showOpenDialog(win, {
+            title: 'Selecciona los stems (.mp3, .wav)',
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'Audio stems', extensions: ['mp3', 'wav'] }],
+        });
+        if (r.canceled || !r.filePaths?.length) return { canceled: true };
+        const files = [];
+        const seen = new Set();
+        for (const abs of r.filePaths) {
+            const low = String(abs).toLowerCase();
+            if (!low.endsWith('.mp3') && !low.endsWith('.wav')) continue;
+            const n = path.basename(abs);
+            const stemRaw = path.basename(n, path.extname(n));
+            let stem = sanitizePcStemName(stemRaw);
+            let key = stem.toLowerCase();
+            let k = 2;
+            while (seen.has(key)) {
+                stem = `${stem}_${k}`;
+                key = stem.toLowerCase();
+                k += 1;
+            }
+            seen.add(key);
+            files.push({
+                stemName: stem,
+                absolutePath: abs,
+            });
+        }
+        if (!files.length) {
+            return { canceled: true, error: 'No se seleccionaron archivos .mp3 o .wav válidos.' };
+        }
+        const dirs = new Set(files.map((f) => path.dirname(f.absolutePath)));
+        let folderPath;
+        let suggestedSongTitle = '';
+        if (dirs.size === 1) {
+            folderPath = [...dirs][0];
+            suggestedSongTitle = path.basename(folderPath) || '';
+        } else {
+            folderPath = `${files.length} archivo(s) en ${dirs.size} carpetas distintas`;
+        }
+        return { canceled: false, folderPath, files, pickMode: 'files', suggestedSongTitle };
+    });
+
+    ipcMain.handle('desktop:import-pc-song', async (_e, payload) => {
+        try {
+            const { songId, name, artist, tempo, key, stems } = payload || {};
+            if (!songId || !Array.isArray(stems) || stems.length === 0) {
+                return { ok: false, error: 'Datos incompletos' };
+            }
+            const manifestTracks = [];
+            for (const s of stems) {
+                if (!s?.absolutePath || !fs.existsSync(s.absolutePath)) {
+                    return { ok: false, error: `Archivo no encontrado: ${s?.absolutePath || ''}` };
+                }
+                const stemName = sanitizePcStemName(s.stemName);
+                const absNorm = path.resolve(s.absolutePath);
+                manifestTracks.push({
+                    name: stemName,
+                    id: `${songId}_${stemName}`,
+                    url: 'local-file',
+                    sourceAbsolutePath: absNorm,
+                    isDownloaded: true,
+                    isPcImportStem: true,
+                });
+            }
+            db.saveSong({
+                id: songId,
+                name: String(name || 'Sin título').slice(0, 200),
+                artist: String(artist || '').slice(0, 200),
+                tempo: parseInt(String(tempo || 120), 10) || 120,
+                key: String(key || 'C').slice(0, 24),
+                tracks: manifestTracks,
+                downloaded: true,
+                previewMixLocalPath: null,
+            });
+            return { ok: true, songId, manifestTracks };
+        } catch (e) {
+            console.error('[Zion] desktop:import-pc-song', e);
+            return { ok: false, error: String(e.message || e) };
+        }
+    });
 
     ipcMain.on('audio:play', () => {
         if (engine) engine.play();
@@ -332,20 +598,27 @@ app.whenReady().then(() => {
     }
 
     async function resolveEncryptedCacheKey(track) {
+        const rawPath = String(track?.path || track?.filename || '').trim();
+        if (rawPath && path.isAbsolute(rawPath)) {
+            const low = rawPath.toLowerCase();
+            if ((low.endsWith('.mp3') || low.endsWith('.wav') || low.endsWith('.flac')) && fs.existsSync(rawPath)) {
+                return { key: basenameKey(rawPath), decPath: rawPath };
+            }
+        }
         const keys = [];
         const direct = basenameKey(track?.filename || track?.path || '');
         if (direct) {
             keys.push(direct);
             if (!direct.includes('.')) {
-                keys.push(`${direct}.mp3`, `${direct}.flac`);
+                keys.push(`${direct}.mp3`, `${direct}.wav`, `${direct}.flac`);
             }
         }
         const songId = inferSongIdFromTrack(track);
         if (songId && track?.name) {
             const base = `${songId}_${track.name}`;
-            keys.push(`${base}.mp3`, `${base}.flac`);
+            keys.push(`${base}.mp3`, `${base}.wav`, `${base}.flac`);
         } else if (track?.id) {
-            keys.push(`${track.id}.mp3`, `${track.id}.flac`);
+            keys.push(`${track.id}.mp3`, `${track.id}.wav`, `${track.id}.flac`);
         }
         // dedupe preserving order
         const seen = new Set();

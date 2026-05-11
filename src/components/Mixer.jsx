@@ -1,25 +1,71 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { audioEngine } from '../AudioEngine';
-import { Volume2, VolumeX } from 'lucide-react';
+import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js';
+
+const LOCKED_STRIP_RED = '#b91c1c';
+
+/**
+ * 1.º: primer stem tipo click; 2.º: primer tipo guía; luego el resto de clicks, resto de guías, demás (orden original).
+ */
+function sortMixerTracksStable(tracks) {
+    const list = [...(tracks || [])];
+    const origIndex = new Map(list.map((t, i) => [t.id, i]));
+    const cmp = (a, b) => {
+        const c = String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+        if (c !== 0) return c;
+        return (origIndex.get(a.id) ?? 0) - (origIndex.get(b.id) ?? 0);
+    };
+    const clicks = list.filter((t) => isMixerClickStem(t.name)).sort(cmp);
+    const guides = list.filter((t) => isMixerGuideStem(t.name)).sort(cmp);
+    const firstClick = clicks[0];
+    const firstGuide = guides[0];
+    const out = [];
+    const used = new Set();
+    if (firstClick) {
+        out.push(firstClick);
+        used.add(firstClick.id);
+    }
+    if (firstGuide) {
+        out.push(firstGuide);
+        used.add(firstGuide.id);
+    }
+    for (const t of clicks) {
+        if (!used.has(t.id)) {
+            out.push(t);
+            used.add(t.id);
+        }
+    }
+    for (const t of guides) {
+        if (!used.has(t.id)) {
+            out.push(t);
+            used.add(t.id);
+        }
+    }
+    const rest = list.filter((t) => !used.has(t.id)).sort((a, b) => (origIndex.get(a.id) ?? 0) - (origIndex.get(b.id) ?? 0));
+    out.push(...rest);
+    return out;
+}
 
 export const Mixer = ({ tracks }) => {
-    // Sort: Click first, Guides second, rest normal
-    const sortedTracks = [...tracks].sort((a, b) => {
-        const getPriority = (n) => {
-            n = (n || '').toLowerCase();
-            if (n.includes('click')) return -5;
-            if (n.includes('guide') || n.includes('guia') || n.includes('cue')) return -4;
-            return 0;
-        };
-        return getPriority(a.name) - getPriority(b.name);
-    });
+    const sortedTracks = useMemo(() => sortMixerTracksStable(tracks || []), [tracks]);
 
     return (
         <div className="mixer-grid">
-            {sortedTracks.map(track => (
-                <ChannelStrip key={track.id} id={track.id} name={track.name} isPlaceholder={track.isPlaceholder} />
-            ))}
+            {sortedTracks.map((track, idx) => {
+                const locked =
+                    (idx === 0 && isMixerClickStem(track.name))
+                    || (idx === 1 && isMixerGuideStem(track.name));
+                return (
+                    <ChannelStrip
+                        key={track.id}
+                        id={track.id}
+                        name={track.name}
+                        isPlaceholder={track.isPlaceholder}
+                        locked={locked}
+                    />
+                );
+            })}
         </div>
     );
 };
@@ -35,11 +81,10 @@ function VUMeter({ trackId, muted }) {
     useEffect(() => {
         const poll = () => {
             const raw = audioEngine.getTrackLevel(trackId);
-            // Web: analizador da picos bajos → boost alto. Nativo: bridge. Zion WASM: picos ya ~lineales post-fader.
             const isZionWasm = !!(audioEngine.isWASMReady && audioEngine.wasm);
             const boost = Capacitor.isNativePlatform() ? 3.2 : isZionWasm ? 2.85 : 6.5;
             levelRef.current = Math.min(1, raw * boost);
-            
+
             draw();
             rafRef.current = requestAnimationFrame(poll);
         };
@@ -50,10 +95,9 @@ function VUMeter({ trackId, muted }) {
             const parent = canvas.parentElement;
             if (!parent) return;
 
-            // Correct DPI scaling for APK
             const dpr = window.devicePixelRatio || 1;
             const rect = parent.getBoundingClientRect();
-            
+
             if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
                 canvas.width = Math.floor(rect.width * dpr);
                 canvas.height = Math.floor(rect.height * dpr);
@@ -69,7 +113,7 @@ function VUMeter({ trackId, muted }) {
             ctx.clearRect(0, 0, w, h);
 
             const activeLeds = muted ? 0 : Math.round(levelRef.current * LED_COUNT);
-            const ledHeight = (h / LED_COUNT) - (1 * dpr); // 1px gap scaled
+            const ledHeight = (h / LED_COUNT) - (1 * dpr);
 
             for (let i = 0; i < LED_COUNT; i++) {
                 const isLit = i < activeLeds;
@@ -77,7 +121,6 @@ function VUMeter({ trackId, muted }) {
 
                 if (isLit) {
                     if (isDark) {
-                        // Amarillos (modo oscuro)
                         if (i >= LED_COUNT - 4) color = '#f59e0b';
                         else if (i >= LED_COUNT - 10) color = '#fbbf24';
                         else color = '#eab308';
@@ -91,7 +134,6 @@ function VUMeter({ trackId, muted }) {
                 }
 
                 ctx.fillStyle = color;
-                // Draw from bottom up
                 const y = h - ((i + 1) * (h / LED_COUNT));
                 ctx.fillRect(0, y, w, ledHeight);
             }
@@ -102,28 +144,24 @@ function VUMeter({ trackId, muted }) {
     }, [trackId, muted]);
 
     return (
-        <canvas 
-            ref={canvasRef} 
-            style={{ width: '100%', height: '100%', display: 'block' }} 
+        <canvas
+            ref={canvasRef}
+            style={{ width: '100%', height: '100%', display: 'block' }}
         />
     );
 }
 
 // ─── Channel Strip ────────────────────────────────────────────────
-const ChannelStrip = ({ id, name, isPlaceholder }) => {
+const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
     const [volume, setVolume] = useState(0.8);
     const [muted, setMuted] = useState(false);
     const [solo, setSolo] = useState(false);
     const [faderH, setFaderH] = useState(150);
     const stackRef = useRef(null);
 
-    const n = (name || '').toLowerCase();
-    const isSpecial = n.includes('click') || n.includes('guide') || n.includes('guia') || n.includes('cue');
-
-    // Dynamically sync fader width to the actual rendered height of the stack
     useEffect(() => {
         if (!stackRef.current) return;
-        const ro = new ResizeObserver(entries => {
+        const ro = new ResizeObserver((entries) => {
             for (const entry of entries) {
                 setFaderH(entry.contentRect.height);
             }
@@ -132,9 +170,8 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
         return () => ro.disconnect();
     }, []);
 
-    const getTrackColor = (name) => {
-        const n = (name || '').toLowerCase();
-        if (n.includes('click') || n.includes('guide') || n.includes('guia') || n.includes('cue')) return '#f97316'; // Reddish Orange for accessibility
+    const getTrackColor = (stemName) => {
+        const n = (stemName || '').toLowerCase();
         if (n.includes('bat') || n.includes('drum') || n.includes('perc')) return '#00bcd4';
         if (n.includes('guit') || n.includes('git')) return '#ffb142';
         if (n.includes('vox') || n.includes('voz')) return '#34ace0';
@@ -142,13 +179,11 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
         return '#00d2d3';
     };
 
-
-
     const handleVolume = (e) => {
+        if (locked) return;
         const val = parseFloat(e.target.value);
         setVolume(val);
 
-        // PHYSICAL POINTS MAPPING (Slider Pos -> dB)
         const points = [
             { v: 0.0, db: -100 },
             { v: 0.1, db: -40 },
@@ -156,7 +191,7 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
             { v: 0.5, db: -10 },
             { v: 0.65, db: -5 },
             { v: 0.8, db: 0 },
-            { v: 1.0, db: +6 }
+            { v: 1.0, db: +6 },
         ];
 
         let db;
@@ -179,59 +214,67 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
     };
 
     const toggleMute = () => {
+        if (locked) return;
         const next = !muted;
         setMuted(next);
         audioEngine.setTrackMute(id, next);
     };
 
     const toggleSolo = () => {
+        if (locked) return;
         const next = !solo;
         setSolo(next);
         audioEngine.setTrackSolo(id, next);
     };
 
     const [customColor, setCustomColor] = useState(null);
-    const trackColor = customColor || getTrackColor(name);
-
-    const [editableName, setEditableName] = useState(name);
+    const isClickGuideStem = isMixerClickStem(name) || isMixerGuideStem(name);
+    /** Click / guía: rojo en pastilla, medidor y fader (como Bass tiene su morado). */
+    const trackColor = customColor || (isClickGuideStem ? LOCKED_STRIP_RED : getTrackColor(name));
 
     return (
-        <div className={`channel-strip ${isSpecial ? 'special-track' : ''} ${isPlaceholder ? 'is-loading' : ''}`}>
+        <div className={`channel-strip ${isPlaceholder ? 'is-loading' : ''}`}>
             <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '12px', minHeight: '20px' }}>
-                {/* Left Column: Color Picker */}
                 <div style={{ position: 'relative', width: '20px', display: 'flex', justifyContent: 'flex-start' }}>
-                    <div style={{ width: '16px', height: '8px', borderRadius: '2px', backgroundColor: trackColor, border: '1px solid rgba(255,255,255,0.2)' }} />
-                    <input 
-                        type="color" 
-                        value={trackColor}
-                        onChange={(e) => setCustomColor(e.target.value)}
-                        style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
-                        title="Cambiar color del track"
+                    <div
+                        style={{
+                            width: '16px',
+                            height: '8px',
+                            borderRadius: '2px',
+                            backgroundColor: trackColor,
+                            border: '1px solid rgba(255,255,255,0.25)',
+                        }}
                     />
+                    {!locked && !isClickGuideStem && (
+                        <input
+                            type="color"
+                            value={trackColor}
+                            onChange={(e) => setCustomColor(e.target.value)}
+                            style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }}
+                            title="Cambiar color del track"
+                        />
+                    )}
                 </div>
-                
-                {/* Center Column: Name */}
-                <div 
-                    className="channel-name" 
-                    style={{ 
-                        fontSize: '0.9rem', 
-                        fontWeight: '800', 
+
+                <div
+                    className="channel-name"
+                    style={{
+                        fontSize: '0.9rem',
+                        fontWeight: '800',
                         textAlign: 'center',
                         flex: 1,
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
-                        textOverflow: 'ellipsis'
+                        textOverflow: 'ellipsis',
                     }}
                 >
                     {name}
                 </div>
 
-                {/* Right Column: Placeholder for balance */}
                 <div style={{ width: '20px' }} />
             </div>
 
             <div className="fader-stack" ref={stackRef}>
-                {/* DB SCALE — Absolutely positioned to match points */}
                 <div className="db-scale">
                     <span className="db-tick" style={{ bottom: '100%' }}>+6</span>
                     <span className="db-tick" style={{ bottom: '80%', color: '#00d2d3' }}>0</span>
@@ -242,17 +285,18 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
                     <span className="db-tick" style={{ bottom: '0%' }}>-∞</span>
                 </div>
 
-                {/* VU METER LEDs — left of the fader */}
-                <div style={{
-                    width: '10px',
-                    height: '100%',
-                    borderRadius: '4px',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    background: '#94a3b8',
-                    boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
-                }}>
+                <div
+                    style={{
+                        width: '10px',
+                        height: '100%',
+                        borderRadius: '4px',
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: '#94a3b8',
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)',
+                    }}
+                >
                     <VUMeter trackId={id} muted={muted} />
                 </div>
 
@@ -262,9 +306,9 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
                         style={{
                             height: `${volume * 100}%`,
                             background: trackColor,
-                            opacity: 0.8
+                            opacity: 0.8,
                         }}
-                    ></div>
+                    />
                 </div>
 
                 <div className="fader-container">
@@ -280,23 +324,35 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
                         step="0.01"
                         value={volume}
                         onChange={handleVolume}
-                        style={{ width: `${faderH}px` }}
+                        disabled={locked}
+                        aria-disabled={locked}
+                        style={{
+                            width: `${faderH}px`,
+                            accentColor: trackColor,
+                            cursor: locked ? 'not-allowed' : undefined,
+                        }}
                     />
                 </div>
             </div>
 
             <div className="btn-group">
                 <button
+                    type="button"
                     className={`channel-btn m ${muted ? 'active' : ''}`}
                     onClick={toggleMute}
-                    title="Mute"
+                    disabled={locked}
+                    title={locked ? 'Mute bloqueado' : 'Mute'}
+                    style={{ cursor: locked ? 'not-allowed' : undefined }}
                 >
                     M
                 </button>
                 <button
+                    type="button"
                     className={`channel-btn s ${solo ? 'active' : ''}`}
                     onClick={toggleSolo}
-                    title="Solo"
+                    disabled={locked}
+                    title={locked ? 'Solo bloqueado' : 'Solo'}
+                    style={{ cursor: locked ? 'not-allowed' : undefined }}
                 >
                     S
                 </button>

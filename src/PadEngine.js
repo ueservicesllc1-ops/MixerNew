@@ -46,9 +46,15 @@ export class PadEngine {
         const extensions = ['m4a', 'mp3', 'wav', 'ogg'];
         let buffer = null;
 
+        const base =
+            typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL
+                ? String(import.meta.env.BASE_URL)
+                : '/';
+        const baseNorm = base.endsWith('/') ? base : `${base}/`;
+
         for (const ext of extensions) {
             try {
-                const response = await fetch(`/pads/${key}.${ext}`);
+                const response = await fetch(`${baseNorm}pads/${key}.${ext}`);
                 if (!response.ok) continue;
 
                 const arrayBuffer = await response.arrayBuffer();

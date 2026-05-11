@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import LanguageSwitch from '../components/LanguageSwitch'
 import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine'
+import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js'
 import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
@@ -1551,8 +1552,7 @@ export default function Multitrack() {
                 // ALWAYS: click/guide = left ear (-1), all other tracks = right ear (+1)
                 if (!isAppNativeLoad) {
                     for (const { id: tId, name: tName } of newTracks) {
-                        const nm = (tName || '').toLowerCase();
-                        const isClickOrGuide = nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue');
+                        const isClickOrGuide = isMixerClickStem(tName) || isMixerGuideStem(tName);
                         const pan = isClickOrGuide ? -1 : 1;
                         audioEngine.setTrackPan(tId, pan);
                     }

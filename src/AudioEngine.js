@@ -5,6 +5,7 @@
 
 import { NextGenMixerBridge } from './NextGenNativeEngine.js';
 import { DesktopAudioBridge } from './DesktopAudioBridge.js';
+import { isMixerClickStem, isMixerGuideStem } from './mixerStemRoles.js';
 import soundtouchWorkletUrl from './worklets/soundtouch-worklet.js?url';
 
 let _nativeEngine = null;
@@ -248,13 +249,13 @@ class AudioEngine {
                     isVisualOnly: false,
                     buffer: null,
                 });
-                const nm = (t.name || t.id || '').toLowerCase();
+                const stemName = t.name || '';
                 payload.push({
                     id: t.id,
                     name: t.name,
                     filename: fn,
-                    isGuide: !!t.isGuide || nm.includes('guide') || nm.includes('guia') || nm.includes('cue'),
-                    isClick: !!t.isClick || nm.includes('click'),
+                    isGuide: !!t.isGuide || isMixerGuideStem(stemName),
+                    isClick: !!t.isClick || isMixerClickStem(stemName),
                 });
             }
             await DesktopAudioBridge.loadSongFromPaths(payload);
@@ -272,9 +273,8 @@ class AudioEngine {
                 const ok = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
                 if (ok) this._wasmTrackCount += 1;
                 // Flag guide/click tracks so C++ routes them to the secondary bus (bypassing pitch)
-                const nm = (t.name || t.id || '').toLowerCase();
-                const isGuideOrClick = nm.includes('click') || nm.includes('guide') ||
-                                       nm.includes('guia')  || nm.includes('cue');
+                const stemName = t.name || '';
+                const isGuideOrClick = isMixerClickStem(stemName) || isMixerGuideStem(stemName);
                 if (ok && isGuideOrClick) {
                     this.wasm.setTrackIsGuide(t.id, true);
                 }

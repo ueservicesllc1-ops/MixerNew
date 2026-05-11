@@ -36,7 +36,16 @@ contextBridge.exposeInMainWorld('zionNative', {
     saveEncryptedTrack: (filename, buffer) => ipcRenderer.invoke('cache:save', filename, buffer),
     readEncryptedTrack: (filename) => ipcRenderer.invoke('cache:read', filename),
     isTrackDownloaded: (filename) => ipcRenderer.invoke('cache:exists', filename),
-    
+
+    pickPcAudioFolder: () => ipcRenderer.invoke('desktop:pick-pc-audio-folder'),
+    pickPcAudioFiles: () => ipcRenderer.invoke('desktop:pick-pc-audio-files'),
+    importPcSongFromFolder: (payload) => ipcRenderer.invoke('desktop:import-pc-song', payload),
+    resolveStem: (songId, stemName, isNormalized) => ipcRenderer.invoke('desktop:resolve-stem', songId, stemName, !!isNormalized),
+    readWaveformStemBuffer: (songId) => ipcRenderer.invoke('desktop:read-waveform-stem-buffer', songId),
+
+    /** Descarga el .exe a temp y abre el instalador (Windows). */
+    downloadAndLaunchDesktopUpdate: (url) => ipcRenderer.invoke('desktop:download-and-launch-update', url),
+
     isDesktop: true
 });
 

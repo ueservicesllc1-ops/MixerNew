@@ -140,7 +140,20 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                     });
 
                     let ab = null;
-                    if (window.zionNative?.readEncryptedTrack) {
+                    if (window.zionNative?.readWaveformStemBuffer) {
+                        try {
+                            const rawBuf = await window.zionNative.readWaveformStemBuffer(songId);
+                            if (rawBuf) {
+                                ab = rawBuf instanceof ArrayBuffer ? rawBuf.slice(0)
+                                    : (rawBuf.buffer && typeof rawBuf.byteLength === 'number'
+                                        ? rawBuf.buffer.slice(rawBuf.byteOffset, rawBuf.byteOffset + rawBuf.byteLength)
+                                        : null);
+                            }
+                        } catch (e) {
+                            console.warn('[WAVEFORM] readWaveformStemBuffer', e);
+                        }
+                    }
+                    if (!ab && window.zionNative?.readEncryptedTrack) {
                         const candidates = [
                             `${songId}___PreviewMix.mp3`,
                             `${songId}___PreviewMix.flac`,
@@ -157,7 +170,8 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                                 if (ab) break;
                             }
                         }
-                    } else if (isNative) {
+                    }
+                    if (!ab && isNative) {
                         const raw = await NativeEngine.readTrackBlob(songId, '__PreviewMix');
                         if (raw) {
                             ab = raw instanceof ArrayBuffer ? raw.slice(0) : await raw.arrayBuffer();
