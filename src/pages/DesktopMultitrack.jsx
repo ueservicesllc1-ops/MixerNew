@@ -18,6 +18,56 @@ function isElectronDesktopMixer() {
         && !window.Capacitor?.isNativePlatform?.();
 }
 
+/** Opciones de primer canal L para estéreo (1..16). */
+const DESKTOP_PHYSICAL_OUT_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1);
+
+function defaultDesktopAudioRoutingState() {
+    return {
+        routingVersion: 2,
+        deviceName: '',
+        outputChannelCount: 16,
+        orderedRouting: [],
+    };
+}
+
+function moveRouteRow(list, fromIdx, toIdx) {
+    if (!Array.isArray(list) || fromIdx === toIdx || fromIdx < 0 || toIdx < 0
+        || fromIdx >= list.length || toIdx >= list.length) {
+        return list;
+    }
+    const next = [...list];
+    const [row] = next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, row);
+    return next;
+}
+
+/** Orden de la lista = orden de ruteo; conserva outStart por id y añade pistas nuevas al final. */
+function buildOrderedRoutingFromTracks(tracks, prevOrdered) {
+    const nonV = (tracks || []).filter((t) => t?.name && !t?.isVisualOnly);
+    const prev = Array.isArray(prevOrdered) ? prevOrdered : [];
+    const seen = new Set();
+    const out = [];
+    for (const row of prev) {
+        if (!row?.id || seen.has(row.id)) continue;
+        const tr = nonV.find((t) => t.id === row.id);
+        if (tr) {
+            seen.add(row.id);
+            out.push({
+                id: row.id,
+                name: tr.name,
+                outStart: Math.min(16, Math.max(1, Number(row.outStart) || 1)),
+            });
+        }
+    }
+    for (const tr of nonV) {
+        if (seen.has(tr.id)) continue;
+        const idx = out.length;
+        const stagger = 1 + ((idx * 2) % 14);
+        out.push({ id: tr.id, name: tr.name, outStart: stagger });
+    }
+    return out;
+}
+
 /** Mezcla stems ya decodificados en la caché RAM del setlist (misma canción / mismo path). */
 function mergeZionEnrichedIntoPreload(songsPreloadMap, songId, enriched) {
     if (!enriched?.length) return;
@@ -156,7 +206,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, setDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -1263,6 +1313,11 @@ export default function Multitrack({ session }) {
 
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [routeModalOpen, setRouteModalOpen] = useState(false);
+    const [audioDevicesList, setAudioDevicesList] = useState([]);
+    const [audioOutputStatus, setAudioOutputStatus] = useState(null);
+    const [audioRoutingDraft, setAudioRoutingDraft] = useState(defaultDesktopAudioRoutingState);
+    const [audioRoutingApplying, setAudioRoutingApplying] = useState(false);
     const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
@@ -1347,6 +1402,95 @@ export default function Multitrack({ session }) {
         })();
         return () => { cancelled = true; };
     }, [CURRENT_VERSION]);
+
+    // Electron: restaurar ruteo multi-salida guardado por usuario (SQLite).
+    useEffect(() => {
+        if (!isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative?.getAudioRoutingPrefs) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const raw = await window.zionNative.getAudioRoutingPrefs();
+                if (cancelled || !raw || typeof raw !== 'string' || raw.length < 3) return;
+                await window.zionNative.applyAudioRoutingJson(raw);
+            } catch (e) {
+                console.warn('[AUDIO ROUTING] restaurar al inicio:', e?.message || e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    // Modal Ruteo: dispositivos + borrador (orden de pistas = orden de la lista; arrastrá filas).
+    useEffect(() => {
+        if (!routeModalOpen || !isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative?.getAudioOutputDevicesJson) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const [devsJson, statusJson, prefs] = await Promise.all([
+                    window.zionNative.getAudioOutputDevicesJson(),
+                    window.zionNative.getAudioOutputStatusJson(),
+                    window.zionNative.getAudioRoutingPrefs(),
+                ]);
+                if (cancelled) return;
+                try {
+                    const devs = JSON.parse(devsJson || '[]');
+                    setAudioDevicesList(Array.isArray(devs) ? devs : []);
+                } catch {
+                    setAudioDevicesList([]);
+                }
+                try {
+                    setAudioOutputStatus(JSON.parse(statusJson || '{}'));
+                } catch {
+                    setAudioOutputStatus(null);
+                }
+                let base = defaultDesktopAudioRoutingState();
+                if (prefs && typeof prefs === 'string') {
+                    try {
+                        const p = JSON.parse(prefs);
+                        base = { ...defaultDesktopAudioRoutingState(), ...p };
+                    } catch { /* */ }
+                }
+                const ordered = buildOrderedRoutingFromTracks(tracks, base.orderedRouting);
+                setAudioRoutingDraft({ ...base, orderedRouting: ordered });
+            } catch (e) {
+                console.warn('[AUDIO ROUTING] modal:', e?.message || e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [routeModalOpen, tracks]);
+
+    const applyDesktopAudioRouting = useCallback(async () => {
+        if (!isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative?.applyAudioRoutingJson) return;
+        setAudioRoutingApplying(true);
+        try {
+            const orderedRouting = (audioRoutingDraft.orderedRouting || []).map((row) => ({
+                id: row.id,
+                outStart: Math.min(16, Math.max(1, parseInt(row.outStart, 10) || 1)),
+            }));
+            const payload = {
+                routingVersion: 2,
+                deviceName: audioRoutingDraft.deviceName || '',
+                outputChannelCount: Math.min(16, Math.max(2, Number(audioRoutingDraft.outputChannelCount) || 16)),
+                orderedRouting,
+            };
+            if ((payload.outputChannelCount % 2) !== 0) {
+                payload.outputChannelCount -= 1;
+            }
+            if (payload.outputChannelCount < 2) {
+                payload.outputChannelCount = 2;
+            }
+            const r = await window.zionNative.applyAudioRoutingJson(JSON.stringify(payload));
+            if (!r?.ok) window.alert(r?.error || 'No se pudo aplicar el ruteo');
+            const st = await window.zionNative.getAudioOutputStatusJson();
+            try {
+                setAudioOutputStatus(JSON.parse(st || '{}'));
+            } catch { /* */ }
+            setRouteModalOpen(false);
+        } catch (e) {
+            window.alert(String(e?.message || e));
+        } finally {
+            setAudioRoutingApplying(false);
+        }
+    }, [audioRoutingDraft]);
 
     const handleDesktopPwaInstall = async () => {
         const prompt = window._pwaInstallPrompt;
@@ -3742,6 +3886,20 @@ export default function Multitrack({ session }) {
                         </button>
                     )}
                     <button className="transport-btn" title={t('multitrack.rewind')} onClick={handleRewind}><RefreshCw size={20} /></button>
+                    {isElectronDesktopMixer() && (
+                        <button
+                            type="button"
+                            className={`transport-btn ${routeModalOpen ? 'active' : ''}`}
+                            title="Ruteo multi-salida (orden de pistas)"
+                            onClick={() => setRouteModalOpen(true)}
+                            style={{
+                                background: routeModalOpen ? '#0369a1' : undefined,
+                                color: routeModalOpen ? 'white' : undefined,
+                            }}
+                        >
+                            <Network size={20} />
+                        </button>
+                    )}
                     <button
                         className={`transport-btn ${isSettingsOpen ? 'active' : ''}`}
                         onClick={() => setIsSettingsOpen(o => !o)}
@@ -3810,6 +3968,227 @@ export default function Multitrack({ session }) {
                                 <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>Escanea para entrar</div>
                                 <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Clientes conectados: {bandSyncInfo.clients || 0}</div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isElectronDesktopMixer() && routeModalOpen && (
+                <div
+                    role="presentation"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 10001,
+                        background: 'rgba(2, 6, 23, 0.82)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 16,
+                    }}
+                    onClick={() => { if (!audioRoutingApplying) setRouteModalOpen(false); }}
+                >
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="route-modal-title"
+                        style={{
+                            width: 'min(96vw, 520px)',
+                            maxHeight: 'min(88vh, 640px)',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            background: '#0f172a',
+                            border: '1px solid #334155',
+                            borderRadius: 14,
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.55)',
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid #334155' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#0369a1,#0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <Network size={18} color="white" />
+                                </div>
+                                <div>
+                                    <div id="route-modal-title" style={{ color: '#f1f5f9', fontWeight: 800, fontSize: '1rem' }}>Ruteo de audio</div>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Ordená las pistas arrastrando; canal 1 = L, 2 = R del par, hasta 16 salidas.</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={audioRoutingApplying}
+                                onClick={() => setRouteModalOpen(false)}
+                                style={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 999,
+                                    border: '1px solid #475569',
+                                    background: '#0b1220',
+                                    color: '#e2e8f0',
+                                    cursor: audioRoutingApplying ? 'wait' : 'pointer',
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <div style={{ padding: '12px 16px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                                Activas: <strong style={{ color: '#e2e8f0' }}>{audioOutputStatus?.activeOutputChannels ?? '—'}</strong>
+                                {' · '}Máx: <strong style={{ color: '#e2e8f0' }}>{audioOutputStatus?.maxOutputChannels ?? '—'}</strong>
+                                {audioOutputStatus?.deviceName ? (
+                                    <span>{' · '}{String(audioOutputStatus.deviceName)}</span>
+                                ) : null}
+                            </div>
+                            <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>
+                                Dispositivo
+                                <select
+                                    value={audioRoutingDraft.deviceName}
+                                    onChange={(e) => setAudioRoutingDraft((d) => ({ ...d, deviceName: e.target.value }))}
+                                    style={{
+                                        width: '100%',
+                                        marginTop: 6,
+                                        padding: '8px 10px',
+                                        borderRadius: 8,
+                                        border: '1px solid #475569',
+                                        background: '#1e293b',
+                                        color: '#f8fafc',
+                                        fontSize: '0.85rem',
+                                    }}
+                                >
+                                    <option value="">(Mantener dispositivo actual)</option>
+                                    {audioDevicesList.map((d, i) => (
+                                        <option key={`${d.type || 't'}-${d.name || i}-${i}`} value={d.name}>
+                                            [{d.type || 'audio'}] {d.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>
+                                Canales de salida (máx. 16, par)
+                                <select
+                                    value={String(audioRoutingDraft.outputChannelCount)}
+                                    onChange={(e) => setAudioRoutingDraft((d) => ({
+                                        ...d,
+                                        outputChannelCount: parseInt(e.target.value, 10) || 16,
+                                    }))}
+                                    style={{
+                                        width: '100%',
+                                        marginTop: 6,
+                                        padding: '8px 10px',
+                                        borderRadius: 8,
+                                        border: '1px solid #475569',
+                                        background: '#1e293b',
+                                        color: '#f8fafc',
+                                        fontSize: '0.85rem',
+                                    }}
+                                >
+                                    {(() => {
+                                        const maxHw = Math.max(2, Math.min(16, Math.floor((Number(audioOutputStatus?.maxOutputChannels) || 16) / 2) * 2));
+                                        const opts = [2, 4, 6, 8, 10, 12, 14, 16].filter((c) => c <= maxHw);
+                                        return (opts.length ? opts : [2]).map((c) => (
+                                            <option key={c} value={String(c)}>{c} canales</option>
+                                        ));
+                                    })()}
+                                </select>
+                            </label>
+                            <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: 4 }}>
+                                Con 2 salidas físicas: click/guía a la izquierda, resto a la derecha (motor).
+                            </div>
+                            <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#cbd5e1', marginTop: 4 }}>Orden de pistas → salida L (estéreo usa L y L+1)</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {(audioRoutingDraft.orderedRouting || []).length === 0 ? (
+                                    <div style={{ color: '#64748b', fontSize: '0.85rem', padding: 12, textAlign: 'center' }}>Cargá una canción con stems para configurar el ruteo.</div>
+                                ) : (
+                                    (audioRoutingDraft.orderedRouting || []).map((row, idx) => (
+                                        <div
+                                            key={row.id}
+                                            draggable
+                                            onDragStart={(e) => {
+                                                e.dataTransfer.setData('routeRowIdx', String(idx));
+                                                e.dataTransfer.effectAllowed = 'move';
+                                            }}
+                                            onDragOver={(e) => { e.preventDefault(); }}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                const from = parseInt(e.dataTransfer.getData('routeRowIdx'), 10);
+                                                if (!Number.isFinite(from)) return;
+                                                setAudioRoutingDraft((d) => ({
+                                                    ...d,
+                                                    orderedRouting: moveRouteRow(d.orderedRouting || [], from, idx),
+                                                }));
+                                            }}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 10,
+                                                padding: '8px 10px',
+                                                borderRadius: 10,
+                                                border: '1px solid #334155',
+                                                background: '#1e293b',
+                                                cursor: 'grab',
+                                            }}
+                                        >
+                                            <GripVertical size={16} color="#64748b" style={{ flexShrink: 0 }} />
+                                            <span style={{ width: 22, textAlign: 'center', fontWeight: 800, color: '#38bdf8', flexShrink: 0 }}>{idx + 1}</span>
+                                            <span style={{ flex: 1, minWidth: 0, fontSize: '0.82rem', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={row.name}>{row.name}</span>
+                                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: '0.72rem', color: '#94a3b8' }}>
+                                                Salida L
+                                                <select
+                                                    value={String(row.outStart ?? 1)}
+                                                    onChange={(e) => {
+                                                        const v = parseInt(e.target.value, 10) || 1;
+                                                        setAudioRoutingDraft((d) => {
+                                                            const next = [...(d.orderedRouting || [])];
+                                                            if (next[idx]) next[idx] = { ...next[idx], outStart: v };
+                                                            return { ...d, orderedRouting: next };
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        padding: '4px 6px',
+                                                        borderRadius: 8,
+                                                        border: '1px solid #475569',
+                                                        background: '#0f172a',
+                                                        color: '#f8fafc',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                >
+                                                    {DESKTOP_PHYSICAL_OUT_OPTIONS.map((n) => (
+                                                        <option key={n} value={String(n)}>Canal {n}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, padding: '12px 16px', borderTop: '1px solid #334155', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                disabled={audioRoutingApplying}
+                                onClick={() => setRouteModalOpen(false)}
+                                style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid #475569', background: 'transparent', color: '#94a3b8', fontWeight: 700, cursor: 'pointer' }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                disabled={audioRoutingApplying || !(audioRoutingDraft.orderedRouting || []).length}
+                                onClick={() => { applyDesktopAudioRouting(); }}
+                                style={{
+                                    padding: '10px 18px',
+                                    borderRadius: 10,
+                                    border: 'none',
+                                    background: '#0284c7',
+                                    color: 'white',
+                                    fontWeight: 800,
+                                    cursor: audioRoutingApplying ? 'wait' : 'pointer',
+                                    opacity: (!(audioRoutingDraft.orderedRouting || []).length) ? 0.45 : 1,
+                                }}
+                            >
+                                {audioRoutingApplying ? 'Guardando…' : 'Aplicar y guardar'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -4534,7 +4913,6 @@ export default function Multitrack({ session }) {
                         </button>
                     </div>
                 </div>
-
 
                 {/* ── 3. Tamaño de fuente ────────────────────────────── */}
                 <div className="settings-section">

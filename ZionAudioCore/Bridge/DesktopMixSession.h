@@ -2,6 +2,8 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <vector>
+#include <array>
+#include <map>
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <SoundTouch.h>
@@ -50,6 +52,16 @@ private:
     bool prepared = false;
 };
 
+/** Buses lógicos para multi-out (pares físicos 1-2 … 7-8). */
+enum class DesktopStemBus : int {
+    Music = 0,
+    Guide,
+    Click,
+    Vocals,
+    Drums,
+    busCount = 5
+};
+
 /** Ruta en disco + nombre para clasificar bus + id de la UI (p. ej. songId_Click) para VU / IPC. */
 struct DesktopStemLoadSpec {
     juce::String path;
@@ -83,6 +95,10 @@ public:
     void setTrackMutedForClientId(const juce::String& clientTrackId, bool muted);
     void setTrackSoloForClientId(const juce::String& clientTrackId, bool solo);
 
+    /** JSON legacy (buses) o v2: `orderedRouting:[{id,outStart}]` con outStart 1..16 = primer canal L (R=L+1). */
+    void applyRoutingFromJson(const juce::String& json);
+    void clearTrackRoutingOverrides();
+
     void prepareToPlay(int samplesPerBlockExpected, double sampleRate) override;
     void releaseResources() override;
     void getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) override;
@@ -97,6 +113,7 @@ private:
     struct StemSlot {
         bool isGuide = false;
         bool isClick = false;
+        DesktopStemBus assignedBus = DesktopStemBus::Music;
         juce::String logName;
         juce::String clientTrackId;
         float lastMeterLevel = 0.f;
@@ -114,9 +131,35 @@ private:
     /** Alinea todos los transports al reloj de guía/click (seco) tras volver a tono nominal. */
     void resyncTransportsToGuide();
     StemSlot* findStemForClientId(const juce::String& id);
+    int resolveOutputPairForStem(const StemSlot& s) const;
+    void routeStereoSample(juce::AudioBuffer<float>* out,
+                           int start,
+                           int sampleIndex,
+                           int numOutCh,
+                           int pairIndex,
+                           float sampleL,
+                           float sampleR,
+                           DesktopStemBus bus) const;
+    /** outStart1Based 1..16 → canales 0-based; estéreo en ch y ch+1 si existe. */
+    void routeStereoToPhysical(juce::AudioBuffer<float>* out,
+                               int start,
+                               int sampleIndex,
+                               int numOutCh,
+                               int outStart1Based,
+                               float sampleL,
+                               float sampleR,
+                               DesktopStemBus bus) const;
 
     std::vector<StemSlot> stemSlots;
     juce::AudioBuffer<float> scratch;
+
+    /** Índice de par de salida 0..3 → canales físicos [2p, 2p+1] (solo modo legacy). */
+    std::array<int, (int) DesktopStemBus::busCount> busOutputPair { 0, 0, 0, 0, 0 };
+    std::map<juce::String, int> trackPairOverride;
+
+    bool useOrderedPhysicalRouting = false;
+    /** clientTrackId → primer canal de salida 1..16 (UI). */
+    std::map<juce::String, int> trackPhysicalOutStart1Based;
 
     double hostSampleRate = 44100.0;
     juce::int64 lengthInSamples = 0;

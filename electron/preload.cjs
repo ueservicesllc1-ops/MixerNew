@@ -14,7 +14,11 @@ contextBridge.exposeInMainWorld('zionNative', {
     setTrackMute: (id, muted) => ipcRenderer.send('audio:set-mute', id, muted),
     setTrackSolo: (id, solo) => ipcRenderer.send('audio:set-solo', id, solo),
     getHardwareId: () => ipcRenderer.invoke('audio:get-hwid'),
-    
+    getAudioOutputDevicesJson: () => ipcRenderer.invoke('audio:list-devices'),
+    getAudioOutputStatusJson: () => ipcRenderer.invoke('audio:output-status'),
+    applyAudioRoutingJson: (jsonStr) => ipcRenderer.invoke('audio:apply-routing', jsonStr),
+    getAudioRoutingPrefs: () => ipcRenderer.invoke('audio:get-routing-prefs'),
+
     // Base de Datos Local (OFFLINE)
     getSongs: () => ipcRenderer.invoke('db:get-songs'),
     getSong: (id) => ipcRenderer.invoke('db:get-song', id),

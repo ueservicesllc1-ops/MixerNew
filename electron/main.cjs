@@ -694,5 +694,48 @@ app.whenReady().then(() => {
 
     ipcMain.handle('audio:get-hwid', () => (engine ? engine.getHardwareId() : 'NO-ENGINE'));
 
+    ipcMain.handle('audio:list-devices', () => {
+        try {
+            return engine && typeof engine.getAudioOutputDevicesJson === 'function'
+                ? engine.getAudioOutputDevicesJson()
+                : '[]';
+        } catch {
+            return '[]';
+        }
+    });
+    ipcMain.handle('audio:output-status', () => {
+        try {
+            return engine && typeof engine.getAudioOutputStatusJson === 'function'
+                ? engine.getAudioOutputStatusJson()
+                : '{}';
+        } catch {
+            return '{}';
+        }
+    });
+    ipcMain.handle('audio:apply-routing', (_e, jsonStr) => {
+        try {
+            const u = db.getUser();
+            const uid = u?.uid || '__guest__';
+            if (typeof jsonStr === 'string' && jsonStr.length > 0) {
+                db.saveAudioRoutingPrefs(uid, jsonStr);
+            }
+            if (engine && typeof engine.applyAudioRoutingJson === 'function') {
+                engine.applyAudioRoutingJson(jsonStr);
+            }
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: String(e?.message || e) };
+        }
+    });
+    ipcMain.handle('audio:get-routing-prefs', () => {
+        try {
+            const u = db.getUser();
+            const uid = u?.uid || '__guest__';
+            return db.getAudioRoutingPrefs(uid);
+        } catch {
+            return null;
+        }
+    });
+
     createWindow();
 });

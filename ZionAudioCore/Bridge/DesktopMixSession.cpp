@@ -1,4 +1,5 @@
 #include "DesktopMixSession.h"
+#include <juce_core/juce_core.h>
 #include <cmath>
 #include <iostream>
 
@@ -160,6 +161,29 @@ static bool classifyGuideStem(const juce::String& name) {
 static bool classifyClickStem(const juce::String& name) {
     return name.toLowerCase().contains("click");
 }
+static bool classifyVocalStem(const juce::String& name) {
+    auto s = name.toLowerCase();
+    return s.contains("vocal") || s.contains("vox") || s.contains("voz") || s.contains("lead")
+        || s.contains("choir") || s.contains("bgv");
+}
+static bool classifyDrumStem(const juce::String& name) {
+    auto s = name.toLowerCase();
+    return s.contains("drum") || s.contains("kick") || s.contains("snare") || s.contains("tom")
+        || s.contains("cymbal") || s.contains("overhead") || s.contains("percussion")
+        || s.contains("redoble") || s.contains("tambor");
+}
+
+static DesktopStemBus classifyStemBus(const juce::String& stemLabel) {
+    if (classifyClickStem(stemLabel))
+        return DesktopStemBus::Click;
+    if (classifyGuideStem(stemLabel))
+        return DesktopStemBus::Guide;
+    if (classifyVocalStem(stemLabel))
+        return DesktopStemBus::Vocals;
+    if (classifyDrumStem(stemLabel))
+        return DesktopStemBus::Drums;
+    return DesktopStemBus::Music;
+}
 
 // Transparent desktop mix gains (no auto normalization/compression).
 constexpr float kMusicBusGain = 1.0f;
@@ -286,6 +310,152 @@ void DesktopMixSession::setTrackSoloForClientId(const juce::String& clientTrackI
     s->solo = solo;
 }
 
+void DesktopMixSession::applyRoutingFromJson(const juce::String& json) {
+    trackPairOverride.clear();
+    trackPhysicalOutStart1Based.clear();
+    useOrderedPhysicalRouting = false;
+    if (json.isEmpty())
+        return;
+
+    const auto parsed = juce::JSON::parse(json);
+    if (!parsed.isObject())
+        return;
+
+    auto* o = parsed.getDynamicObject();
+    if (o == nullptr)
+        return;
+
+    const juce::var orVar = o->getProperty("orderedRouting");
+    if (orVar.isArray()) {
+        if (auto* arr = orVar.getArray()) {
+            if (arr->size() > 0) {
+                useOrderedPhysicalRouting = true;
+                for (const auto& item : *arr) {
+                    if (!item.isObject())
+                        continue;
+                    auto* row = item.getDynamicObject();
+                    if (row == nullptr)
+                        continue;
+                    const juce::String id = row->getProperty("id").toString();
+                    if (id.isEmpty())
+                        continue;
+                    const int start = juce::jlimit(1, 16, (int) row->getProperty("outStart"));
+                    trackPhysicalOutStart1Based[id] = start;
+                }
+                return;
+            }
+        }
+    }
+
+    auto gv = [&](const char* k, int def) {
+        if (!o->hasProperty(k))
+            return def;
+        return juce::jlimit(0, 3, (int) o->getProperty(k));
+    };
+
+    busOutputPair[(int) DesktopStemBus::Music] = gv("music", 0);
+    busOutputPair[(int) DesktopStemBus::Guide] = gv("guide", 0);
+    busOutputPair[(int) DesktopStemBus::Click] = gv("click", 0);
+    busOutputPair[(int) DesktopStemBus::Vocals] = gv("vocals", 0);
+    busOutputPair[(int) DesktopStemBus::Drums] = gv("drums", 0);
+
+    const juce::var trVar = o->getProperty("tracks");
+    if (trVar.isObject()) {
+        if (auto* to = trVar.getDynamicObject()) {
+            const juce::NamedValueSet& props = to->getProperties();
+            for (int i = 0; i < props.size(); ++i) {
+                const juce::Identifier nm = props.getName(i);
+                trackPairOverride[juce::String(nm.toString())] =
+                    juce::jlimit(0, 3, (int) props.getValueAt(i));
+            }
+        }
+    }
+}
+
+void DesktopMixSession::clearTrackRoutingOverrides() {
+    trackPairOverride.clear();
+    trackPhysicalOutStart1Based.clear();
+    useOrderedPhysicalRouting = false;
+}
+
+int DesktopMixSession::resolveOutputPairForStem(const StemSlot& s) const {
+    if (s.clientTrackId.isNotEmpty()) {
+        const auto it = trackPairOverride.find(s.clientTrackId);
+        if (it != trackPairOverride.end())
+            return juce::jlimit(0, 3, it->second);
+    }
+    const int bi = (int) s.assignedBus;
+    if (bi >= 0 && bi < (int) busOutputPair.size())
+        return juce::jlimit(0, 3, busOutputPair[(size_t) bi]);
+    return 0;
+}
+
+void DesktopMixSession::routeStereoSample(juce::AudioBuffer<float>* out,
+                                          int start,
+                                          int sampleIndex,
+                                          int numOutCh,
+                                          int pairIndex,
+                                          float sampleL,
+                                          float sampleR,
+                                          DesktopStemBus bus) const {
+    if (out == nullptr || numOutCh <= 0)
+        return;
+
+    if (numOutCh <= 2) {
+        const float mono = 0.5f * (sampleL + sampleR);
+        const bool leftGroup = (bus == DesktopStemBus::Click || bus == DesktopStemBus::Guide);
+        const int idxL = 0;
+        const int idxR = juce::jmin(1, numOutCh - 1);
+        if (leftGroup)
+            out->addSample(idxL, start + sampleIndex, mono);
+        else
+            out->addSample(idxR, start + sampleIndex, mono);
+        return;
+    }
+
+    const int maxPair = juce::jmax(0, numOutCh / 2 - 1);
+    const int p = juce::jlimit(0, maxPair, pairIndex);
+    const int c0 = p * 2;
+    const int c1 = c0 + 1;
+    if (c1 < numOutCh) {
+        out->addSample(c0, start + sampleIndex, sampleL);
+        out->addSample(c1, start + sampleIndex, sampleR);
+    }
+}
+
+void DesktopMixSession::routeStereoToPhysical(juce::AudioBuffer<float>* out,
+                                                int start,
+                                                int sampleIndex,
+                                                int numOutCh,
+                                                int outStart1Based,
+                                                float sampleL,
+                                                float sampleR,
+                                                DesktopStemBus bus) const {
+    if (out == nullptr || numOutCh <= 0)
+        return;
+
+    if (numOutCh <= 2) {
+        const float mono = 0.5f * (sampleL + sampleR);
+        const bool leftGroup = (bus == DesktopStemBus::Click || bus == DesktopStemBus::Guide);
+        const int idxL = 0;
+        const int idxR = juce::jmin(1, numOutCh - 1);
+        if (leftGroup)
+            out->addSample(idxL, start + sampleIndex, mono);
+        else
+            out->addSample(idxR, start + sampleIndex, mono);
+        return;
+    }
+
+    const int c0 = juce::jlimit(0, numOutCh - 1, outStart1Based - 1);
+    const int c1 = c0 + 1;
+    if (c1 < numOutCh) {
+        out->addSample(c0, start + sampleIndex, sampleL);
+        out->addSample(c1, start + sampleIndex, sampleR);
+    } else {
+        out->addSample(c0, start + sampleIndex, 0.5f * (sampleL + sampleR));
+    }
+}
+
 bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
                                   const juce::File& stemsRoot,
                                   const std::vector<DesktopStemLoadSpec>& specs) {
@@ -326,6 +496,7 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
         StemSlot slot;
         slot.isGuide = guide;
         slot.isClick = classifyClickStem(stemLabel);
+        slot.assignedBus = classifyStemBus(stemLabel);
         slot.logName = stemLabel;
         slot.clientTrackId = spec.clientTrackId;
         slot.lastMeterLevel = 0.f;
@@ -382,7 +553,7 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
     NativeLog(
         "[JUCE AUDIO] device_sr=" + juce::String(hostSampleRate, 2) +
         " buffer_size=" + juce::String(samplesPerBlockExpected) +
-        " output_channels=2 track_count=" + juce::String((int) stemSlots.size())
+        " track_count=" + juce::String((int) stemSlots.size())
     );
 }
 
@@ -395,18 +566,18 @@ void DesktopMixSession::releaseResources() {
 }
 
 void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) {
-    if (bufferToFill.buffer == nullptr) return;
+    if (bufferToFill.buffer == nullptr)
+        return;
 
     bufferToFill.clearActiveBufferRegion();
 
     const int nSamp = bufferToFill.numSamples;
     const int start = bufferToFill.startSample;
-    float* outL = bufferToFill.buffer->getWritePointer(0, start);
-    const int outChannels = bufferToFill.buffer->getNumChannels();
-    float* outR = outChannels > 1 ? bufferToFill.buffer->getWritePointer(1, start) : outL;
+    juce::AudioBuffer<float>* const outBuf = bufferToFill.buffer;
+    const int outChannels = outBuf->getNumChannels();
 
     ++debugBlockCounter;
-    const bool emitDebug = (debugBlockCounter % 24) == 0; // ~2 times/s at 48k, 1024 block
+    const bool emitDebug = (debugBlockCounter % 24) == 0;
     float masterPeak = 0.0f;
     double masterSumSq = 0.0;
     int masterSamples = 0;
@@ -420,7 +591,8 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
     }
 
     for (auto& s : stemSlots) {
-        if (s.transport == nullptr) continue;
+        if (s.transport == nullptr)
+            continue;
 
         const int useCh = juce::jmax(1, juce::jmin(s.numChannels, scratch.getNumChannels()));
         scratch.clear();
@@ -429,11 +601,29 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
 
         const bool audible = !s.muted && (!anySolo || s.solo);
         float trackPeak = 0.0f;
+        int phys1ForDebug = 0;
 
         if (audible) {
             const float pan = juce::jlimit(-1.0f, 1.0f, s.pan);
             const float panL = std::sqrt(0.5f * (1.0f - pan));
             const float panR = std::sqrt(0.5f * (1.0f + pan));
+            const int pairIdx = resolveOutputPairForStem(s);
+            const juce::String cid = s.clientTrackId;
+            int phys1 = 0;
+            if (useOrderedPhysicalRouting && cid.isNotEmpty()) {
+                const auto it = trackPhysicalOutStart1Based.find(cid);
+                if (it != trackPhysicalOutStart1Based.end())
+                    phys1 = it->second;
+            }
+            phys1ForDebug = phys1;
+
+            auto routeOne = [&](int si, float L, float R) {
+                if (phys1 > 0)
+                    routeStereoToPhysical(outBuf, start, si, outChannels, phys1, L, R, s.assignedBus);
+                else
+                    routeStereoSample(outBuf, start, si, outChannels, pairIdx, L, R, s.assignedBus);
+            };
+
             if (s.isGuide) {
                 const float guideGain = s.isClick ? kClickBusGain : kGuideBusGain;
                 for (int i = 0; i < nSamp; ++i) {
@@ -442,10 +632,10 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
                     const float mono = 0.5f * (inL + inR);
                     const float gL = mono * s.gain * guideGain * panL;
                     const float gR = mono * s.gain * guideGain * panR;
-                    outL[i] += gL;
-                    outR[i] += gR;
+                    routeOne(i, gL, gR);
                     const float ag = juce::jmax(std::abs(gL), std::abs(gR));
-                    if (ag > trackPeak) trackPeak = ag;
+                    if (ag > trackPeak)
+                        trackPeak = ag;
                 }
             } else {
                 for (int i = 0; i < nSamp; ++i) {
@@ -453,10 +643,10 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
                     const float inR = (useCh > 1) ? scratch.getSample(1, i) : inL;
                     const float mL = inL * s.gain * kMusicBusGain * panL;
                     const float mR = inR * s.gain * kMusicBusGain * panR;
-                    outL[i] += mL;
-                    outR[i] += mR;
+                    routeOne(i, mL, mR);
                     const float am = juce::jmax(std::abs(mL), std::abs(mR));
-                    if (am > trackPeak) trackPeak = am;
+                    if (am > trackPeak)
+                        trackPeak = am;
                 }
             }
             s.lastMeterLevel = juce::jlimit(0.f, 1.5f, juce::jmax(trackPeak, s.lastMeterLevel * 0.94f));
@@ -470,6 +660,11 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
                 " peak=" + juce::String(trackPeak, 4) +
                 " gain=" + juce::String(s.gain, 3) +
                 " pan=" + juce::String(s.pan, 2) +
+                " bus=" + juce::String((int) s.assignedBus) +
+                " pair=" + juce::String(resolveOutputPairForStem(s)) +
+                " phys1=" + juce::String(phys1ForDebug) +
+                " ord=" + juce::String((int) useOrderedPhysicalRouting) +
+                " outs=" + juce::String(outChannels) +
                 " muted=" + juce::String((int) s.muted) +
                 " solo=" + juce::String((int) s.solo) +
                 " audible=" + juce::String((int) audible)
@@ -477,16 +672,17 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         }
     }
 
-    for (int i = 0; i < nSamp; ++i) {
-        // Fixed transparent trim to keep headroom without compression/limiting.
-        outL[i] *= kMasterTrim;
-        outR[i] *= kMasterTrim;
-        const float l = outL[i];
-        const float r = outR[i];
-        const float p = juce::jmax(std::abs(l), std::abs(r));
-        if (p > masterPeak) masterPeak = p;
-        masterSumSq += (double) l * (double) l + (double) r * (double) r;
-        masterSamples += 2;
+    for (int c = 0; c < outChannels; ++c) {
+        float* ch = outBuf->getWritePointer(c, start);
+        for (int i = 0; i < nSamp; ++i) {
+            ch[i] *= kMasterTrim;
+            const float v = ch[i];
+            const float p = std::abs(v);
+            if (p > masterPeak)
+                masterPeak = p;
+            masterSumSq += (double) v * (double) v;
+            ++masterSamples;
+        }
     }
 
     if (masterPeak > 1.0f) {
@@ -496,7 +692,8 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         const float masterRms = (float) std::sqrt(masterSumSq / (double) masterSamples);
         NativeLog(
             "[JUCE AUDIO] master peak=" + juce::String(masterPeak, 4) +
-            " master RMS=" + juce::String(masterRms, 4)
+            " master RMS=" + juce::String(masterRms, 4) +
+            " outCh=" + juce::String(outChannels)
         );
     }
 }

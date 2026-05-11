@@ -23,7 +23,10 @@ public:
             InstanceMethod("getPlaybackSnapshot", &ZionAudioBridge::GetPlaybackSnapshot),
             InstanceMethod("loadEncryptedSong", &ZionAudioBridge::LoadEncryptedSong),
             InstanceMethod("getHardwareId", &ZionAudioBridge::GetHardwareId),
-            InstanceMethod("checkProStatus", &ZionAudioBridge::CheckProStatus)
+            InstanceMethod("checkProStatus", &ZionAudioBridge::CheckProStatus),
+            InstanceMethod("getAudioOutputDevicesJson", &ZionAudioBridge::GetAudioOutputDevicesJson),
+            InstanceMethod("getAudioOutputStatusJson", &ZionAudioBridge::GetAudioOutputStatusJson),
+            InstanceMethod("applyAudioRoutingJson", &ZionAudioBridge::ApplyAudioRoutingJson)
         });
 
         Napi::FunctionReference* constructor = new Napi::FunctionReference();
@@ -217,6 +220,46 @@ private:
     Napi::Value CheckProStatus(const Napi::CallbackInfo& info) {
         juce::ignoreUnused(info);
         return Napi::Boolean::New(info.Env(), false);
+    }
+
+    Napi::Value GetAudioOutputDevicesJson(const Napi::CallbackInfo& info) {
+        juce::ignoreUnused(info);
+        const juce::String j = Zion::ZionCore::getInstance().getEngine().getOutputAudioDevicesJson();
+        return Napi::String::New(info.Env(), j.toStdString());
+    }
+
+    Napi::Value GetAudioOutputStatusJson(const Napi::CallbackInfo& info) {
+        juce::ignoreUnused(info);
+        const juce::String j = Zion::ZionCore::getInstance().getEngine().getCurrentAudioOutputStatusJson();
+        return Napi::String::New(info.Env(), j.toStdString());
+    }
+
+    Napi::Value ApplyAudioRoutingJson(const Napi::CallbackInfo& info) {
+        std::string jsonStr;
+        if (info.Length() > 0 && info[0].IsString())
+            jsonStr = info[0].As<Napi::String>().Utf8Value();
+        const juce::String j(jsonStr);
+
+        auto& eng = Zion::ZionCore::getInstance().getEngine();
+        const auto parsed = juce::JSON::parse(j);
+        if (parsed.isObject()) {
+            if (auto* o = parsed.getDynamicObject()) {
+                const bool hasDev =
+                    o->hasProperty("deviceName") && o->getProperty("deviceName").toString().isNotEmpty();
+                const bool hasCh = o->hasProperty("outputChannelCount");
+                if (hasDev || hasCh) {
+                    const juce::String dev = hasDev ? o->getProperty("deviceName").toString() : juce::String();
+                    int nch = hasCh ? (int) o->getProperty("outputChannelCount") : 16;
+                    nch = juce::jlimit(2, 16, nch);
+                    if ((nch % 2) != 0)
+                        --nch;
+                    eng.setAudioOutputDeviceWithChannels(dev, nch);
+                }
+            }
+        }
+
+        mixSession.applyRoutingFromJson(j);
+        return Napi::Boolean::New(info.Env(), true);
     }
 };
 

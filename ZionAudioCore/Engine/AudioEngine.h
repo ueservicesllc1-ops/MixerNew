@@ -21,13 +21,20 @@ public:
 
     juce::AudioDeviceManager& getDeviceManager() { return deviceManager; }
 
+    /** Lista JSON: [{ "type", "name" }, ...] salidas disponibles. */
+    juce::String getOutputAudioDevicesJson();
+    /** Estado: deviceName, activeOutputChannels, maxOutputChannels. */
+    juce::String getCurrentAudioOutputStatusJson();
+    /** `outputDeviceName` vacío = mantener dispositivo; numOutputChannels 2..8 (par). */
+    bool setAudioOutputDeviceWithChannels(const juce::String& outputDeviceName, int numOutputChannels);
+
 private:
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer audioSourcePlayer;
     
-    // Default audio settings
+    // Default audio settings (pedir hasta 8 salidas; el driver usa las que existan)
     static constexpr int defaultNumInputChannels = 0;
-    static constexpr int defaultNumOutputChannels = 2;
+    static constexpr int defaultNumOutputChannels = 8;
 };
 
 } // namespace Zion

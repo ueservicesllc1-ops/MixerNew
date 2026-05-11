@@ -37,6 +37,11 @@ db.exec(`
         serial TEXT,
         mode TEXT DEFAULT 'demo'
     );
+
+    CREATE TABLE IF NOT EXISTS audio_routing_prefs (
+        user_uid TEXT PRIMARY KEY,
+        prefs_json TEXT NOT NULL
+    );
 `);
 
 // MIGRACIONES DE ESQUEMA AUTOMÁTICAS
@@ -92,5 +97,16 @@ module.exports = {
     saveLicense: (serial, mode) => {
         const stmt = db.prepare('INSERT OR REPLACE INTO license (id, serial, mode) VALUES (1, ?, ?)');
         return stmt.run(serial, mode);
-    }
+    },
+
+    getAudioRoutingPrefs: (userUid) => {
+        const uid = userUid || '__guest__';
+        const row = db.prepare('SELECT prefs_json FROM audio_routing_prefs WHERE user_uid = ?').get(uid);
+        return row?.prefs_json ?? null;
+    },
+    saveAudioRoutingPrefs: (userUid, prefsJson) => {
+        const uid = userUid || '__guest__';
+        const stmt = db.prepare('INSERT OR REPLACE INTO audio_routing_prefs (user_uid, prefs_json) VALUES (?, ?)');
+        return stmt.run(uid, typeof prefsJson === 'string' ? prefsJson : JSON.stringify(prefsJson));
+    },
 };
