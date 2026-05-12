@@ -1174,6 +1174,9 @@ export default function Admin() {
                 const pwaLastSeen = toMillisSafe(u?.usageMetrics?.platforms?.pwa?.lastSeenAt);
                 return Math.max(webLastSeen, pwaLastSeen) >= cutoff;
             }).length;
+            const desktopActive30d = users.filter(u =>
+                toMillisSafe(u?.usageMetrics?.platforms?.desktop_win?.lastSeenAt) >= cutoff).length;
+            const desktopSignups = users.filter(u => u.signupClient === 'desktop_win').length;
             const onlineNow = users.filter(u => toMillisSafe(u?.usageMetrics?.lastSeenAt) >= onlineCutoff).length;
 
             const onlineList = users
@@ -1195,7 +1198,9 @@ export default function Admin() {
                 onlineNow,
                 appInstalled,
                 appActive30d,
-                webActive30d
+                webActive30d,
+                desktopActive30d,
+                desktopSignups,
             });
         } finally {
             setIsBuildingUsageReport(false);
@@ -1233,6 +1238,14 @@ export default function Admin() {
         const k = c.versionName || '?';
         desktopClientsByVersion[k] = (desktopClientsByVersion[k] || 0) + 1;
     });
+
+    /** Cuentas Firebase que iniciaron sesión al menos una vez desde el .exe (usageMetrics). */
+    const firebaseAccountsUsedDesktop = users.filter((u) => {
+        const p = u?.usageMetrics?.platforms?.desktop_win;
+        return toMillisSafe(p?.lastSeenAt) > 0 || toMillisSafe(p?.firstSeenAt) > 0;
+    }).length;
+    /** Alta de cuenta creada desde el modal de registro del .exe (desde este deploy en adelante). */
+    const firebaseAccountsSignUpDesktop = users.filter((u) => u.signupClient === 'desktop_win').length;
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
@@ -2172,7 +2185,7 @@ export default function Admin() {
                                     <BarChart3 size={24} color="#22c55e" />
                                     Reporte de Uso
                                 </h2>
-                                <p style={{ color: '#94a3b8', margin: '6px 0 0 0' }}>Instalaciones app y usuarios activos de app/web (ventana: 30 días).</p>
+                                <p style={{ color: '#94a3b8', margin: '6px 0 0 0' }}>Firebase: app nativa, web/PWA y escritorio Windows (.exe) con ventana 30 días donde aplica.</p>
                             </div>
                             <button
                                 onClick={buildUsageReport}
@@ -2208,6 +2221,14 @@ export default function Admin() {
                                 <div style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.25)', borderRadius: '14px', padding: '16px' }}>
                                     <div style={{ color: '#c4b5fd', fontSize: '0.8rem' }}>Activos web app (30d)</div>
                                     <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.webActive30d}</div>
+                                </div>
+                                <div style={{ background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#7dd3fc', fontSize: '0.8rem' }}>Activos escritorio .exe (30d)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.desktopActive30d ?? 0}</div>
+                                </div>
+                                <div style={{ background: 'rgba(244,114,182,0.1)', border: '1px solid rgba(244,114,182,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                    <div style={{ color: '#f9a8d4', fontSize: '0.8rem' }}>Altas desde .exe (total)</div>
+                                    <div style={{ fontSize: '1.8rem', fontWeight: '900' }}>{usageReport.desktopSignups ?? 0}</div>
                                 </div>
                             </div>
                         ) : (
@@ -2253,10 +2274,22 @@ export default function Admin() {
                             Escritorio Windows
                         </h2>
                         <p style={{ color: '#94a3b8', margin: '8px 0 22px 0', maxWidth: '900px', lineHeight: 1.45 }}>
-                            Descargas registradas al abrir el instalador desde la landing (<code style={{ color: '#e2e8f0' }}>desktop_download_events</code>)
-                            y equipos con la app abierta que envían un latido cada ~2 minutos (<code style={{ color: '#e2e8f0' }}>desktop_clients</code>).
-                            Desplegá las reglas de Firestore tras actualizar el repo.
+                            Descargas (<code style={{ color: '#e2e8f0' }}>desktop_download_events</code>) y latidos anónimos por PC (<code style={{ color: '#e2e8f0' }}>desktop_clients</code>).
+                            Las cuentas <strong>Firebase</strong> con correo (pestaña Usuarios / Reportes) son distintas: abajo ves cuántas usaron o se dieron de alta desde el .exe; el resto suele ser web/PWA/APK.
                         </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
+                            <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#fcd34d', fontSize: '0.8rem' }}>Cuentas con sesión en .exe (Firebase)</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{firebaseAccountsUsedDesktop}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '6px', lineHeight: 1.35 }}>Alguna vez abrieron la app de escritorio logueados (métrica usageMetrics.desktop_win).</div>
+                            </div>
+                            <div style={{ background: 'rgba(244,114,182,0.1)', border: '1px solid rgba(244,114,182,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#f9a8d4', fontSize: '0.8rem' }}>Alta desde .exe (Firebase)</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{firebaseAccountsSignUpDesktop}</div>
+                                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '6px', lineHeight: 1.35 }}>Solo cuentas creadas con “registro” en el escritorio desde esta versión del código (campo signupClient).</div>
+                            </div>
+                        </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '26px' }}>
                             <div style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: '14px', padding: '16px' }}>

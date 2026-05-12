@@ -2918,7 +2918,17 @@ export default function Multitrack({ session }) {
         setLoginError('');
         try {
             if (loginIsRegister) {
-                await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
+                const cred = await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
+                try {
+                    await setDoc(doc(db, 'users', cred.user.uid), {
+                        signupClient: 'desktop_win',
+                        signupAt: serverTimestamp(),
+                        email: cred.user.email || String(loginEmail || '').trim(),
+                        displayName: cred.user.displayName || '',
+                    }, { merge: true });
+                } catch (e) {
+                    console.warn('[signup desktop tag]', e?.code || e?.message || e);
+                }
             } else {
                 await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
             }

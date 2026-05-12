@@ -5,6 +5,13 @@ const getUsagePlatform = () => {
     const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
     if (isNative) return 'native';
 
+    /** Zion Stage .exe (Electron): debe ir antes de `web` / PWA. */
+    const isElectronDesktop =
+        typeof window !== 'undefined'
+        && window.zionNative?.isDesktop === true
+        && !isNative;
+    if (isElectronDesktop) return 'desktop_win';
+
     const isStandalone = typeof window !== 'undefined' &&
         (window.matchMedia?.('(display-mode: standalone)')?.matches || window.navigator?.standalone === true);
     if (isStandalone) return 'pwa';
