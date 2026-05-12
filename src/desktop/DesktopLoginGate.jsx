@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase';
 import { LocalAuthService } from './LocalAuthService';
 import { DesktopSessionService } from './DesktopSessionService';
@@ -12,6 +12,7 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isOnline, setIsOnline] = useState(DesktopSessionService.isOnline());
+    const [resetMsg, setResetMsg] = useState('');
 
     useEffect(() => {
         const handleOnline = () => setIsOnline(true);
@@ -27,6 +28,7 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
+        setResetMsg('');
         setIsLoading(true);
 
         try {
@@ -71,6 +73,35 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
             }
         } catch (err) {
             setError(err.message || 'Error de autenticación');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleForgotPassword = async () => {
+        setError('');
+        setResetMsg('');
+        if (!email.trim()) {
+            setError('Ingresá tu correo para recuperar la contraseña.');
+            return;
+        }
+        if (!isOnline) {
+            setError('Conectate a internet para recuperar la contraseña.');
+            return;
+        }
+        setIsLoading(true);
+        try {
+            await sendPasswordResetEmail(auth, email.trim());
+            setResetMsg('Revisá tu correo: te enviamos un enlace para restablecer la contraseña.');
+        } catch (err) {
+            const code = err?.code || '';
+            if (code === 'auth/user-not-found') {
+                setError('No hay cuenta con ese correo.');
+            } else if (code === 'auth/invalid-email') {
+                setError('El correo no es válido.');
+            } else {
+                setError(err?.message || 'No se pudo enviar el correo.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -139,12 +170,42 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
                         }} 
                     />
 
+                    {authMode === 'login' && isOnline && (
+                        <button
+                            type="button"
+                            onClick={handleForgotPassword}
+                            disabled={isLoading}
+                            style={{
+                                alignSelf: 'flex-end',
+                                marginTop: '-4px',
+                                background: 'none',
+                                border: 'none',
+                                color: '#22d3ee',
+                                fontSize: '0.85rem',
+                                fontWeight: '600',
+                                cursor: isLoading ? 'not-allowed' : 'pointer',
+                                textDecoration: 'underline',
+                                textUnderlineOffset: '3px',
+                            }}
+                        >
+                            ¿Olvidaste tu contraseña?
+                        </button>
+                    )}
+
                     {error && (
                         <div style={{ 
                             background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', 
                             padding: '12px', borderRadius: '10px', marginTop: '4px', fontSize: '0.85rem' 
                         }}>
                             {error}
+                        </div>
+                    )}
+                    {resetMsg && (
+                        <div style={{
+                            background: 'rgba(74, 222, 128, 0.12)', color: '#86efac',
+                            padding: '12px', borderRadius: '10px', marginTop: '4px', fontSize: '0.85rem', lineHeight: 1.45,
+                        }}>
+                            {resetMsg}
                         </div>
                     )}
 
@@ -168,6 +229,7 @@ export default function DesktopLoginGate({ onLoginSuccess }) {
                             onClick={() => {
                                 setAuthMode(authMode === 'login' ? 'register' : 'login');
                                 setError('');
+                                setResetMsg('');
                             }} 
                             style={{ background: 'none', border: 'none', color: '#00bcd4', fontSize: '0.85rem', cursor: 'pointer' }}
                         >

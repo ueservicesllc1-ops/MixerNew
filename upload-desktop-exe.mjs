@@ -13,7 +13,16 @@
  * Solo subir (ya tenés el .exe):
  *   npm run upload:desktop
  *   set DESKTOP_EXE_PATH=C:\ruta\instalador.exe   (opcional)
+ *
+ * Versión publicada: `desktopVersion` en package.json (no `version` móvil), salvo DESKTOP_VERSION_NAME.
+ *
+ * Credenciales: `.env` (dotenv) o, si no hay env, el primer `*-firebase-adminsdk-*.json` en `.secrets/` (nunca en `public/`).
  */
+
+import 'dotenv/config';
+import { ensureFirebaseAdminCredentialFromDisk } from './scripts/ensure-firebase-admin-credential.mjs';
+
+ensureFirebaseAdminCredentialFromDisk();
 
 import fs from 'fs';
 import path from 'path';
@@ -42,9 +51,20 @@ try {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '.');
 
-function readPackageVersion() {
+function readDesktopVersionLabel() {
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
-    return String(pkg.version || '0.0.0').trim();
+    const dv = pkg.desktopVersion && String(pkg.desktopVersion).trim();
+    return process.env.DESKTOP_VERSION_NAME?.trim() || dv || String(pkg.version || '0.0.0').trim();
+}
+
+/** Mismo criterio que la app de escritorio / Admin (major*10000 + minor*100 + patch). */
+function semverToVersionCode(name) {
+    const m = String(name || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!m) return 0;
+    const maj = parseInt(m[1], 10) || 0;
+    const min = parseInt(m[2], 10) || 0;
+    const pat = parseInt(m[3], 10) || 0;
+    return maj * 10000 + min * 100 + Math.min(pat, 99);
 }
 
 function findWindowsInstaller() {
@@ -100,18 +120,19 @@ function findWindowsInstaller() {
 }
 
 async function uploadDesktopExe() {
-    const pkgVersion = readPackageVersion();
-    const versionLabel = process.env.DESKTOP_VERSION_NAME?.trim() || pkgVersion;
+    const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+    const versionLabel = readDesktopVersionLabel();
 
     console.log(`\n🖥️  ZION STAGE DESKTOP (.exe) UPLOAD`);
-    console.log(`📦 Versión: ${versionLabel}`);
+    console.log(`📱 App móvil (package version): ${pkg.version}`);
+    console.log(`🖥️  Escritorio (desktopVersion):  ${versionLabel} (código ${semverToVersionCode(versionLabel)})`);
     console.log(`─────────────────────────────────\n`);
 
     const exePath = findWindowsInstaller();
     if (!exePath) {
         console.error('❌ No se encontró ningún .exe.');
         console.error('   Indica la ruta: set DESKTOP_EXE_PATH=C:\\...\\instalador.exe');
-        console.error('   O genera uno con: npm run build:desktop:win');
+        console.error('   O generá uno con: npm run release:desktop:auto  o  npm run build:desktop:win');
         process.exit(1);
     }
 
@@ -156,9 +177,12 @@ async function uploadDesktopExe() {
         process.env.RELEASE_NOTES ||
         `Zion Stage escritorio ${versionLabel}`;
 
+    const envCode = parseInt(process.env.DESKTOP_VERSION_CODE || '0', 10);
+    const resolvedCode = Number.isFinite(envCode) && envCode > 0 ? envCode : semverToVersionCode(versionLabel);
+
     const pending = {
         versionName: versionLabel,
-        versionCode: parseInt(process.env.DESKTOP_VERSION_CODE || '0', 10) || undefined,
+        versionCode: resolvedCode,
         /** URL proxificada del .exe (mismo patrón que el APK en downloadUrl). */
         desktopDownloadUrl: proxyDownloadUrl,
         b2Url: data.url,
@@ -229,8 +253,9 @@ async function uploadDesktopExe() {
         console.log(`⏭️ Firestore omitido: ${e.message}`);
     }
 
-    console.log(`\n✅ Subida lista. Si ya viste «Firestore OK» arriba, no hacés nada más (ni Firestore ni Admin).`);
-    console.log(`   Si no hubo credenciales o falló Firestore: Admin → ACTIVAR ESCRITORIO (mismo flujo que el APK).\n`);
+    console.log(`\n✅ Subida lista.`);
+    console.log(`   Si viste «Firestore OK»: las apps escritorio (Electron) leen app_versions igual que el APK — no hace falta redeploy del proxy ni variables LATEST_DESKTOP_* en Railway.`);
+    console.log(`   Si no hubo credenciales o falló Firestore: Admin → ACTIVAR ESCRITORIO, o redeploy del proxy / env LATEST_DESKTOP_*.\n`);
 }
 
 uploadDesktopExe().catch((err) => {

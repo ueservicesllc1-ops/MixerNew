@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('zionNative', {
     /** Descarga el .exe a temp y abre el instalador (Windows). */
     downloadAndLaunchDesktopUpdate: (url) => ipcRenderer.invoke('desktop:download-and-launch-update', url),
 
+    /** Versión instalada (package.json del build) + código numérico para comparar con el servidor. */
+    getDesktopReleaseInfo: () => ipcRenderer.invoke('app:get-desktop-release-info'),
+
     isDesktop: true
 });
 

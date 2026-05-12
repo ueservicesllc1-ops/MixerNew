@@ -89,6 +89,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // -- COUPONS: solo admin (panel Admin)
+    match /coupons/{docId} {
+      allow read, write: if isAdmin();
+    }
+
     // -- CONTACTS: anyone can create; only admin can read
     match /contacts/{doc} {
       allow create: if true;

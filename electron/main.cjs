@@ -259,6 +259,32 @@ app.whenReady().then(() => {
     ipcMain.handle('db:get-user', () => db.getUser());
     ipcMain.handle('db:delete-user', () => db.deleteUser());
 
+    /** Misma cadena que en Propiedades del .exe / package.json — para comparar con app-latest-desktop. */
+    function parseSemverPartsMain(s) {
+        const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+        if (!m) return [0, 0, 0];
+        return [parseInt(m[1], 10) || 0, parseInt(m[2], 10) || 0, parseInt(m[3], 10) || 0];
+    }
+    function semverToVersionCodeMain(versionName) {
+        const [maj, min, pat] = parseSemverPartsMain(versionName);
+        return maj * 10000 + min * 100 + Math.min(pat, 99);
+    }
+    ipcMain.handle('app:get-desktop-release-info', () => {
+        let versionName = app.getVersion();
+        try {
+            const pkgPath = path.join(__dirname, '../package.json');
+            if (fs.existsSync(pkgPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                const dv = pkg.desktopVersion && String(pkg.desktopVersion).trim();
+                if (dv) versionName = dv;
+            }
+        } catch (_) { /* usar app.getVersion */ }
+        return {
+            versionName,
+            versionCode: semverToVersionCodeMain(versionName),
+        };
+    });
+
     /** Coma-separados; si está vacío, cualquier host https permitido (solo .exe). */
     function parseAllowedDesktopUpdateHosts() {
         const raw = process.env.ZION_DESKTOP_UPDATE_HOSTS || '';

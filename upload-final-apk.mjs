@@ -1,3 +1,7 @@
+import 'dotenv/config';
+import { ensureFirebaseAdminCredentialFromDisk } from './scripts/ensure-firebase-admin-credential.mjs';
+
+ensureFirebaseAdminCredentialFromDisk();
 
 import fs from 'fs';
 import path from 'path';

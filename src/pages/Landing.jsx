@@ -11,6 +11,7 @@ import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
 import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl';
+import { getMixerApiBase } from '../mixerApiBase';
 
 export default function Landing() {
     const navigate = useNavigate();
@@ -138,7 +139,7 @@ export default function Landing() {
             try {
                 const snap = await getDocs(query(collection(db, 'banners'), orderBy('createdAt', 'desc')));
                 if (!snap.empty) {
-                    const proxy = 'https://mixernew-production.up.railway.app';
+                    const proxy = getMixerApiBase();
                     const proxyImg = (url) => {
                         if (!url) return url;
                         if (url.includes('backblazeb2.com') || url.includes('f005.')) {
@@ -158,55 +159,90 @@ export default function Landing() {
             }
         };
 
+        const appReleaseProxy = getMixerApiBase();
+
         const fetchLatestApp = async () => {
+            const isApkUrl = (u) => {
+                const s = String(u || '').trim().toLowerCase();
+                return s.length > 0 && (s.includes('.apk') || s.includes('package'));
+            };
+            const isExeUrl = (u) => {
+                const s = String(u || '').trim().toLowerCase();
+                return s.length > 0 && s.endsWith('.exe');
+            };
+
+            let androidRow = null;
+            let rows = [];
+            let withDesktopField = null;
+            let desktopUrlFs = '';
+
             try {
                 const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(25));
                 const snap = await getDocs(q);
-                if (snap.empty) return;
-
-                const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-
-                const isApkUrl = (u) => {
-                    const s = String(u || '').trim().toLowerCase();
-                    return s.length > 0 && (s.includes('.apk') || s.includes('package'));
-                };
-                const isExeUrl = (u) => {
-                    const s = String(u || '').trim().toLowerCase();
-                    return s.length > 0 && s.endsWith('.exe');
-                };
-
-                let androidRow = rows.find((r) => r.downloadUrl && isApkUrl(r.downloadUrl));
-                if (!androidRow) {
-                    androidRow = rows.find((r) => r.downloadUrl && !isExeUrl(r.downloadUrl));
+                if (!snap.empty) {
+                    rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+                    androidRow = rows.find((r) => r.downloadUrl && isApkUrl(r.downloadUrl));
+                    if (!androidRow) {
+                        androidRow = rows.find((r) => r.downloadUrl && !isExeUrl(r.downloadUrl));
+                    }
+                    withDesktopField = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
+                    if (withDesktopField) {
+                        desktopUrlFs = String(withDesktopField.desktopDownloadUrl).trim();
+                    }
+                    if (!desktopUrlFs) {
+                        const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
+                        if (exeRow) desktopUrlFs = String(exeRow.downloadUrl).trim();
+                    }
                 }
-
-                let desktopUrl = '';
-                const withDesktopField = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
-                if (withDesktopField) {
-                    desktopUrl = String(withDesktopField.desktopDownloadUrl).trim();
-                }
-                if (!desktopUrl) {
-                    const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
-                    if (exeRow) desktopUrl = String(exeRow.downloadUrl).trim();
-                }
-
-                const versionName =
-                    (androidRow && String(androidRow.versionName || '').trim())
-                    || (withDesktopField && String(withDesktopField.versionName || '').trim())
-                    || (rows[0] && String(rows[0].versionName || '').trim())
-                    || '';
-
-                if (!versionName && !androidRow?.downloadUrl && !desktopUrl) return;
-
-                setLatestApp({
-                    versionName: versionName || (androidRow?.versionName || '—'),
-                    downloadUrl: androidRow?.downloadUrl ? String(androidRow.downloadUrl) : '',
-                    desktopDownloadUrl: desktopUrl,
-                    releaseNotes: androidRow?.releaseNotes || withDesktopField?.releaseNotes || rows[0]?.releaseNotes || '',
-                });
             } catch (err) {
-                console.error("Error fetching latest app:", err);
+                console.error('Error fetching latest app (Firestore):', err);
             }
+
+            /** Igual que el mixer escritorio: JSON en el proxy tras `npm run upload:desktop` (sin depender solo de Firestore). */
+            let desktopJson = null;
+            try {
+                for (const path of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
+                    const r = await fetch(`${appReleaseProxy}${path}?cb=${Date.now()}`, { cache: 'no-store' });
+                    if (!r.ok) continue;
+                    const j = await r.json();
+                    const u = String(j?.desktopDownloadUrl || '').trim();
+                    if (u) {
+                        desktopJson = j;
+                        break;
+                    }
+                }
+            } catch (e) {
+                console.warn('app-latest-desktop (proxy):', e?.message || e);
+            }
+
+            const desktopUrl = desktopUrlFs || String(desktopJson?.desktopDownloadUrl || '').trim();
+            const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
+            const desktopVersionName =
+                (withDesktopField && String(withDesktopField.versionName || '').trim())
+                || (desktopJson && String(desktopJson.versionName || '').trim())
+                || (exeRow && String(exeRow.versionName || '').trim())
+                || '';
+            const versionName =
+                (androidRow && String(androidRow.versionName || '').trim())
+                || (withDesktopField && String(withDesktopField.versionName || '').trim())
+                || (desktopJson && String(desktopJson.versionName || '').trim())
+                || (rows[0] && String(rows[0].versionName || '').trim())
+                || '';
+
+            if (!versionName && !androidRow?.downloadUrl && !desktopUrl) return;
+
+            setLatestApp({
+                versionName: versionName || (androidRow?.versionName || desktopJson?.versionName || '—'),
+                downloadUrl: androidRow?.downloadUrl ? String(androidRow.downloadUrl) : '',
+                desktopDownloadUrl: desktopUrl,
+                desktopVersionName: desktopVersionName || versionName || '—',
+                releaseNotes:
+                    androidRow?.releaseNotes
+                    || withDesktopField?.releaseNotes
+                    || desktopJson?.releaseNotes
+                    || rows[0]?.releaseNotes
+                    || '',
+            });
         };
         fetchLatestApp();
         fetchBanners();
@@ -413,16 +449,17 @@ export default function Landing() {
 
     const handleForgotPassword = async () => {
         if (!email) {
-            setErrorMsg("Por favor, ingresa tu correo electrónico primero.");
+            setErrorMsg(t('landing.enterEmailFirst'));
             return;
         }
         try {
             await sendPasswordResetEmail(auth, email);
             setErrorMsg('');
-            alert("Te hemos enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.");
+            setToast(t('landing.resetEmailSent'));
+            setTimeout(() => setToast(null), 5000);
         } catch (error) {
             console.error("Reset Password Error:", error);
-            setErrorMsg("Error al enviar el correo: " + error.message);
+            setErrorMsg(error.message || String(error));
         }
     };
 
@@ -516,14 +553,16 @@ export default function Landing() {
                                 {t('nav.android')}
                             </span>
                         )}
-                        <span
-                            onClick={handleDesktopInstallerDownload}
-                            style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
-                            onMouseEnter={e => e.target.style.color = '#fff'}
-                            onMouseLeave={e => e.target.style.color = '#60a5fa'}
-                        >
-                            {t('nav.windows')}
-                        </span>
+                        {resolveDesktopInstallerDownloadUrl(latestApp) && (
+                            <span
+                                onClick={handleDesktopInstallerDownload}
+                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
+                                onMouseEnter={e => e.target.style.color = '#fff'}
+                                onMouseLeave={e => e.target.style.color = '#60a5fa'}
+                            >
+                                {t('nav.windows')}
+                            </span>
+                        )}
                         <span
                             onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
                             style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
@@ -687,7 +726,9 @@ export default function Landing() {
                                     style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                                    {t('landing.installWin')}
+                                    {t('landing.installWin', {
+                                        ver: latestApp.desktopVersionName || latestApp.versionName || '—',
+                                    })}
                                 </button>
                             )}
                         </div>
@@ -1328,20 +1369,30 @@ export default function Landing() {
                                             style={{ padding: '14px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1rem' }}
                                         />
                                     )}
+                                    {isLogin && (
+                                        <button
+                                            type="button"
+                                            onClick={handleForgotPassword}
+                                            style={{
+                                                alignSelf: 'flex-start',
+                                                marginTop: '4px',
+                                                padding: 0,
+                                                border: 'none',
+                                                background: 'none',
+                                                fontSize: '0.9rem',
+                                                fontWeight: '600',
+                                                color: '#0891b2',
+                                                cursor: 'pointer',
+                                                textDecoration: 'underline',
+                                                textUnderlineOffset: '3px',
+                                            }}
+                                        >
+                                            {t('landing.forgot')}
+                                        </button>
+                                    )}
                                     <button type="submit" className="btn-teal" style={{ padding: '14px', width: '100%', fontSize: '1rem', marginTop: '8px' }}>
                                         {isLogin ? t('landing.authLoginBtn') : t('landing.authRegisterBtn')}
                                     </button>
-
-                                    {isLogin && (
-                                        <div style={{ textAlign: 'right', marginTop: '-8px' }}>
-                                            <span 
-                                                onClick={handleForgotPassword} 
-                                                style={{ fontSize: '0.8rem', color: '#6b7280', cursor: 'pointer', textDecoration: 'underline' }}
-                                            >
-                                                {t('landing.forgot')}
-                                            </span>
-                                        </div>
-                                    )}
                                     <div style={{ position: 'relative', textAlign: 'center', margin: '10px 0' }}>
                                         <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb' }} />
                                         <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'white', padding: '0 12px', color: '#9ca3af', fontSize: '0.8rem' }}>{t('landing.orContinue')}</span>

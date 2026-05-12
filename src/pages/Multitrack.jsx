@@ -3649,42 +3649,6 @@ export default function Multitrack() {
                     )}
                 </div>
 
-                {/* ── 5. Proxy B2 ───────────────────────────────────── */}
-                <div className="settings-section">
-                    <div className="settings-label">
-                        <div className="settings-icon-wrap" style={{ background: darkMode ? '#2d3748' : '#e0f7fa' }}>
-                            <Settings size={16} color="#00bcd4" />
-                        </div>
-                        <div>
-                            <div className="settings-title">Servidor Proxy B2</div>
-                            <div className="settings-sub">URL para descargas (Ej: http://192.168.1.50:3001)</div>
-                        </div>
-                    </div>
-                    <div style={{ marginTop: '10px' }}>
-                        <input
-                            type="text"
-                            value={proxyUrl}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setProxyUrl(val);
-                                localStorage.setItem('mixer_proxyUrl', val);
-                            }}
-                            placeholder="https://mixernew-production.up.railway.app"
-                            style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
-                                background: darkMode ? '#1a2433' : 'white',
-                                color: darkMode ? '#fff' : '#000',
-                                fontSize: '0.9rem',
-                                outline: 'none',
-                                boxSizing: 'border-box'
-                            }}
-                        />
-                    </div>
-                </div>
-
                 {/* Reset defaults */}
                 <div style={{ marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
                     <button

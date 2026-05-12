@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { trackUserUsage } from '../utils/usageMetrics';
@@ -163,6 +164,12 @@ function Dashboard() {
     const [zipProgress, setZipProgress] = useState(0);
 
     const [currentUser, setCurrentUser] = useState(null);
+    const [accountPwdCurrent, setAccountPwdCurrent] = useState('');
+    const [accountPwdNew, setAccountPwdNew] = useState('');
+    const [accountPwdConfirm, setAccountPwdConfirm] = useState('');
+    const [accountPwdMsg, setAccountPwdMsg] = useState('');
+    const [accountPwdErr, setAccountPwdErr] = useState('');
+    const [accountPwdSaving, setAccountPwdSaving] = useState(false);
     const [userSongs, setUserSongs] = useState([]);
     const [userSetlists, setUserSetlists] = useState([]);
 
@@ -788,6 +795,51 @@ function Dashboard() {
 
     const displayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
 
+    const hasPasswordProvider = Boolean(
+        currentUser?.providerData?.some((p) => p.providerId === 'password'),
+    );
+
+    const handleChangePassword = async (e) => {
+        e.preventDefault();
+        setAccountPwdErr('');
+        setAccountPwdMsg('');
+        if (accountPwdNew !== accountPwdConfirm) {
+            setAccountPwdErr(t('dashboard.passwordMismatch'));
+            return;
+        }
+        if (accountPwdNew.length < 6) {
+            setAccountPwdErr(t('dashboard.passwordTooShort'));
+            return;
+        }
+        const user = auth.currentUser;
+        if (!user?.email) {
+            setAccountPwdErr(t('dashboard.passwordError'));
+            return;
+        }
+        if (!hasPasswordProvider) {
+            setAccountPwdErr(t('dashboard.passwordGoogleOnly'));
+            return;
+        }
+        setAccountPwdSaving(true);
+        try {
+            const cred = EmailAuthProvider.credential(user.email, accountPwdCurrent);
+            await reauthenticateWithCredential(user, cred);
+            await updatePassword(user, accountPwdNew);
+            setAccountPwdMsg(t('dashboard.passwordChanged'));
+            setAccountPwdCurrent('');
+            setAccountPwdNew('');
+            setAccountPwdConfirm('');
+        } catch (err) {
+            const code = err?.code || '';
+            if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+                setAccountPwdErr(t('dashboard.passwordWrong'));
+            } else {
+                setAccountPwdErr(err?.message || t('dashboard.passwordError'));
+            }
+        } finally {
+            setAccountPwdSaving(false);
+        }
+    };
 
     return (
         <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: 'white', display: 'flex', fontFamily: '"Inter", sans-serif' }}>
@@ -803,6 +855,7 @@ function Dashboard() {
                         { id: 'songs', label: t('dashboard.mySongs'), icon: <Music2 size={20} /> },
                         { id: 'setlists', label: t('dashboard.setlists'), icon: <ListMusic size={20} /> },
                         { id: 'global', label: t('dashboard.community'), icon: <Globe size={20} /> },
+                        { id: 'account', label: t('dashboard.account'), icon: <KeyRound size={20} /> },
                         { id: 'vendedores', label: userProfile?.isSeller ? t('dashboard.sellerPanel') : t('dashboard.becomeSeller'), icon: <TrendingUp size={20} /> },
                     ].map(item => (
                         <button
@@ -858,10 +911,13 @@ function Dashboard() {
                         <h1 style={{ fontSize: '2rem', fontWeight: '800', margin: '0 0 8px' }}>
                             {activeTab === 'home' ? t('dashboard.hello', { name: displayName }) :
                                 activeTab === 'songs' ? t('dashboard.tabSongs') :
-                                    activeTab === 'setlists' ? t('dashboard.tabSetlists') : t('dashboard.tabCommunity')}
+                                    activeTab === 'setlists' ? t('dashboard.tabSetlists') :
+                                        activeTab === 'account' ? t('dashboard.tabAccount') :
+                                            t('dashboard.tabCommunity')}
                         </h1>
                         <p style={{ color: '#64748b', margin: 0 }}>
-                            {activeTab === 'home' ? t('dashboard.homeSub') : ''}
+                            {activeTab === 'home' ? t('dashboard.homeSub') :
+                                activeTab === 'account' ? t('dashboard.accountSub') : ''}
                         </p>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -1284,6 +1340,32 @@ function Dashboard() {
                                             <div style={{ marginBottom: '10px' }}><ListMusic size={40} /></div>
                                             No tienes setlists creados.
                                         </div>
+                                    )}
+                                </div>
+                            </section>
+                        )}
+
+                        {activeTab === 'account' && (
+                            <section style={{ maxWidth: '520px' }}>
+                                <div style={{ background: '#020617', borderRadius: '16px', padding: '28px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                    <div style={{ marginBottom: '22px' }}>
+                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', letterSpacing: '0.06em', marginBottom: '6px' }}>{t('dashboard.accountEmail')}</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>{currentUser?.email || '—'}</div>
+                                    </div>
+                                    {!hasPasswordProvider ? (
+                                        <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.55, fontSize: '0.95rem' }}>{t('dashboard.passwordGoogleOnly')}</p>
+                                    ) : (
+                                        <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                            <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: '800' }}>{t('dashboard.changePasswordTitle')}</h3>
+                                            <input type="password" autoComplete="current-password" placeholder={t('dashboard.currentPassword')} value={accountPwdCurrent} onChange={(e) => setAccountPwdCurrent(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
+                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.newPassword')} value={accountPwdNew} onChange={(e) => setAccountPwdNew(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
+                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.confirmNewPassword')} value={accountPwdConfirm} onChange={(e) => setAccountPwdConfirm(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
+                                            {accountPwdErr && <div style={{ color: '#f87171', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: 'rgba(248,113,113,0.08)' }}>{accountPwdErr}</div>}
+                                            {accountPwdMsg && <div style={{ color: '#4ade80', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: 'rgba(74,222,128,0.08)' }}>{accountPwdMsg}</div>}
+                                            <button type="submit" className="btn-teal" disabled={accountPwdSaving} style={{ marginTop: '6px', padding: '12px 18px', fontWeight: '700' }}>
+                                                {accountPwdSaving ? t('dashboard.changingPassword') : t('dashboard.savePassword')}
+                                            </button>
+                                        </form>
                                     )}
                                 </div>
                             </section>

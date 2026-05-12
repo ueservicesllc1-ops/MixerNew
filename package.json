@@ -2,6 +2,8 @@
   "name": "mixer",
   "private": true,
   "version": "1.8.58",
+  "desktopVersion": "1.0.1",
+  "description": "Zion Stage — mixer multitrack. `version` = app móvil/web; `desktopVersion` = instalador Windows (.exe) y comprobación de actualizaciones en PC.",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -16,7 +18,9 @@
     "android:log:snapshot": "adb logcat -d -t 2500 > logs/mixer-snapshot.txt",
     "upload:apk": "node upload-final-apk.mjs",
     "upload:desktop": "node upload-desktop-exe.mjs",
-    "build:desktop:win": "npm run build && npx electron-builder --win --x64 --publish never",
+    "release:desktop:auto": "node scripts/release-desktop-bump.mjs",
+    "release:desktop:auto:bump": "node scripts/release-desktop-bump.mjs -- --bump",
+    "build:desktop:win": "npm run build && node scripts/run-electron-builder-win.mjs",
     "release:desktop": "npm run build:desktop:win && npm run upload:desktop",
     "release:win": "npm run release:desktop",
     "release": "npm run build:android && npm run upload:apk",
@@ -91,21 +95,34 @@
     "appId": "com.zionstage.desktop",
     "productName": "Zion Stage",
     "copyright": "Copyright Zion Stage",
-    "directories": { "output": "desktop-release" },
+    "icon": "build/icon.png",
+    "directories": {
+      "output": "desktop-release"
+    },
     "files": [
       "dist/**/*",
       "electron/**/*.cjs",
       "package.json",
       "ZionAudioCore/build/Release/zion_audio_bridge.node"
     ],
-    "asarUnpack": ["**/*.node"],
+    "asarUnpack": [
+      "**/*.node"
+    ],
     "win": {
-      "target": ["nsis"],
-      "artifactName": "ZionStage-Desktop-${version}-Setup.${ext}"
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "ZionStage-Desktop-${version}-Setup.${ext}",
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "displayLanguageSelector": true,
+      "installerLanguages": [
+        "en_US",
+        "es_ES"
+      ]
     }
   }
 }

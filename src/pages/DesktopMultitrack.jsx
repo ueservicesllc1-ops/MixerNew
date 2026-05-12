@@ -6,6 +6,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine.js'
 import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js'
 import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl.js'
+import { isRemoteReleaseNewer, isRemoteVersionNewerByName, semverToVersionCode } from '../utils/semverReleaseCompare.js'
 
 /**
  * Electron: mismos offsets que la UI para reaplicar tempo/pitch tras cargar stems
@@ -619,30 +620,18 @@ function sortGlobalCatalogNewestFirst(songs) {
     });
 }
 
-function parseSemverParts(s) {
-    const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
-    if (!m) return [0, 0, 0];
-    return [parseInt(m[1], 10) || 0, parseInt(m[2], 10) || 0, parseInt(m[3], 10) || 0];
-}
-
-/** True si remoteName es una versión más nueva que installedName (ej. 1.7.6 > 1.7.5). */
-function isRemoteVersionNewer(remoteName, installedName) {
-    const a = parseSemverParts(remoteName);
-    const b = parseSemverParts(installedName);
-    for (let i = 0; i < 3; i++) {
-        if (a[i] > b[i]) return true;
-        if (a[i] < b[i]) return false;
-    }
-    return false;
-}
-
-/** Metadato remoto: APK/web (`downloadUrl`) y opcional escritorio (`desktopDownloadUrl`). */
+/** Metadato remoto: APK/web (`downloadUrl`) y opcional escritorio (`desktopDownloadUrl` + `versionCode`). */
 function mapRemoteAppUpdateRow(data) {
     if (!data || data.versionName == null) return null;
     const versionName = String(data.versionName).trim();
     if (!versionName) return null;
+    const rawCode = data.versionCode;
+    const versionCode = rawCode != null && rawCode !== '' && Number(rawCode) > 0
+        ? Number(rawCode)
+        : semverToVersionCode(versionName);
     return {
         versionName,
+        versionCode,
         downloadUrl: data.downloadUrl != null ? String(data.downloadUrl).trim() : '',
         desktopDownloadUrl: data.desktopDownloadUrl != null ? String(data.desktopDownloadUrl).trim() : '',
         releaseNotes: data.releaseNotes != null ? String(data.releaseNotes).trim() : '',
@@ -650,6 +639,33 @@ function mapRemoteAppUpdateRow(data) {
 }
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
+
+/** JSON estático tras `firebase deploy` (puede estar más al día que el `dist/` del proxy en Railway). */
+const HOSTING_APP_LATEST_ORIGINS = [
+    'https://www.zionstage.com',
+    'https://zionstage.app',
+];
+
+/** Misma heurística que Landing: último doc con enlace de instalador escritorio. */
+async function fetchLatestDesktopRowFromFirestore() {
+    const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(40));
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
+    const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const withDesktop = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
+    if (!withDesktop) return null;
+    return mapRemoteAppUpdateRow(withDesktop);
+}
+
+/** Igual idea que Multitrack `pickNewerMeta`: entre dos manifiestos con .exe válido, gana el semver más alto. */
+function pickNewerDesktopManifest(a, b) {
+    const okA = a && resolveDesktopInstallerDownloadUrl(a);
+    const okB = b && resolveDesktopInstallerDownloadUrl(b);
+    if (!okA && !okB) return null;
+    if (!okA) return b;
+    if (!okB) return a;
+    return isRemoteVersionNewerByName(a.versionName, b.versionName) ? a : b;
+}
 
 // ─── KEY TRANSPOSITION ────────────────────────────────────────────────────────
 const CHROMATIC = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -871,12 +887,21 @@ export default function Multitrack({ session }) {
     const navigate = useNavigate();
     const location = useLocation();
     const { t } = useTranslation();
-    const CURRENT_VERSION = import.meta.env.VITE_APP_VERSION || "1.8.7";
+    const bundledVersion = import.meta.env.VITE_DESKTOP_APP_VERSION || import.meta.env.VITE_APP_VERSION || '0.0.0';
+    const [installedRelease, setInstalledRelease] = useState({
+        versionName: bundledVersion,
+        versionCode: semverToVersionCode(bundledVersion),
+    });
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const progressRef = useRef(0); // Replaces progress state — avoids 60fps re-renders of the full component
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(session || null);
+    const [proxyUrl, setProxyUrl] = useState(() => {
+        const saved = localStorage.getItem('mixer_proxyUrl');
+        if (saved) return saved;
+        return 'https://mixernew-production.up.railway.app';
+    });
     const [isDemo, setIsDemo] = useState(true);
     /** Escritorio: 'demo' | 'pro_local' | 'pro_online' (también legacy `pro` en SQLite → tratado como PC). */
     const [desktopLicenseTier, setDesktopLicenseTier] = useState(null);
@@ -995,15 +1020,6 @@ export default function Multitrack({ session }) {
             clearInterval(syncInterval);
         };
     }, []);
-    const [proxyUrl, setProxyUrl] = useState(() => {
-        const saved = localStorage.getItem('mixer_proxyUrl');
-        if (saved) return saved;
-        // Always default to Railway proxy — the local proxy (localhost:3001) also runs on the
-        // same machine/ISP that may block B2, making it useless as a fallback. Railway can
-        // always reach B2 regardless of the user's ISP.
-        return 'https://mixernew-production.up.railway.app';
-    });
-
     /** Descarga binaria vía proxy. Si url ya es /api/download?url=... (p. ej. normalizedUrl), no la envuelve otra vez. */
     const fetchBlobNative = useCallback(async (url) => {
         if (!url) return null;
@@ -1355,34 +1371,66 @@ export default function Multitrack({ session }) {
         return () => clearTimeout(timer);
     }, [location.search, navigate]);
 
-    // Electron: misma fuente que el aviso móvil por JSON en el proxy — sin leer Firestore (no hace falta tocar app_versions).
+    // Versión del .exe (app.getVersion) + comprobación contra app-latest-desktop (sin carrera entre efectos).
     useEffect(() => {
         if (!isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative) return;
         let cancelled = false;
         (async () => {
+            let installed = {
+                versionName: bundledVersion,
+                versionCode: semverToVersionCode(bundledVersion),
+            };
+            if (window.zionNative.getDesktopReleaseInfo) {
+                try {
+                    const info = await window.zionNative.getDesktopReleaseInfo();
+                    if (!cancelled && info?.versionName) {
+                        const vn = String(info.versionName).trim();
+                        const vc = Number.isFinite(Number(info.versionCode)) && Number(info.versionCode) > 0
+                            ? Number(info.versionCode)
+                            : semverToVersionCode(vn);
+                        installed = { versionName: vn, versionCode: vc };
+                        setInstalledRelease(installed);
+                    }
+                } catch (e) {
+                    console.warn('getDesktopReleaseInfo:', e?.message || e);
+                }
+            }
+            if (cancelled) return;
+
             let row = null;
             try {
                 const savedProxy = typeof localStorage !== 'undefined'
                     ? localStorage.getItem('mixer_proxyUrl')
                     : null;
-                const bases = [...new Set([
-                    (savedProxy && savedProxy.startsWith('http')) ? savedProxy.replace(/\/$/, '') : null,
-                    DEFAULT_PROXY_FOR_UPDATES
-                ].filter(Boolean))];
+                const trimmed = (savedProxy && savedProxy.startsWith('http')) ? savedProxy.replace(/\/$/, '') : null;
+                const isLocalHost = trimmed && /^(https?:\/\/)?(localhost|127\.0\.0\.1)([:/]|$)/i.test(trimmed);
+                // Mismo espíritu que APK (Multitrack): Firestore + JSON, y el semver más alto con URL válida.
+                // `npm run upload:desktop` con FIREBASE_SERVICE_ACCOUNT escribe app_versions → no hace falta redeploy del proxy ni variables LATEST_DESKTOP_*.
+                const fromFsPromise = fetchLatestDesktopRowFromFirestore().catch((fe) => {
+                    console.warn('Update check desktop (Firestore):', fe?.message || fe);
+                    return null;
+                });
 
-                for (const base of bases) {
-                    for (const jsonPath of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
-                        const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
-                        if (!r.ok) continue;
-                        const j = await r.json();
-                        const candidate = mapRemoteAppUpdateRow(j);
-                        if (candidate && resolveDesktopInstallerDownloadUrl(candidate)) {
-                            row = candidate;
-                            break;
+                const fromJsonPromise = (async () => {
+                    const bases = [...new Set([
+                        trimmed && !isLocalHost ? trimmed : null,
+                        ...HOSTING_APP_LATEST_ORIGINS,
+                        DEFAULT_PROXY_FOR_UPDATES,
+                    ].filter(Boolean))];
+                    for (const base of bases) {
+                        for (const jsonPath of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
+                            const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
+                            if (!r.ok) continue;
+                            const j = await r.json();
+                            const candidate = mapRemoteAppUpdateRow(j);
+                            if (candidate && resolveDesktopInstallerDownloadUrl(candidate)) return candidate;
                         }
                     }
-                    if (row) break;
-                }
+                    return null;
+                })();
+
+                const [fromFs, fromJson] = await Promise.all([fromFsPromise, fromJsonPromise]);
+                row = pickNewerDesktopManifest(fromFs, fromJson);
             } catch (e) {
                 console.warn('Update check desktop (app-latest):', e?.message || e);
             }
@@ -1393,7 +1441,12 @@ export default function Multitrack({ session }) {
 
             const dismissKey = `mixer_dismiss_update_${row.versionName}`;
             if (localStorage.getItem(dismissKey) === '1') return;
-            if (!isRemoteVersionNewer(row.versionName, CURRENT_VERSION)) return;
+
+            const remote = {
+                versionName: row.versionName,
+                versionCode: row.versionCode ?? semverToVersionCode(row.versionName),
+            };
+            if (!isRemoteReleaseNewer(remote, installed)) return;
 
             setAppUpdateOffer({
                 versionName: row.versionName,
@@ -1403,7 +1456,7 @@ export default function Multitrack({ session }) {
             });
         })();
         return () => { cancelled = true; };
-    }, [CURRENT_VERSION]);
+    }, [bundledVersion]);
 
     // Electron: restaurar ruteo multi-salida guardado por usuario (SQLite).
     useEffect(() => {
@@ -3578,7 +3631,7 @@ export default function Multitrack({ session }) {
                     }}
                 >
                     <span style={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: '700', textAlign: 'center' }}>
-                        Nueva versión {appUpdateOffer.versionName} disponible (tenés la {CURRENT_VERSION})
+                        Nueva versión {appUpdateOffer.versionName} disponible (tenés la {installedRelease.versionName}, código {installedRelease.versionCode})
                     </span>
                     <button
                         type="button"
@@ -3642,7 +3695,7 @@ export default function Multitrack({ session }) {
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
                 <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>
-                    V{CURRENT_VERSION} - ZION STAGE ({typeof window !== 'undefined' && window.zionNative ? 'ZION CORE WASM + SoundTouch' : isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
+                    V{installedRelease.versionName} · #{installedRelease.versionCode} — ZION STAGE ({typeof window !== 'undefined' && window.zionNative ? 'ZION CORE WASM + SoundTouch' : isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
                 </div>
                 {!isAppNative && (
                     <button
@@ -5085,42 +5138,6 @@ export default function Multitrack({ session }) {
                             <span style={{ fontSize: '0.78rem', fontWeight: '700', color: '#fc8181' }}>CLICK ACTIVO — {activeSong?.tempo} BPM</span>
                         </div>
                     )}
-                </div>
-
-                {/* ── 5. Proxy B2 ───────────────────────────────────── */}
-                <div className="settings-section">
-                    <div className="settings-label">
-                        <div className="settings-icon-wrap" style={{ background: darkMode ? '#2d3748' : '#e0f7fa' }}>
-                            <Settings size={16} color="#00bcd4" />
-                        </div>
-                        <div>
-                            <div className="settings-title">Servidor Proxy B2</div>
-                            <div className="settings-sub">URL para descargas (Ej: http://192.168.1.50:3001)</div>
-                        </div>
-                    </div>
-                    <div style={{ marginTop: '10px' }}>
-                        <input
-                            type="text"
-                            value={proxyUrl}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                setProxyUrl(val);
-                                localStorage.setItem('mixer_proxyUrl', val);
-                            }}
-                            placeholder="https://mixernew-production.up.railway.app"
-                            style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                borderRadius: '8px',
-                                border: '1px solid #e2e8f0',
-                                background: darkMode ? '#1a2433' : 'white',
-                                color: darkMode ? '#fff' : '#000',
-                                fontSize: '0.9rem',
-                                outline: 'none',
-                                boxSizing: 'border-box'
-                            }}
-                        />
-                    </div>
                 </div>
 
                 {/* Reset defaults */}

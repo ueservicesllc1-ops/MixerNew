@@ -264,6 +264,75 @@ console.log("🔧 B2 Config:", {
     bucketName: B2_BUCKET_NAME 
 });
 
+/** Semver simple para elegir el manifiesto de escritorio más nuevo (Firestore + dist + env). */
+function parseSemverPartsZionDesktop(s) {
+    const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+    if (!m) return [0, 0, 0];
+    return [parseInt(m[1], 10) || 0, parseInt(m[2], 10) || 0, parseInt(m[3], 10) || 0];
+}
+/** >0 si a más nuevo que b */
+function compareSemverZionDesktop(nameA, nameB) {
+    const x = parseSemverPartsZionDesktop(nameA);
+    const y = parseSemverPartsZionDesktop(nameB);
+    for (let i = 0; i < 3; i++) {
+        if (x[i] !== y[i]) return x[i] - y[i];
+    }
+    return 0;
+}
+function normalizeDesktopManifestRow(raw) {
+    if (!raw || raw.versionName == null) return null;
+    const versionName = String(raw.versionName).trim();
+    const desktopDownloadUrl = String(raw.desktopDownloadUrl || '').trim();
+    if (!versionName || !desktopDownloadUrl) return null;
+    let versionCode = parseInt(raw.versionCode, 10);
+    if (!Number.isFinite(versionCode) || versionCode <= 0) {
+        const [maj, min, pat] = parseSemverPartsZionDesktop(versionName);
+        versionCode = maj * 10000 + min * 100 + Math.min(pat, 99);
+    }
+    return {
+        versionName,
+        versionCode,
+        desktopDownloadUrl,
+        releaseNotes: raw.releaseNotes != null ? String(raw.releaseNotes) : '',
+    };
+}
+function pickBestDesktopManifest(rows) {
+    const norm = (Array.isArray(rows) ? rows : []).map(normalizeDesktopManifestRow).filter(Boolean);
+    if (!norm.length) return null;
+    return norm.reduce((best, cur) => (compareSemverZionDesktop(cur.versionName, best.versionName) > 0 ? cur : best));
+}
+async function gatherLatestDesktopManifestCandidates() {
+    const candidates = [];
+    try {
+        const p = path.join(distPath, 'app-latest-desktop.json');
+        if (fs.existsSync(p)) candidates.push(JSON.parse(fs.readFileSync(p, 'utf8')));
+    } catch (e) {
+        console.warn('[app-latest-desktop] dist:', e.message);
+    }
+    const ev = process.env.LATEST_DESKTOP_VERSION;
+    const eu = process.env.LATEST_DESKTOP_DOWNLOAD_URL;
+    if (ev && eu) {
+        candidates.push({
+            versionName: ev,
+            desktopDownloadUrl: eu,
+            versionCode: parseInt(process.env.LATEST_DESKTOP_VERSION_CODE || '0', 10) || 0,
+            releaseNotes: process.env.LATEST_DESKTOP_RELEASE_NOTES || '',
+        });
+    }
+    if (dbAdmin) {
+        try {
+            const snap = await dbAdmin.collection('app_versions').orderBy('createdAt', 'desc').limit(40).get();
+            snap.docs.forEach((doc) => candidates.push(doc.data()));
+        } catch (e) {
+            console.warn('[app-latest-desktop] Firestore:', e.message);
+        }
+    }
+    return candidates;
+}
+async function getLatestDesktopManifestResolved() {
+    return pickBestDesktopManifest(await gatherLatestDesktopManifestCandidates());
+}
+
 // Vars en caché
 let b2AuthToken = null;
 let b2ApiUrl = null;
@@ -379,28 +448,34 @@ app.get('/api/app-latest', (req, res) => {
     res.status(404).json({ error: 'No hay app-latest (ni dist/app-latest.json ni env LATEST_APP_*)' });
 });
 
-/** Último instalador Windows — `dist/app-latest-desktop.json` (Vite copia desde `public/`) o env LATEST_DESKTOP_*. */
-app.get('/api/app-latest-desktop', (req, res) => {
+/** Último instalador Windows: Firestore (`app_versions` con `desktopDownloadUrl`) + dist + env; gana el semver más alto con URL válida. Así `npm run upload:desktop` alcanza sin redeploy del dist. */
+app.get('/api/app-latest-desktop', async (req, res) => {
     try {
-        const fromDist = path.join(distPath, 'app-latest-desktop.json');
-        if (fs.existsSync(fromDist)) {
-            const data = JSON.parse(fs.readFileSync(fromDist, 'utf8'));
-            return res.json(data);
+        const payload = await getLatestDesktopManifestResolved();
+        if (!payload) {
+            return res.status(404).json({ error: 'No hay app-latest-desktop (Firestore sin doc con desktopDownloadUrl, ni dist ni LATEST_DESKTOP_*)' });
         }
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.json({ ...payload, updatedAt: new Date().toISOString() });
     } catch (e) {
-        console.warn('/api/app-latest-desktop dist read:', e.message);
+        console.warn('/api/app-latest-desktop:', e.message);
+        return res.status(500).json({ error: e.message });
     }
-    const v = process.env.LATEST_DESKTOP_VERSION;
-    const url = process.env.LATEST_DESKTOP_DOWNLOAD_URL;
-    if (v && url) {
-        return res.json({
-            versionName: v,
-            desktopDownloadUrl: url,
-            versionCode: parseInt(process.env.LATEST_DESKTOP_VERSION_CODE || '0', 10) || 0,
-            releaseNotes: process.env.LATEST_DESKTOP_RELEASE_NOTES || '',
-        });
+});
+
+/** Misma respuesta que la API (evita que `public/` estático sirva un JSON viejo antes que Firestore). */
+app.get('/app-latest-desktop.json', async (req, res) => {
+    try {
+        const payload = await getLatestDesktopManifestResolved();
+        if (!payload) {
+            return res.status(404).json({ error: 'No hay app-latest-desktop' });
+        }
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        return res.json({ ...payload, updatedAt: new Date().toISOString() });
+    } catch (e) {
+        console.warn('/app-latest-desktop.json:', e.message);
+        return res.status(500).json({ error: e.message });
     }
-    res.status(404).json({ error: 'No hay app-latest-desktop (ni dist ni env LATEST_DESKTOP_*)' });
 });
 
 const handleDownload = async (req, res) => {

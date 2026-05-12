@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { semverToVersionCode } from '../utils/semverReleaseCompare.js';
+import { getMixerApiBase } from '../mixerApiBase.js';
 import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3, Download } from 'lucide-react';
 
 export default function Admin() {
@@ -31,12 +33,26 @@ export default function Admin() {
     const [isUploadingApk, setIsUploadingApk] = useState(false);
     const [apkFile, setApkFile] = useState(null);
     const [apkVersionName, setApkVersionName] = useState('');
+    const [desktopExeFile, setDesktopExeFile] = useState(null);
+    const [desktopExeVersionName, setDesktopExeVersionName] = useState('');
+    const [isUploadingDesktopExe, setIsUploadingDesktopExe] = useState(false);
     const [isActivatingPending, setIsActivatingPending] = useState(false); // botón rojo ACTIVAR
     const [pendingRelease, setPendingRelease] = useState(null);
     const [isActivatingPendingDesktop, setIsActivatingPendingDesktop] = useState(false);
     const [pendingDesktopRelease, setPendingDesktopRelease] = useState(null);
 
     const DEFAULT_RELEASE_PROXY = 'https://mixernew-production.up.railway.app';
+    /**
+     * Subidas y borrados B2 (`/api/upload`, `/api/delete-file`).
+     * Misma base que el resto de la app: en `localhost` → `http://localhost:3001` (b2-proxy local).
+     * Forzar otra URL: `VITE_B2_PROXY_URL=https://...` en `.env` y reiniciar Vite.
+     */
+    const b2UploadProxyBase = () => {
+        const raw = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_B2_PROXY_URL : '';
+        const u = raw && String(raw).trim();
+        if (u && /^https?:\/\//i.test(u)) return u.replace(/\/$/, '');
+        return getMixerApiBase();
+    };
     const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
     const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
     const [usageReport, setUsageReport] = useState(null);
@@ -848,11 +864,14 @@ export default function Admin() {
                 }
             }
             if (!payload?.desktopDownloadUrl) {
-                alert('No hay release de escritorio pendiente. Ejecutá npm run upload:desktop en la PC de build.');
+                alert('No hay release de escritorio pendiente. Subí el .exe desde la pestaña App (Instalador Windows) o ejecutá npm run upload:desktop en la PC de build.');
                 return;
             }
             await addDoc(collection(db, 'app_versions'), {
                 versionName: payload.versionName,
+                versionCode: payload.versionCode != null && Number(payload.versionCode) > 0
+                    ? Number(payload.versionCode)
+                    : semverToVersionCode(String(payload.versionName || '')),
                 desktopDownloadUrl: payload.desktopDownloadUrl,
                 fileId: payload.fileId ?? null,
                 fileSize: payload.fileSize ?? null,
@@ -877,15 +896,13 @@ export default function Admin() {
         setIsUploadingApk(true);
         try {
             const formData = new FormData();
-            formData.append('audioFile', apkFile); // Using 'audioFile' because the proxy expects it
             formData.append('fileName', `apps/zion-stage-${Date.now()}.apk`);
             formData.append('generatePreview', 'false');
+            formData.append('audioFile', apkFile); // proxy field name
 
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001'
-                : 'https://mixernew-production.up.railway.app';
+            const uploadProxy = b2UploadProxyBase();
 
-            const resp = await fetch(`${devProxy}/api/upload`, {
+            const resp = await fetch(`${uploadProxy}/api/upload`, {
                 method: 'POST',
                 body: formData
             });
@@ -912,18 +929,100 @@ export default function Admin() {
         }
     };
 
+    const uploadDesktopExe = async () => {
+        if (!desktopExeFile || !desktopExeVersionName.trim()) {
+            alert('Seleccioná el instalador .exe e indicá el número de versión (ej. 1.8.58).');
+            return;
+        }
+        const name = desktopExeFile.name || '';
+        if (!name.toLowerCase().endsWith('.exe')) {
+            alert('El archivo tiene que ser un .exe (instalador NSIS de Zion Stage).');
+            return;
+        }
+
+        setIsUploadingDesktopExe(true);
+        try {
+            const verSafe = desktopExeVersionName.trim().replace(/[^a-zA-Z0-9._-]/g, '_');
+            const formData = new FormData();
+            formData.append('audioFile', desktopExeFile);
+            formData.append('fileName', `apps/zion-stage-desktop-v${verSafe}-${Date.now()}.exe`);
+            formData.append('generatePreview', 'false');
+
+            const uploadProxy = b2UploadProxyBase();
+            const resp = await fetch(`${uploadProxy}/api/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+                throw new Error(data.error || `${resp.status} ${resp.statusText}`);
+            }
+            if (!data.success) {
+                throw new Error(data.error || 'Error al subir');
+            }
+
+            const proxyDownloadUrl = `${uploadProxy}/api/download?url=${encodeURIComponent(data.url)}`;
+            const vn = desktopExeVersionName.trim();
+            const pendingPayload = {
+                versionName: vn,
+                versionCode: semverToVersionCode(vn),
+                desktopDownloadUrl: proxyDownloadUrl,
+                b2Url: data.url,
+                fileId: data.fileId ?? undefined,
+                fileSize: desktopExeFile.size ?? null,
+                releaseNotes: `Zion Stage escritorio ${vn}`,
+                uploadedAt: new Date().toISOString(),
+            };
+            try {
+                const rJson = await fetch(`${uploadProxy}/api/upload-pending-json`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: 'apps/zion-desktop-release-pending.json',
+                        data: pendingPayload,
+                    }),
+                });
+                const j = await rJson.json().catch(() => ({}));
+                if (!rJson.ok || !j.success) {
+                    console.warn('upload-pending-json (desktop):', j.error || rJson.status);
+                }
+            } catch (e) {
+                console.warn('upload-pending-json (desktop):', e?.message || e);
+            }
+
+            await addDoc(collection(db, 'app_versions'), {
+                versionName: vn,
+                versionCode: semverToVersionCode(vn),
+                desktopDownloadUrl: proxyDownloadUrl,
+                fileId: data.fileId ?? null,
+                fileSize: desktopExeFile.size ?? null,
+                releaseNotes: `Zion Stage escritorio ${vn}`,
+                createdAt: serverTimestamp(),
+            });
+            alert(`Instalador Windows ${vn} publicado (código interno ${semverToVersionCode(vn)}). El hero y la app comparan con el .exe.`);
+            setDesktopExeFile(null);
+            setDesktopExeVersionName('');
+        } catch (e) {
+            console.error(e);
+            alert('Error: ' + e.message);
+        } finally {
+            setIsUploadingDesktopExe(false);
+        }
+    };
+
     const deleteApkVersion = async (v) => {
         if (!window.confirm("¿Eliminar esta versión de la app permanentemente?")) return;
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001'
-                : 'https://mixernew-production.up.railway.app';
+            const uploadProxy = b2UploadProxyBase();
 
-            await fetch(`${devProxy}/api/delete-file`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ fileId: v.fileId, fileName: v.downloadUrl.split('/').slice(-2).join('/') })
-            });
+            if (v.fileId && v.downloadUrl) {
+                await fetch(`${uploadProxy}/api/delete-file`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fileId: v.fileId, fileName: v.downloadUrl.split('/').slice(-2).join('/') })
+                });
+            }
 
             await deleteDoc(doc(db, 'app_versions', v.id));
             alert("Versión eliminada.");
@@ -949,12 +1048,11 @@ export default function Admin() {
             // Find song to get track info for B2 cleanup
             const song = songs.find(s => s.id === id);
             if (song && song.tracks) {
-                const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? 'http://localhost:3001' : 'https://mixernew-production.up.railway.app';
+                const uploadProxy = b2UploadProxyBase();
 
                 for (const track of song.tracks) {
                     if (track.b2FileId) {
-                        await fetch(`${devProxy}/api/delete-file`, {
+                        await fetch(`${uploadProxy}/api/delete-file`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ fileId: track.b2FileId, fileName: track.url.split('/').slice(-2).join('/') })
@@ -962,7 +1060,7 @@ export default function Admin() {
                     }
                 }
                 if (song.coverFileId) {
-                    await fetch(`${devProxy}/api/delete-file`, {
+                    await fetch(`${uploadProxy}/api/delete-file`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ fileId: song.coverFileId, fileName: song.coverUrl.split('/').slice(-2).join('/') })
@@ -983,15 +1081,13 @@ export default function Admin() {
         setIsUploadingBanner(true);
         try {
             const formData = new FormData();
-            formData.append('audioFile', bannerFile);
             formData.append('fileName', `banners/banner-${Date.now()}.png`);
             formData.append('generatePreview', 'false');
+            formData.append('audioFile', bannerFile);
 
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001'
-                : 'https://mixernew-production.up.railway.app';
+            const uploadProxy = b2UploadProxyBase();
 
-            const resp = await fetch(`${devProxy}/api/upload`, {
+            const resp = await fetch(`${uploadProxy}/api/upload`, {
                 method: 'POST',
                 body: formData
             });
@@ -1023,11 +1119,9 @@ export default function Admin() {
     const deleteBanner = async (v) => {
         if (!window.confirm("¿Eliminar este banner permanentemente?")) return;
         try {
-            const devProxy = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                ? 'http://localhost:3001'
-                : 'https://mixernew-production.up.railway.app';
+            const uploadProxy = b2UploadProxyBase();
 
-            await fetch(`${devProxy}/api/delete-file`, {
+            await fetch(`${uploadProxy}/api/delete-file`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fileId: v.fileId, fileName: v.image.split('/').slice(-2).join('/') })
@@ -2130,6 +2224,64 @@ export default function Admin() {
                                 {isUploadingApk ? "SUBIENDO..." : "SUBIR A B2"}
                             </button>
                         </div>
+                        <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px', marginTop: '28px' }}>
+                            <h2 style={{ marginBottom: '16px' }}>Instalador Windows (.exe)</h2>
+                            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '16px', maxWidth: '720px' }}>
+                                Generá el instalador en la PC de build con <code style={{ color: '#e2e8f0' }}>npm run build:desktop:win</code>
+                                {' '}— queda en la carpeta <code style={{ color: '#e2e8f0' }}>desktop-release/</code> (por ejemplo <code style={{ color: '#e2e8f0' }}>ZionStage-Desktop-1.8.58-Setup.exe</code>).
+                                Desde aquí subís el .exe a B2 y se publica en Firestore para el hero y la web.
+                            </p>
+                            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '20px' }}>
+                                <div style={{ flex: 1, minWidth: '200px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Versión visible (ej: 1.8.58)</label>
+                                    <input value={desktopExeVersionName} onChange={(e) => setDesktopExeVersionName(e.target.value)} placeholder="1.8.58" style={{ width: '100%', padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }} />
+                                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '6px', lineHeight: 1.35 }}>
+                                        Debe coincidir con <code style={{ color: '#94a3b8' }}>desktopVersion</code> en package.json (no con <code style={{ color: '#94a3b8' }}>version</code> de la app móvil). Tras <code style={{ color: '#94a3b8' }}>npm run release:desktop:auto</code> ya está alineado. Código interno para actualizaciones se calcula desde esa cadena.
+                                    </div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: '220px' }}>
+                                    <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>Archivo .exe</label>
+                                    <input type="file" accept=".exe,application/octet-stream" onChange={(e) => setDesktopExeFile(e.target.files?.[0] || null)} style={{ width: '100%', padding: '9px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'white' }} />
+                                </div>
+                                <button type="button" onClick={uploadDesktopExe} disabled={isUploadingDesktopExe} className="btn-teal" style={{ padding: '14px 40px', opacity: isUploadingDesktopExe ? 0.5 : 1, background: '#2563eb', border: 'none', borderRadius: '12px', color: 'white', fontWeight: 'bold', cursor: isUploadingDesktopExe ? 'wait' : 'pointer' }}>
+                                    {isUploadingDesktopExe ? 'SUBIENDO…' : 'SUBIR ESCRITORIO'}
+                                </button>
+                            </div>
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
+                                <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>— O pegá la URL del .exe (B2 o proxy) —</label>
+                                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                                    <input
+                                        id="desktop-exe-url-input"
+                                        placeholder="https://…/api/download?url=… o enlace B2 directo"
+                                        style={{ flex: 1, minWidth: '240px', padding: '12px 20px', borderRadius: '12px', background: '#0f172a', border: '1px solid #334155', color: 'white' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const url = document.getElementById('desktop-exe-url-input').value.trim();
+                                            const ver = desktopExeVersionName.trim() || apkVersionName.trim() || '1.0';
+                                            if (!url) return alert('Pegá el enlace primero');
+                                            try {
+                                                await addDoc(collection(db, 'app_versions'), {
+                                                    versionName: ver,
+                                                    versionCode: semverToVersionCode(ver),
+                                                    desktopDownloadUrl: url,
+                                                    releaseNotes: `Zion Stage escritorio ${ver}`,
+                                                    createdAt: serverTimestamp(),
+                                                });
+                                                alert('Versión escritorio registrada.');
+                                                document.getElementById('desktop-exe-url-input').value = '';
+                                                setDesktopExeVersionName('');
+                                            } catch (e) { alert('Error: ' + e.message); }
+                                        }}
+                                        style={{ background: '#6366f1', color: 'white', border: 'none', padding: '14px 30px', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}
+                                    >
+                                        GUARDAR ENLACE ESCRITORIO
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px' }}>
                             <label style={{ display: 'block', fontSize: '0.8rem', color: '#94a3b8', marginBottom: '8px' }}>— O pega directamente el enlace del APK —</label>
                             <div style={{ display: 'flex', gap: '10px' }}>
@@ -2172,7 +2324,12 @@ export default function Admin() {
                                             Versión {v.versionName} {i === 0 && <span style={{ fontSize: '0.6rem', padding: '2px 8px', borderRadius: '10px', background: '#00d2d3', color: 'black', marginLeft: '10px', verticalAlign: 'middle' }}>ACTUAL</span>}
                                         </div>
                                         <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>Subido el {v.createdAt?.toDate().toLocaleString()}</div>
-                                        <a href={v.downloadUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: '#00d2d3', textDecoration: 'none', display: 'block', marginTop: '8px' }}>{v.downloadUrl}</a>
+                                        {v.downloadUrl && (
+                                            <a href={v.downloadUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: '#00d2d3', textDecoration: 'none', display: 'block', marginTop: '8px' }}>APK: {v.downloadUrl}</a>
+                                        )}
+                                        {v.desktopDownloadUrl && (
+                                            <a href={v.desktopDownloadUrl} target="_blank" rel="noreferrer" style={{ fontSize: '0.8rem', color: '#60a5fa', textDecoration: 'none', display: 'block', marginTop: '8px' }}>Windows: {v.desktopDownloadUrl}</a>
+                                        )}
                                     </div>
                                     <button onClick={() => deleteApkVersion(v)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }}><Trash2 size={24} /></button>
                                 </div>

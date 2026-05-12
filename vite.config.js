@@ -7,16 +7,17 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 const appVersion = pkg.version || '0.0.0'
+const desktopAppVersion = (pkg.desktopVersion && String(pkg.desktopVersion).trim()) || appVersion
 
-/** Inyecta en `index.html` la URL del .exe de escritorio (build CI: `VITE_DESKTOP_INSTALLER_URL`). */
-function injectZionDesktopInstallerGlobals(version) {
+/** Inyecta en `index.html` globals (web = app móvil; escritorio = desktopVersion). */
+function injectZionDesktopInstallerGlobals(mobileVersion, desktopVersion) {
   const installerUrl = process.env.VITE_DESKTOP_INSTALLER_URL || ''
   return {
     name: 'inject-zion-desktop-installer-globals',
     transformIndexHtml(html) {
       const payload = `<script>window.__ZION_DESKTOP_INSTALLER_URL__=${JSON.stringify(
         installerUrl
-      )};window.__ZION_APP_VERSION__=${JSON.stringify(version)};</script>`
+      )};window.__ZION_APP_VERSION__=${JSON.stringify(mobileVersion)};window.__ZION_DESKTOP_APP_VERSION__=${JSON.stringify(desktopVersion)};</script>`
       return html.replace('</head>', `${payload}\n</head>`)
     },
   }
@@ -41,9 +42,10 @@ function removeHtmlCrossorigin() {
 export default defineConfig({
   // Rutas relativas para que `dist/` funcione con Electron (`file://`) sin depender de un servidor.
   base: './',
-  plugins: [injectZionDesktopInstallerGlobals(appVersion), react(), removeHtmlCrossorigin()],
+  plugins: [injectZionDesktopInstallerGlobals(appVersion, desktopAppVersion), react(), removeHtmlCrossorigin()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_DESKTOP_APP_VERSION': JSON.stringify(desktopAppVersion),
     'import.meta.env.VITE_DESKTOP_INSTALLER_URL': JSON.stringify(process.env.VITE_DESKTOP_INSTALLER_URL || ''),
   },
   server: {
