@@ -6,7 +6,7 @@ import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp } from 'lucide-react';
+import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp, Monitor } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
@@ -16,24 +16,29 @@ import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
 export default function Landing() {
     const navigate = useNavigate();
     const { t } = useTranslation();
-    const [showHeroPopup, setShowHeroPopup] = useState(false);
     const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
+    /** Modal de entrada: descarga escritorio; 5 s y se cierra solo. */
+    const [showDesktopDownloadPromo, setShowDesktopDownloadPromo] = useState(false);
+    const [desktopPromoSecondsLeft, setDesktopPromoSecondsLeft] = useState(5);
     const [email, setEmail] = useState('');
 
     useEffect(() => {
-        const showTimer = setTimeout(() => {
-            setShowHeroPopup(true);
-        }, 1000);
-
-        const hideTimer = setTimeout(() => {
-            setShowHeroPopup(false);
-        }, 7000); // 1s wait + 6s duration
-
-        return () => {
-            clearTimeout(showTimer);
-            clearTimeout(hideTimer);
-        };
+        const openId = setTimeout(() => setShowDesktopDownloadPromo(true), 500);
+        return () => clearTimeout(openId);
     }, []);
+
+    useEffect(() => {
+        if (!showDesktopDownloadPromo) return undefined;
+        setDesktopPromoSecondsLeft(5);
+        const hideId = setTimeout(() => setShowDesktopDownloadPromo(false), 5000);
+        const tickId = setInterval(() => {
+            setDesktopPromoSecondsLeft((n) => Math.max(0, n - 1));
+        }, 1000);
+        return () => {
+            clearTimeout(hideId);
+            clearInterval(tickId);
+        };
+    }, [showDesktopDownloadPromo]);
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [firstName, setFirstName] = useState('');
@@ -545,13 +550,43 @@ export default function Landing() {
                     from { transform: translate(-50%, 50px); opacity: 0; }
                     to { transform: translate(-50%, 0); opacity: 1; }
                 }
+                @keyframes landingDesktopPromoFadeIn {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes landingDesktopPromoRise {
+                    from { opacity: 0; transform: translateY(22px) scale(0.985); filter: blur(4px); }
+                    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+                }
+                @keyframes landingDesktopPromoLine {
+                    from { transform: scaleX(0.2); opacity: 0; }
+                    to { transform: scaleX(1); opacity: 1; }
+                }
+                @keyframes landingDesktopPromoGlow {
+                    0%, 100% { opacity: 0.45; }
+                    50% { opacity: 0.85; }
+                }
+                .landing-desktop-promo-backdrop {
+                    animation: landingDesktopPromoFadeIn 0.5s ease-out both;
+                }
+                .landing-desktop-promo-card {
+                    animation: landingDesktopPromoRise 0.62s cubic-bezier(0.22, 1, 0.32, 1) 0.06s both;
+                }
+                .landing-desktop-promo-accent-line {
+                    animation: landingDesktopPromoLine 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+                }
+                .landing-desktop-promo-cta {
+                    transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+                }
+                .landing-desktop-promo-cta:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 14px 36px -8px rgba(6, 182, 212, 0.45), inset 0 1px 0 rgba(255,255,255,0.22);
+                    filter: brightness(1.04);
+                }
+                .landing-desktop-promo-cta:active {
+                    transform: translateY(0);
+                }
             `}</style>
-
-            {/* TOP BAR PROMO */}
-            <div style={{ backgroundColor: '#1e293b', padding: '8px 0', fontSize: '0.75rem', textAlign: 'center', letterSpacing: '1px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <span style={{ color: '#94a3b8' }}>{t('landing.promo')}</span>
-                <span style={{ color: '#00d2d3', marginLeft: '5px', fontWeight: '700', cursor: 'pointer', textDecoration: 'underline' }}>{t('common.seeMore')}</span>
-            </div>
 
             {/* GLASS NAVBAR */}
             <nav className={scrolled ? 'glass-nav' : ''} style={{
@@ -561,7 +596,7 @@ export default function Landing() {
                 padding: scrolled ? '12px 60px' : '20px 60px',
                 transition: 'all 0.3s ease',
                 position: 'fixed',
-                top: scrolled ? 0 : '35px',
+                top: 0,
                 left: 0,
                 right: 0,
                 zIndex: 1000,
@@ -1551,45 +1586,249 @@ export default function Landing() {
                     </div>
                 </div>
             )}
-            {/* HERO POPUP SELLERS */}
-            {showHeroPopup && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(15px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', width: '100%', maxWidth: '850px', borderRadius: '32px', border: '1px solid rgba(0,210,211,0.3)', overflow: 'hidden', position: 'relative', boxShadow: '0 50px 100px rgba(0,0,0,0.5)' }}>
-                        <button onClick={() => setShowHeroPopup(false)} style={{ position: 'absolute', top: '30px', right: '30px', background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', cursor: 'pointer', width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}><X size={24} /></button>
-                        
-                        <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-                            <div style={{ flex: '1 1 450px', padding: '60px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                                <div style={{ background: 'rgba(0,210,211,0.1)', color: '#00d2d3', padding: '8px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', alignSelf: 'flex-start', marginBottom: '20px', letterSpacing: '1px' }}>{t('landing.heroPopupBadge')}</div>
-                                <h2 style={{ fontSize: 'clamp(2rem, 5vw, 3rem)', fontWeight: '900', color: 'white', lineHeight: '1.1', marginBottom: '24px' }}>{t('landing.heroPopupTitleLine')}<span style={{ color: '#00d2d3' }}>{t('landing.heroPopupTitleAccent')}</span></h2>
-                                <p style={{ color: '#94a3b8', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '40px' }}>{t('landing.heroPopupSub')}</p>
-                                
-                                <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                                    <button 
-                                        onClick={() => {
-                                            setShowHeroPopup(false);
-                                            setShowSellerInfoModal(true);
-                                        }} 
-                                        className="btn-teal" 
-                                        style={{ padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', border: 'none', cursor: 'pointer' }}
-                                    >
-                                        {t('landing.heroPopupCta')}
-                                    </button>
-                                    <button 
-                                        onClick={() => setShowHeroPopup(false)} 
-                                        style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '16px 32px', fontSize: '1rem', fontWeight: '800', borderRadius: '16px', cursor: 'pointer' }}
-                                    >
-                                        {t('landing.heroPopupLater')}
-                                    </button>
+
+            {/* Modal entrada: descarga escritorio (5 s, cierre automático) */}
+            {showDesktopDownloadPromo && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="desktop-promo-title"
+                    className="landing-desktop-promo-backdrop"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 5000,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px 18px',
+                        background: 'radial-gradient(ellipse 90% 70% at 50% 20%, rgba(15, 118, 110, 0.12) 0%, transparent 55%), radial-gradient(ellipse 80% 50% at 50% 100%, rgba(8, 145, 178, 0.08) 0%, transparent 45%), rgba(2, 6, 23, 0.86)',
+                        backdropFilter: 'blur(18px) saturate(1.2)',
+                        WebkitBackdropFilter: 'blur(18px) saturate(1.2)',
+                    }}
+                >
+                    <div
+                        className="landing-desktop-promo-card"
+                        style={{
+                            width: '100%',
+                            maxWidth: '420px',
+                            position: 'relative',
+                            borderRadius: '22px',
+                            overflow: 'hidden',
+                            background: 'linear-gradient(165deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.98) 42%, #0a0f18 100%)',
+                            boxShadow: `
+                                0 0 0 1px rgba(148, 163, 184, 0.14),
+                                0 1px 0 rgba(255, 255, 255, 0.06) inset,
+                                0 40px 80px -20px rgba(0, 0, 0, 0.65)
+                            `,
+                        }}
+                    >
+                        <div
+                            aria-hidden
+                            style={{
+                                position: 'absolute',
+                                inset: '-40% -20% auto -20%',
+                                height: '120px',
+                                background: 'radial-gradient(ellipse at 50% 0%, rgba(45, 212, 191, 0.14) 0%, transparent 70%)',
+                                animation: 'landingDesktopPromoGlow 4s ease-in-out infinite',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                        <div
+                            className="landing-desktop-promo-accent-line"
+                            style={{
+                                height: '2px',
+                                width: '100%',
+                                transformOrigin: '50% 50%',
+                                background: 'linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.15) 12%, #2dd4bf 42%, #5eead4 50%, #2dd4bf 58%, rgba(45, 212, 191, 0.15) 88%, transparent)',
+                            }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowDesktopDownloadPromo(false)}
+                            style={{
+                                position: 'absolute',
+                                top: '14px',
+                                right: '14px',
+                                zIndex: 2,
+                                background: 'rgba(15, 23, 42, 0.55)',
+                                border: '1px solid rgba(148, 163, 184, 0.2)',
+                                color: '#94a3b8',
+                                cursor: 'pointer',
+                                width: '38px',
+                                height: '38px',
+                                borderRadius: '12px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                transition: 'color 0.2s, border-color 0.2s, background 0.2s',
+                            }}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.color = '#e2e8f0';
+                                e.currentTarget.style.borderColor = 'rgba(94, 234, 212, 0.35)';
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = '#94a3b8';
+                                e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.55)';
+                            }}
+                            aria-label={t('landing.desktopPromoClose')}
+                        >
+                            <X size={18} strokeWidth={2.25} />
+                        </button>
+
+                        <div style={{ padding: '30px 32px 32px', position: 'relative', zIndex: 1 }}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: '16px',
+                                    marginBottom: '26px',
+                                }}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+                                    <img
+                                        src="/logo2blanco.png"
+                                        alt=""
+                                        style={{ height: '30px', width: 'auto', opacity: 0.95, flexShrink: 0 }}
+                                    />
+                                    <span
+                                        style={{
+                                            display: 'block',
+                                            width: '1px',
+                                            height: '28px',
+                                            background: 'linear-gradient(180deg, transparent, rgba(148,163,184,0.35), transparent)',
+                                            flexShrink: 0,
+                                        }}
+                                        aria-hidden
+                                    />
+                                    <Monitor size={26} color="#5eead4" strokeWidth={1.75} style={{ flexShrink: 0, opacity: 0.88 }} aria-hidden />
+                                </div>
+                                <div
+                                    title={t('landing.desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
+                                    style={{
+                                        flexShrink: 0,
+                                        minWidth: '52px',
+                                        padding: '8px 12px',
+                                        borderRadius: '12px',
+                                        border: '1px solid rgba(94, 234, 212, 0.22)',
+                                        background: 'rgba(6, 78, 59, 0.22)',
+                                        fontFamily: 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace',
+                                        fontSize: '0.95rem',
+                                        fontWeight: 700,
+                                        letterSpacing: '0.06em',
+                                        color: '#5eead4',
+                                        lineHeight: 1,
+                                    }}
+                                >
+                                    {String(Math.max(0, desktopPromoSecondsLeft)).padStart(2, '0')}
                                 </div>
                             </div>
-                             <div style={{ flex: '1 1 300px', background: 'rgba(0,210,211,0.03)', position: 'relative', minHeight: '350px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-                                 <TrendingUp size={220} color="#00d2d3" opacity={0.05} style={{ position: 'absolute' }} />
-                                 <div style={{ position: 'relative', textAlign: 'center', padding: '40px' }}>
-                                    <div style={{ fontSize: '3rem', fontWeight: '900', color: '#00d2d3', lineHeight: '1.1', marginBottom: '10px' }}>{t('landing.heroPopupGen')}</div>
-                                    <div style={{ color: 'white', fontWeight: '800', fontSize: '1.3rem', letterSpacing: '1px' }}>{t('landing.heroPopupIncome')}</div>
-                                    <div style={{ color: '#64748b', fontSize: '0.9rem', marginTop: '15px', maxWidth: '200px', margin: '15px auto 0' }}>{t('landing.heroPopupFoot')}</div>
-                                 </div>
-                            </div>
+
+                            <p
+                                style={{
+                                    margin: '0 0 10px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    letterSpacing: '0.28em',
+                                    textTransform: 'uppercase',
+                                    color: '#64748b',
+                                }}
+                            >
+                                {t('landing.desktopPromoEyebrow')}
+                            </p>
+                            <h2
+                                id="desktop-promo-title"
+                                style={{
+                                    margin: '0 0 16px',
+                                    fontSize: 'clamp(1.42rem, 4.2vw, 1.72rem)',
+                                    fontWeight: 650,
+                                    letterSpacing: '-0.03em',
+                                    lineHeight: 1.18,
+                                    color: '#f8fafc',
+                                }}
+                            >
+                                {t('landing.desktopPromoTitle')}
+                            </h2>
+                            <p
+                                style={{
+                                    margin: '0 0 28px',
+                                    maxWidth: '34ch',
+                                    fontSize: '0.9rem',
+                                    lineHeight: 1.65,
+                                    fontWeight: 500,
+                                    color: '#94a3b8',
+                                }}
+                            >
+                                {t('landing.desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
+                            </p>
+
+                            <div
+                                aria-hidden
+                                style={{
+                                    height: '1px',
+                                    margin: '0 0 22px',
+                                    background: 'linear-gradient(90deg, transparent, rgba(148,163,184,0.25) 20%, rgba(148,163,184,0.25) 80%, transparent)',
+                                }}
+                            />
+
+                            <button
+                                type="button"
+                                className="landing-desktop-promo-cta"
+                                onClick={() => {
+                                    handleDesktopInstallerDownload();
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '15px 22px',
+                                    fontSize: '0.94rem',
+                                    fontWeight: 750,
+                                    letterSpacing: '0.04em',
+                                    borderRadius: '14px',
+                                    border: 'none',
+                                    cursor: desktopWinUrlReady ? 'pointer' : 'not-allowed',
+                                    color: '#042f2e',
+                                    background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 38%, #2dd4bf 72%, #5eead4 100%)',
+                                    boxShadow: '0 10px 28px -6px rgba(13, 148, 136, 0.55), inset 0 1px 0 rgba(255,255,255,0.28)',
+                                    opacity: desktopWinUrlReady ? 1 : 0.5,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                }}
+                            >
+                                <span style={{ flex: 1, textAlign: 'center' }}>
+                                    {t('landing.desktopPromoDownload')}
+                                    {latestApp?.desktopVersionName ? (
+                                        <span style={{ fontWeight: 650, opacity: 0.92 }}>
+                                            {' '}
+                                            · v{latestApp.desktopVersionName}
+                                        </span>
+                                    ) : null}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowDesktopDownloadPromo(false)}
+                                style={{
+                                    display: 'block',
+                                    width: '100%',
+                                    marginTop: '14px',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#64748b',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.04em',
+                                    cursor: 'pointer',
+                                    padding: '6px',
+                                    transition: 'color 0.2s',
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
+                            >
+                                {t('landing.desktopPromoClose')}
+                            </button>
                         </div>
                     </div>
                 </div>

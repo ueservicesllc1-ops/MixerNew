@@ -413,6 +413,12 @@ export default {
     heroPopupGen: 'EARN',
     heroPopupIncome: 'EXTRA INCOME',
     heroPopupFoot: 'Join the largest network of sequence and multitrack creators.',
+    desktopPromoEyebrow: 'Freedom Labs · Windows',
+    desktopPromoTitle: 'Zion Stage for desktop',
+    desktopPromoSub:
+      'Multitrack and live mixing, built for your PC. This message fades away in {{seconds}} s.',
+    desktopPromoDownload: 'Get the installer',
+    desktopPromoClose: 'Close now',
     previewInit: 'INITIALIZING MIXER...',
     previewPlayback: 'PLAYBACK (20s–40s)',
     previewAddCart: 'ADD TO CART',

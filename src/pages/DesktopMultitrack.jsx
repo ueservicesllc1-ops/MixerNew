@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import LanguageSwitch from '../components/LanguageSwitch'
@@ -19,6 +20,9 @@ function isElectronDesktopMixer() {
         && window.zionNative?.isDesktop === true
         && !window.Capacitor?.isNativePlatform?.();
 }
+
+/** Tras iniciar descarga del .exe: rehidratar pantalla bloqueante si el usuario recarga antes de instalar. */
+const DESKTOP_INSTALL_BLOCK_STORAGE_KEY = 'zion_desktop_install_block_v1';
 
 /** Opciones de primer canal L para estéreo (1..16). */
 const DESKTOP_PHYSICAL_OUT_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1);
@@ -1362,8 +1366,26 @@ export default function Multitrack({ session }) {
     /** Tras abrir la descarga del .exe en el navegador: pantalla bloqueada hasta cerrar la app para instalar. */
     const [desktopUpdateBlocking, setDesktopUpdateBlocking] = useState(null);
     const [showPwaInstallBanner, setShowPwaInstallBanner] = useState(false);
+
     const [showPwaInstallHint, setShowPwaInstallHint] = useState(false);
     const [pwaHintCountdown, setPwaHintCountdown] = useState(5);
+
+    useEffect(() => {
+        if (!isElectronDesktopMixer() || typeof window === 'undefined') return;
+        try {
+            const raw = sessionStorage.getItem(DESKTOP_INSTALL_BLOCK_STORAGE_KEY);
+            if (!raw) return;
+            const o = JSON.parse(raw);
+            if (o && typeof o.newVersion === 'string') {
+                setDesktopUpdateBlocking({
+                    newVersion: o.newVersion,
+                    currentVersion: String(o.currentVersion ?? ''),
+                });
+            }
+        } catch {
+            /* ignore */
+        }
+    }, []);
 
     useEffect(() => {
         const params = new URLSearchParams(location.search || '');
@@ -1481,6 +1503,51 @@ export default function Multitrack({ session }) {
         })();
         return () => { cancelled = true; };
     }, [bundledVersion]);
+
+    const handleDesktopInstallerUpdateClick = useCallback(async () => {
+        const offer = appUpdateOffer;
+        if (!offer?.downloadUrl) return;
+        const url = String(offer.downloadUrl).trim();
+        if (offer.isDesktopInstaller && isElectronDesktopMixer()) {
+            const payload = {
+                newVersion: offer.versionName,
+                currentVersion: installedRelease.versionName,
+            };
+            try {
+                sessionStorage.setItem(DESKTOP_INSTALL_BLOCK_STORAGE_KEY, JSON.stringify(payload));
+            } catch {
+                /* ignore */
+            }
+            setDesktopUpdateBlocking(payload);
+            setAppUpdateOffer(null);
+            if (typeof window.zionNative?.openExternalUrl === 'function') {
+                try {
+                    const r = await window.zionNative.openExternalUrl(url);
+                    if (!r?.ok) {
+                        window.alert(r?.error || 'No se pudo abrir el enlace de descarga');
+                        try {
+                            sessionStorage.removeItem(DESKTOP_INSTALL_BLOCK_STORAGE_KEY);
+                        } catch { /* ignore */ }
+                        setDesktopUpdateBlocking(null);
+                        setAppUpdateOffer(offer);
+                        return;
+                    }
+                } catch (e) {
+                    window.alert(String(e?.message || e));
+                    try {
+                        sessionStorage.removeItem(DESKTOP_INSTALL_BLOCK_STORAGE_KEY);
+                    } catch { /* ignore */ }
+                    setDesktopUpdateBlocking(null);
+                    setAppUpdateOffer(offer);
+                    return;
+                }
+            } else {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            }
+            return;
+        }
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }, [appUpdateOffer, installedRelease.versionName]);
 
     // Electron: restaurar ruteo multi-salida guardado por usuario (SQLite).
     useEffect(() => {
@@ -3657,29 +3724,9 @@ export default function Multitrack({ session }) {
                     <span style={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: '700', textAlign: 'center' }}>
                         Nueva versión {appUpdateOffer.versionName} disponible (tenés la {installedRelease.versionName}, código {installedRelease.versionCode})
                     </span>
-                    <a
-                        href={appUpdateOffer.downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={async (e) => {
-                            const url = appUpdateOffer.downloadUrl;
-                            const useShell =
-                                appUpdateOffer.isDesktopInstaller
-                                && typeof window.zionNative?.openExternalUrl === 'function';
-                            if (useShell) {
-                                e.preventDefault();
-                                const r = await window.zionNative.openExternalUrl(url);
-                                if (!r?.ok) {
-                                    window.alert(r?.error || 'No se pudo abrir el enlace de descarga');
-                                    return;
-                                }
-                                setDesktopUpdateBlocking({
-                                    newVersion: appUpdateOffer.versionName,
-                                    currentVersion: installedRelease.versionName,
-                                });
-                                setAppUpdateOffer(null);
-                            }
-                        }}
+                    <button
+                        type="button"
+                        onClick={handleDesktopInstallerUpdateClick}
                         style={{
                             display: 'inline-block',
                             background: '#00d2d3',
@@ -3690,11 +3737,11 @@ export default function Multitrack({ session }) {
                             fontWeight: '800',
                             cursor: 'pointer',
                             fontSize: '0.85rem',
-                            textDecoration: 'none',
+                            fontFamily: 'inherit',
                         }}
                     >
-                        {appUpdateOffer.isDesktopInstaller ? 'Abrir descarga (navegador)' : 'Descargar APK'}
-                    </a>
+                        {appUpdateOffer.isDesktopInstaller ? 'Actualizar (descargar instalador)' : 'Descargar APK'}
+                    </button>
                     <button
                         type="button"
                         onClick={() => {
@@ -3716,7 +3763,7 @@ export default function Multitrack({ session }) {
                 </div>
             )}
 
-            {desktopUpdateBlocking && (
+            {desktopUpdateBlocking && typeof document !== 'undefined' && createPortal(
                 <div
                     role="dialog"
                     aria-modal="true"
@@ -3724,7 +3771,7 @@ export default function Multitrack({ session }) {
                     style={{
                         position: 'fixed',
                         inset: 0,
-                        zIndex: 400000,
+                        zIndex: 2147483000,
                         background: 'rgba(2, 6, 23, 0.97)',
                         display: 'flex',
                         alignItems: 'center',
@@ -3784,6 +3831,9 @@ export default function Multitrack({ session }) {
                             type="button"
                             onClick={async () => {
                                 try {
+                                    try {
+                                        sessionStorage.removeItem(DESKTOP_INSTALL_BLOCK_STORAGE_KEY);
+                                    } catch { /* ignore */ }
                                     if (typeof window.zionNative?.quitApp === 'function') {
                                         await window.zionNative.quitApp();
                                     }
@@ -3806,14 +3856,12 @@ export default function Multitrack({ session }) {
                             Cerrar aplicación ahora
                         </button>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>
-                    V{installedRelease.versionName} · #{installedRelease.versionCode} — ZION STAGE ({typeof window !== 'undefined' && window.zionNative ? 'ZION CORE WASM + SoundTouch' : isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
-                </div>
                 {!isAppNative && (
                     <button
                         onClick={() => navigate('/dashboard')}
@@ -5098,6 +5146,19 @@ export default function Multitrack({ session }) {
                     >
                         <X size={24} />
                     </button>
+                </div>
+
+                {/* ── Zion Stage (versión / marca) ───────────────────── */}
+                <div className="settings-section">
+                    <div
+                        className="settings-zion-about-panel"
+                        role="note"
+                        aria-label={`Zion Stage versión ${installedRelease.versionName}, Freedom Labs`}
+                    >
+                        <span className="settings-zion-about-panel__title">Zion Stage</span>
+                        <span className="settings-zion-about-panel__version">Versión {installedRelease.versionName}</span>
+                        <span className="settings-zion-about-panel__brand">Freedom Labs</span>
+                    </div>
                 </div>
 
                 {/* ── Idioma (ES / EN) ─────────────────────────────── */}

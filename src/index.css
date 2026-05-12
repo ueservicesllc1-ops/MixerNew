@@ -1758,6 +1758,59 @@ body.dark-mode .settings-route-config-btn:hover {
   filter: brightness(1.08);
 }
 
+.settings-zion-about-panel {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(165deg, #f8fafc 0%, #f1f5f9 100%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-zion-about-panel__title {
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #0f172a;
+}
+
+.settings-zion-about-panel__version {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #0891b2;
+}
+
+.settings-zion-about-panel__brand {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+body.dark-mode .settings-zion-about-panel {
+  border-color: #334155;
+  background: linear-gradient(165deg, #0f172a 0%, #1e293b 100%);
+}
+
+body.dark-mode .settings-zion-about-panel__title {
+  color: #f8fafc;
+}
+
+body.dark-mode .settings-zion-about-panel__version {
+  color: #5eead4;
+}
+
+body.dark-mode .settings-zion-about-panel__brand {
+  color: #94a3b8;
+}
+
 /* ΓöÇΓöÇ iOS-style Toggle Switch ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
 .toggle-switch {
   position: relative;
