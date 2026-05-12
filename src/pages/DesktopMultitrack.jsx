@@ -1371,7 +1371,7 @@ export default function Multitrack({ session }) {
                 ].filter(Boolean))];
 
                 for (const base of bases) {
-                    for (const jsonPath of ['/app-latest.json', '/api/app-latest']) {
+                    for (const jsonPath of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
                         const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
                         if (!r.ok) continue;
                         const j = await r.json();

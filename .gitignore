@@ -44,11 +44,14 @@ compress-pads.mjs
 
 # Última subida CLI (solo local; el Admin en dev la lee con un clic)
 public/release-pending.json
+public/release-pending-desktop.json
 
 .gemini/
 .agents/
 
-# Zion Stage desktop (JUCE) — artefactos locales
+# Zion Stage desktop installer output (electron-builder)
+desktop-release/
+
 ZionStageDesktop/build/
 ZionStageDesktop/tools/*.pem
 

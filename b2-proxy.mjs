@@ -299,6 +299,18 @@ app.get('/api/b2-pending', async (req, res) => {
     }
 });
 
+/** JSON dejado por `upload-desktop-exe.mjs` en B2 — Admin «ACTIVAR ESCRITORIO». */
+app.get('/api/b2-pending-desktop', async (req, res) => {
+    try {
+        const url = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/apps/zion-desktop-release-pending.json`;
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) return res.status(r.status).json({ error: 'pending desktop no en B2 aún' });
+        res.json(await r.json());
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 /** Última APK para la app nativa (fallback si Firestore no está actualizado). Sirve dist/app-latest.json o variables LATEST_APP_* en Railway. */
 app.get('/api/app-latest', (req, res) => {
     try {
@@ -323,6 +335,30 @@ app.get('/api/app-latest', (req, res) => {
     res.status(404).json({ error: 'No hay app-latest (ni dist/app-latest.json ni env LATEST_APP_*)' });
 });
 
+/** Último instalador Windows — `dist/app-latest-desktop.json` (Vite copia desde `public/`) o env LATEST_DESKTOP_*. */
+app.get('/api/app-latest-desktop', (req, res) => {
+    try {
+        const fromDist = path.join(distPath, 'app-latest-desktop.json');
+        if (fs.existsSync(fromDist)) {
+            const data = JSON.parse(fs.readFileSync(fromDist, 'utf8'));
+            return res.json(data);
+        }
+    } catch (e) {
+        console.warn('/api/app-latest-desktop dist read:', e.message);
+    }
+    const v = process.env.LATEST_DESKTOP_VERSION;
+    const url = process.env.LATEST_DESKTOP_DOWNLOAD_URL;
+    if (v && url) {
+        return res.json({
+            versionName: v,
+            desktopDownloadUrl: url,
+            versionCode: parseInt(process.env.LATEST_DESKTOP_VERSION_CODE || '0', 10) || 0,
+            releaseNotes: process.env.LATEST_DESKTOP_RELEASE_NOTES || '',
+        });
+    }
+    res.status(404).json({ error: 'No hay app-latest-desktop (ni dist ni env LATEST_DESKTOP_*)' });
+});
+
 const handleDownload = async (req, res) => {
     try {
         let { url } = req.query;
@@ -340,8 +376,11 @@ const handleDownload = async (req, res) => {
 
         const contentType = response.headers.get('content-type') || 'audio/mpeg';
         const isApk = url.includes('.apk') || contentType.includes('android');
+        const isExe = url.includes('.exe') || /octet-stream|x-msdownload|application\/.*installer/i.test(contentType || '');
         const headers = {
-            'Content-Type': isApk ? 'application/vnd.android.package-archive' : contentType,
+            'Content-Type': isApk
+                ? 'application/vnd.android.package-archive'
+                : (isExe ? 'application/vnd.microsoft.portable-executable' : contentType),
             'Access-Control-Allow-Origin': '*'
         };
         if (response.headers.get('content-length')) {
@@ -350,6 +389,10 @@ const handleDownload = async (req, res) => {
         if (isApk) {
             // Force browser/device to download instead of trying to render
             const fileName = url.split('/').pop().split('?')[0] || 'zion-stage.apk';
+            headers['Content-Disposition'] = `attachment; filename="${fileName}"`;
+        }
+        if (isExe) {
+            const fileName = url.split('/').pop().split('?')[0] || 'ZionStage-Setup.exe';
             headers['Content-Disposition'] = `attachment; filename="${fileName}"`;
         }
         res.set(headers);

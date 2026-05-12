@@ -160,11 +160,50 @@ export default function Landing() {
 
         const fetchLatestApp = async () => {
             try {
-                const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(1));
+                const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(25));
                 const snap = await getDocs(q);
-                if (!snap.empty) {
-                    setLatestApp(snap.docs[0].data());
+                if (snap.empty) return;
+
+                const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+                const isApkUrl = (u) => {
+                    const s = String(u || '').trim().toLowerCase();
+                    return s.length > 0 && (s.includes('.apk') || s.includes('package'));
+                };
+                const isExeUrl = (u) => {
+                    const s = String(u || '').trim().toLowerCase();
+                    return s.length > 0 && s.endsWith('.exe');
+                };
+
+                let androidRow = rows.find((r) => r.downloadUrl && isApkUrl(r.downloadUrl));
+                if (!androidRow) {
+                    androidRow = rows.find((r) => r.downloadUrl && !isExeUrl(r.downloadUrl));
                 }
+
+                let desktopUrl = '';
+                const withDesktopField = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
+                if (withDesktopField) {
+                    desktopUrl = String(withDesktopField.desktopDownloadUrl).trim();
+                }
+                if (!desktopUrl) {
+                    const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
+                    if (exeRow) desktopUrl = String(exeRow.downloadUrl).trim();
+                }
+
+                const versionName =
+                    (androidRow && String(androidRow.versionName || '').trim())
+                    || (withDesktopField && String(withDesktopField.versionName || '').trim())
+                    || (rows[0] && String(rows[0].versionName || '').trim())
+                    || '';
+
+                if (!versionName && !androidRow?.downloadUrl && !desktopUrl) return;
+
+                setLatestApp({
+                    versionName: versionName || (androidRow?.versionName || '—'),
+                    downloadUrl: androidRow?.downloadUrl ? String(androidRow.downloadUrl) : '',
+                    desktopDownloadUrl: desktopUrl,
+                    releaseNotes: androidRow?.releaseNotes || withDesktopField?.releaseNotes || rows[0]?.releaseNotes || '',
+                });
             } catch (err) {
                 console.error("Error fetching latest app:", err);
             }
@@ -467,7 +506,7 @@ export default function Landing() {
                                 {item.label}
                             </span>
                         ))}
-                        {latestApp && (
+                        {latestApp?.downloadUrl && (
                             <span
                                 onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
                                 style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#3ddc84', fontWeight: 'bold' }}
@@ -633,7 +672,7 @@ export default function Landing() {
                             </button>
                         </div>
                         <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                            {latestApp && (
+                            {latestApp?.downloadUrl && (
                                 <button
                                     onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
                                     style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#3ddc84,#2a9d5c)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(61,220,132,0.35)' }}

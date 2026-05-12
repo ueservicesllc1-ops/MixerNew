@@ -33,7 +33,10 @@ export default function Admin() {
     const [apkVersionName, setApkVersionName] = useState('');
     const [isActivatingPending, setIsActivatingPending] = useState(false); // botón rojo ACTIVAR
     const [pendingRelease, setPendingRelease] = useState(null);
+    const [isActivatingPendingDesktop, setIsActivatingPendingDesktop] = useState(false);
+    const [pendingDesktopRelease, setPendingDesktopRelease] = useState(null);
 
+    const DEFAULT_RELEASE_PROXY = 'https://mixernew-production.up.railway.app';
     const [userSortField, setUserSortField] = useState('createdAt'); // 'createdAt' or 'songsCount'
     const [userSortOrder, setUserSortOrder] = useState('desc'); // 'asc' or 'desc'
     const [usageReport, setUsageReport] = useState(null);
@@ -90,19 +93,45 @@ export default function Admin() {
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            const trySet = async (url) => {
+                try {
+                    const r = await fetch(url, { cache: 'no-store' });
+                    if (!r.ok) return null;
+                    const j = await r.json();
+                    return j && j.versionName ? j : null;
+                } catch {
+                    return null;
+                }
+            };
             try {
-                // prefer dev proxy when running locally (proxy serves same file)
-                const base = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? ''
-                    : '';
-                const r = await fetch(`${base}/release-pending.json`, { cache: 'no-store' });
-                if (!r.ok) return;
-                const j = await r.json();
-                if (cancelled) return;
-                if (j && j.versionName) setPendingRelease(j);
-            } catch (e) {
-                // ignore - file may not exist
-            }
+                let j = await trySet('/release-pending.json');
+                if (!j) j = await trySet(`${DEFAULT_RELEASE_PROXY}/api/b2-pending`);
+                if (cancelled || !j) return;
+                setPendingRelease(j);
+            } catch { /* ignore */ }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const trySet = async (url) => {
+                try {
+                    const r = await fetch(url, { cache: 'no-store' });
+                    if (!r.ok) return null;
+                    const j = await r.json();
+                    return j && j.versionName && j.desktopDownloadUrl ? j : null;
+                } catch {
+                    return null;
+                }
+            };
+            try {
+                let j = await trySet('/release-pending-desktop.json');
+                if (!j) j = await trySet(`${DEFAULT_RELEASE_PROXY}/api/b2-pending-desktop`);
+                if (cancelled || !j) return;
+                setPendingDesktopRelease(j);
+            } catch { /* ignore */ }
         })();
         return () => { cancelled = true; };
     }, []);
@@ -807,6 +836,38 @@ export default function Admin() {
         finally { setIsActivatingPending(false); }
     };
 
+    const activatePendingDesktopRelease = async () => {
+        setIsActivatingPendingDesktop(true);
+        try {
+            let payload = pendingDesktopRelease;
+            if (!payload?.desktopDownloadUrl) {
+                const r = await fetch(`${DEFAULT_RELEASE_PROXY}/api/b2-pending-desktop`, { cache: 'no-store' });
+                if (r.ok) {
+                    const j = await r.json();
+                    if (j?.desktopDownloadUrl) payload = j;
+                }
+            }
+            if (!payload?.desktopDownloadUrl) {
+                alert('No hay release de escritorio pendiente. Ejecutá npm run upload:desktop en la PC de build.');
+                return;
+            }
+            await addDoc(collection(db, 'app_versions'), {
+                versionName: payload.versionName,
+                desktopDownloadUrl: payload.desktopDownloadUrl,
+                fileId: payload.fileId ?? null,
+                fileSize: payload.fileSize ?? null,
+                releaseNotes: payload.releaseNotes || `Zion Stage escritorio ${payload.versionName}`,
+                createdAt: serverTimestamp(),
+            });
+            alert(`¡LISTO! Instalador Windows ${payload.versionName} publicado (desktopDownloadUrl).`);
+            window.location.reload();
+        } catch (e) {
+            alert('Error: ' + e.message);
+        } finally {
+            setIsActivatingPendingDesktop(false);
+        }
+    };
+
     const uploadApk = async () => {
         if (!apkFile || !apkVersionName.trim()) {
             alert("Por favor selecciona un archivo APK y ponle un nombre de versión.");
@@ -1049,11 +1110,12 @@ export default function Admin() {
                     <ShieldAlert size={36} color="#f1c40f" />
                     <h1 style={{ margin: 0, fontWeight: '800' }}>Admin Dashboard | Zion Stage</h1>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                 <button
                     type="button"
                     disabled={isActivatingPending}
-                    title="Usá después de npm run upload:apk (misma PC, Admin con npm run dev) si Firestore falló en la consola."
-                onClick={activatePendingRelease}
+                    title="Después de npm run upload:apk (o si falló Firestore en consola). También lee /api/b2-pending en producción."
+                    onClick={activatePendingRelease}
                     style={{
                         background: '#f43f5e',
                         color: 'white',
@@ -1068,8 +1130,30 @@ export default function Admin() {
                         opacity: isActivatingPending ? 0.7 : 1
                     }}
                 >
-                    {isActivatingPending ? '…' : (pendingRelease?.versionName ? `🚀 ACTIVAR VERSIÓN ${pendingRelease.versionName}` : '🚀 ACTIVAR VERSIÓN 1.8.13')}
+                    {isActivatingPending ? '…' : (pendingRelease?.versionName ? `🚀 ACTIVAR APK ${pendingRelease.versionName}` : '🚀 ACTIVAR APK')}
                 </button>
+                <button
+                    type="button"
+                    disabled={isActivatingPendingDesktop}
+                    title="Después de npm run upload:desktop. Igual que el APK: B2 + opcional Firestore; este botón publica desktopDownloadUrl."
+                    onClick={activatePendingDesktopRelease}
+                    style={{
+                        background: '#2563eb',
+                        color: 'white',
+                        padding: '10px 20px',
+                        borderRadius: '8px',
+                        border: 'none',
+                        fontWeight: 'bold',
+                        cursor: isActivatingPendingDesktop ? 'wait' : 'pointer',
+                        fontSize: '1rem',
+                        boxShadow: '0 0 15px rgba(37,99,235,0.45)',
+                        whiteSpace: 'nowrap',
+                        opacity: isActivatingPendingDesktop ? 0.7 : 1
+                    }}
+                >
+                    {isActivatingPendingDesktop ? '…' : (pendingDesktopRelease?.versionName ? `🖥️ ACTIVAR ESCRITORIO ${pendingDesktopRelease.versionName}` : '🖥️ ACTIVAR ESCRITORIO')}
+                </button>
+                </div>
             </div>
 
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>
