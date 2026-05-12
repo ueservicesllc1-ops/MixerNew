@@ -172,7 +172,8 @@ async function uploadApk() {
         console.log(`⏭️ Firestore omitido: ${e.message}`);
     }
 
-    console.log(`\n✅ Subida lista. Activá en Admin con el botón rojo ACTIVAR.\n`);
+    console.log(`\n✅ Subida lista. Si ya viste «Firestore OK» arriba, no hacés nada más (ni Firestore ni Admin).`);
+    console.log(`   Si no hubo credenciales o falló Firestore: Admin → ACTIVAR (mismo flujo que siempre).\n`);
 }
 
 uploadApk().catch(err => {

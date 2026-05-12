@@ -4,11 +4,15 @@
  * → JSON en B2 para el botón ACTIVAR del Admin (`apps/zion-desktop-release-pending.json`)
  * → Firestore opcional (`app_versions` con `desktopDownloadUrl`, sin tocar `downloadUrl` del APK).
  *
- * Uso:
- *   set DESKTOP_EXE_PATH=C:\ruta\ZionStage-Setup.exe   (opcional)
- *   npm run upload:desktop
+ * Quien despliega no toca Firestore a mano: igual que el APK, si hay credenciales admin en el entorno
+ * el script publica solo. Si ves «Firestore OK», listo.
  *
- * Si no hay DESKTOP_EXE_PATH, busca el .exe más reciente en `desktop-release/`, `dist/`, `release/`.
+ * Un solo comando (equivalente a `npm run release` del APK):
+ *   npm run release:desktop
+ *
+ * Solo subir (ya tenés el .exe):
+ *   npm run upload:desktop
+ *   set DESKTOP_EXE_PATH=C:\ruta\instalador.exe   (opcional)
  */
 
 import fs from 'fs';
@@ -206,7 +210,7 @@ async function uploadDesktopExe() {
     }
 
     try {
-        console.log(`\n📝 Firestore (opcional, solo desktopDownloadUrl)...`);
+        console.log(`\n📝 Firestore (opcional)...`);
         if (dbAdmin) {
             await dbAdmin.collection('app_versions').add({
                 versionName: pending.versionName,
@@ -217,7 +221,7 @@ async function uploadDesktopExe() {
                 releaseNotes: pending.releaseNotes,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            console.log(`✅ Firestore OK (documento con desktopDownloadUrl).`);
+            console.log(`✅ Firestore OK.`);
         } else {
             console.log('⏭️ Firestore omitido: no hay credenciales admin disponibles.');
         }
@@ -225,7 +229,8 @@ async function uploadDesktopExe() {
         console.log(`⏭️ Firestore omitido: ${e.message}`);
     }
 
-    console.log(`\n✅ Listo. En Admin usá «ACTIVAR ESCRITORIO». Si Firestore falló, ese botón publica igual.\n`);
+    console.log(`\n✅ Subida lista. Si ya viste «Firestore OK» arriba, no hacés nada más (ni Firestore ni Admin).`);
+    console.log(`   Si no hubo credenciales o falló Firestore: Admin → ACTIVAR ESCRITORIO (mismo flujo que el APK).\n`);
 }
 
 uploadDesktopExe().catch((err) => {
