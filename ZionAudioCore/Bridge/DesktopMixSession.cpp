@@ -419,18 +419,20 @@ void DesktopMixSession::routeStereoSample(juce::AudioBuffer<float>* out,
                                           float sampleL,
                                           float sampleR,
                                           DesktopStemBus bus) const {
+    juce::ignoreUnused(bus);
     if (out == nullptr || numOutCh <= 0)
         return;
 
     if (numOutCh <= 2) {
-        const float mono = 0.5f * (sampleL + sampleR);
-        const bool leftGroup = (bus == DesktopStemBus::Click || bus == DesktopStemBus::Guide);
+        // Igual que antes del ruteo multi-out: estéreo real a L/R (no mono a un solo canal).
         const int idxL = 0;
         const int idxR = juce::jmin(1, numOutCh - 1);
-        if (leftGroup)
-            out->addSample(idxL, start + sampleIndex, mono);
-        else
-            out->addSample(idxR, start + sampleIndex, mono);
+        if (idxL == idxR)
+            out->addSample(idxL, start + sampleIndex, 0.5f * (sampleL + sampleR));
+        else {
+            out->addSample(idxL, start + sampleIndex, sampleL);
+            out->addSample(idxR, start + sampleIndex, sampleR);
+        }
         return;
     }
 
@@ -452,18 +454,19 @@ void DesktopMixSession::routeStereoToPhysical(juce::AudioBuffer<float>* out,
                                                 float sampleL,
                                                 float sampleR,
                                                 DesktopStemBus bus) const {
+    juce::ignoreUnused(bus);
     if (out == nullptr || numOutCh <= 0)
         return;
 
     if (numOutCh <= 2) {
-        const float mono = 0.5f * (sampleL + sampleR);
-        const bool leftGroup = (bus == DesktopStemBus::Click || bus == DesktopStemBus::Guide);
         const int idxL = 0;
         const int idxR = juce::jmin(1, numOutCh - 1);
-        if (leftGroup)
-            out->addSample(idxL, start + sampleIndex, mono);
-        else
-            out->addSample(idxR, start + sampleIndex, mono);
+        if (idxL == idxR)
+            out->addSample(idxL, start + sampleIndex, 0.5f * (sampleL + sampleR));
+        else {
+            out->addSample(idxL, start + sampleIndex, sampleL);
+            out->addSample(idxR, start + sampleIndex, sampleR);
+        }
         return;
     }
 
