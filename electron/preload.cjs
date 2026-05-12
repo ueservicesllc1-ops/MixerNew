@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('zionNative', {
     setPitchSemitones: (semi) => ipcRenderer.invoke('audio:set-pitch', semi),
     setTempoRatio: (ratio) => ipcRenderer.invoke('audio:set-tempo', ratio),
     setTrackVolume: (id, vol) => ipcRenderer.send('audio:set-volume', id, vol),
+    setMasterVolume: (vol) => ipcRenderer.send('audio:set-master-volume', vol),
     setTrackMute: (id, muted) => ipcRenderer.send('audio:set-mute', id, muted),
     setTrackSolo: (id, solo) => ipcRenderer.send('audio:set-solo', id, solo),
     getHardwareId: () => ipcRenderer.invoke('audio:get-hwid'),
@@ -64,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setPitchSemitones: (semi) => ipcRenderer.invoke('audio:set-pitch', semi),
     setTempoRatio: (ratio) => ipcRenderer.invoke('audio:set-tempo', ratio),
     setTrackVolume: (id, vol) => ipcRenderer.send('audio:set-volume', id, vol),
+    setMasterVolume: (vol) => ipcRenderer.send('audio:set-master-volume', vol),
     setTrackMute: (id, muted) => ipcRenderer.send('audio:set-mute', id, muted),
     setTrackSolo: (id, solo) => ipcRenderer.send('audio:set-solo', id, solo),
 });

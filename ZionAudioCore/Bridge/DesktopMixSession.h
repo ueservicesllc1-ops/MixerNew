@@ -7,6 +7,7 @@
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <SoundTouch.h>
+#include <atomic>
 #include <memory>
 #include <utility>
 
@@ -95,7 +96,11 @@ public:
     void setTrackMutedForClientId(const juce::String& clientTrackId, bool muted);
     void setTrackSoloForClientId(const juce::String& clientTrackId, bool solo);
 
-    /** JSON legacy (buses) o v2: `orderedRouting:[{id,outStart}]` con outStart 1..16 = primer canal L (R=L+1). */
+    /** 0..1 lineal (UI); se aplica tras la suma de stems, junto al trim de salida. */
+    void setMasterLinearGain(float linear);
+
+    /** JSON: `multiOutHardware` (bool, default false). Solo si true aplica orderedRouting físico.
+     *  Legacy: music/guide/click/vocals/drums + tracks. Si multiOutHardware es false, se ignora orderedRouting. */
     void applyRoutingFromJson(const juce::String& json);
     void clearTrackRoutingOverrides();
 
@@ -166,4 +171,6 @@ private:
     double pitchSemitones = 0.0;
     double tempoRatio = 1.0;
     int debugBlockCounter = 0;
+
+    std::atomic<float> masterLinearGain { 1.0f };
 };

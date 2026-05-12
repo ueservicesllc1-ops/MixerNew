@@ -18,6 +18,7 @@ public:
             InstanceMethod("setPitchSemitones", &ZionAudioBridge::SetPitchSemitones),
             InstanceMethod("setTempoRatio", &ZionAudioBridge::SetTempoRatio),
             InstanceMethod("setTrackVolume", &ZionAudioBridge::SetTrackVolume),
+            InstanceMethod("setMasterVolume", &ZionAudioBridge::SetMasterVolume),
             InstanceMethod("setTrackMute", &ZionAudioBridge::SetTrackMute),
             InstanceMethod("setTrackSolo", &ZionAudioBridge::SetTrackSolo),
             InstanceMethod("getPlaybackSnapshot", &ZionAudioBridge::GetPlaybackSnapshot),
@@ -173,6 +174,19 @@ private:
         return env.Undefined();
     }
 
+    Napi::Value SetMasterVolume(const Napi::CallbackInfo& info) {
+        float v = 1.f;
+        if (info.Length() > 0) {
+            Napi::Value x = info[0];
+            if (x.IsNumber())
+                v = (float) x.As<Napi::Number>().DoubleValue();
+            else
+                v = (float) x.ToNumber().DoubleValue();
+        }
+        mixSession.setMasterLinearGain(v);
+        return info.Env().Undefined();
+    }
+
     Napi::Value SetTrackMute(const Napi::CallbackInfo& info) {
         Napi::Env env = info.Env();
         if (info.Length() < 2) return env.Undefined();
@@ -244,16 +258,57 @@ private:
         const auto parsed = juce::JSON::parse(j);
         if (parsed.isObject()) {
             if (auto* o = parsed.getDynamicObject()) {
-                const bool hasDev =
-                    o->hasProperty("deviceName") && o->getProperty("deviceName").toString().isNotEmpty();
-                const bool hasCh = o->hasProperty("outputChannelCount");
-                if (hasDev || hasCh) {
-                    const juce::String dev = hasDev ? o->getProperty("deviceName").toString() : juce::String();
-                    int nch = hasCh ? (int) o->getProperty("outputChannelCount") : 16;
-                    nch = juce::jlimit(2, 16, nch);
-                    if ((nch % 2) != 0)
-                        --nch;
-                    eng.setAudioOutputDeviceWithChannels(dev, nch);
+                bool multiOutHardware = false;
+                if (o->hasProperty("multiOutHardware")) {
+                    const juce::var mv = o->getProperty("multiOutHardware");
+                    if (mv.isBool())
+                        multiOutHardware = (bool) mv;
+                    else if (mv.isInt())
+                        multiOutHardware = ((int) mv) != 0;
+                    else {
+                        const juce::String s = mv.toString().trim().toLowerCase();
+                        multiOutHardware = (s == "true" || s == "1");
+                    }
+                }
+
+                auto& dm = eng.getDeviceManager();
+                if (!multiOutHardware) {
+                    // Modo estable (como antes del ruteo): estéreo en el dispositivo actual, sin pedir canales extra.
+                    juce::AudioDeviceManager::AudioDeviceSetup setup = dm.getAudioDeviceSetup();
+                    setup.inputChannels = juce::BigInteger();
+                    setup.outputChannels = juce::BigInteger();
+                    setup.outputChannels.setBit(0);
+                    setup.outputChannels.setBit(1);
+                    const juce::String err = dm.setAudioDeviceSetup(setup, true);
+                    if (err.isNotEmpty())
+                        juce::Logger::writeToLog("ApplyAudioRoutingJson stereo reset: " + err);
+                } else {
+                    const bool hasDev =
+                        o->hasProperty("deviceName") && o->getProperty("deviceName").toString().isNotEmpty();
+                    const bool hasCh = o->hasProperty("outputChannelCount");
+                    if (hasDev || hasCh) {
+                        juce::AudioDeviceManager::AudioDeviceSetup setup = dm.getAudioDeviceSetup();
+                        if (hasDev)
+                            setup.outputDeviceName = o->getProperty("deviceName").toString();
+                        if (hasCh) {
+                            int nch = juce::jlimit(2, 16, (int) o->getProperty("outputChannelCount"));
+                            if ((nch % 2) != 0)
+                                --nch;
+                            juce::AudioIODevice* cur = dm.getCurrentAudioDevice();
+                            if (cur != nullptr) {
+                                const int hwMax = cur->getOutputChannelNames().size();
+                                if (hwMax >= 2 && nch > hwMax)
+                                    nch = hwMax - (hwMax % 2);
+                            }
+                            setup.inputChannels = juce::BigInteger();
+                            setup.outputChannels = juce::BigInteger();
+                            for (int i = 0; i < nch; ++i)
+                                setup.outputChannels.setBit(i);
+                        }
+                        const juce::String err = dm.setAudioDeviceSetup(setup, true);
+                        if (err.isNotEmpty())
+                            juce::Logger::writeToLog("ApplyAudioRoutingJson setAudioDeviceSetup: " + err);
+                    }
                 }
             }
         }

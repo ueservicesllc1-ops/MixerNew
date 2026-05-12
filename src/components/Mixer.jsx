@@ -52,20 +52,14 @@ export const Mixer = ({ tracks }) => {
 
     return (
         <div className="mixer-grid">
-            {sortedTracks.map((track, idx) => {
-                const locked =
-                    (idx === 0 && isMixerClickStem(track.name))
-                    || (idx === 1 && isMixerGuideStem(track.name));
-                return (
-                    <ChannelStrip
-                        key={track.id}
-                        id={track.id}
-                        name={track.name}
-                        isPlaceholder={track.isPlaceholder}
-                        locked={locked}
-                    />
-                );
-            })}
+            {sortedTracks.map((track) => (
+                <ChannelStrip
+                    key={track.id}
+                    id={track.id}
+                    name={track.name}
+                    isPlaceholder={track.isPlaceholder}
+                />
+            ))}
         </div>
     );
 };
@@ -152,7 +146,7 @@ function VUMeter({ trackId, muted }) {
 }
 
 // ─── Channel Strip ────────────────────────────────────────────────
-const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
+const ChannelStrip = ({ id, name, isPlaceholder }) => {
     const [volume, setVolume] = useState(0.8);
     const [muted, setMuted] = useState(false);
     const [solo, setSolo] = useState(false);
@@ -180,7 +174,6 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
     };
 
     const handleVolume = (e) => {
-        if (locked) return;
         const val = parseFloat(e.target.value);
         setVolume(val);
 
@@ -214,14 +207,12 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
     };
 
     const toggleMute = () => {
-        if (locked) return;
         const next = !muted;
         setMuted(next);
         audioEngine.setTrackMute(id, next);
     };
 
     const toggleSolo = () => {
-        if (locked) return;
         const next = !solo;
         setSolo(next);
         audioEngine.setTrackSolo(id, next);
@@ -245,7 +236,7 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
                             border: '1px solid rgba(255,255,255,0.25)',
                         }}
                     />
-                    {!locked && !isClickGuideStem && (
+                    {!isClickGuideStem && (
                         <input
                             type="color"
                             value={trackColor}
@@ -324,12 +315,9 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
                         step="0.01"
                         value={volume}
                         onChange={handleVolume}
-                        disabled={locked}
-                        aria-disabled={locked}
                         style={{
                             width: `${faderH}px`,
                             accentColor: trackColor,
-                            cursor: locked ? 'not-allowed' : undefined,
                         }}
                     />
                 </div>
@@ -340,9 +328,7 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
                     type="button"
                     className={`channel-btn m ${muted ? 'active' : ''}`}
                     onClick={toggleMute}
-                    disabled={locked}
-                    title={locked ? 'Mute bloqueado' : 'Mute'}
-                    style={{ cursor: locked ? 'not-allowed' : undefined }}
+                    title="Mute"
                 >
                     M
                 </button>
@@ -350,9 +336,7 @@ const ChannelStrip = ({ id, name, isPlaceholder, locked }) => {
                     type="button"
                     className={`channel-btn s ${solo ? 'active' : ''}`}
                     onClick={toggleSolo}
-                    disabled={locked}
-                    title={locked ? 'Solo bloqueado' : 'Solo'}
-                    style={{ cursor: locked ? 'not-allowed' : undefined }}
+                    title="Solo"
                 >
                     S
                 </button>

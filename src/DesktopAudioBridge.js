@@ -91,6 +91,10 @@ export const DesktopAudioBridge = {
     },
 
     setTrackVolume(id, volume) { getBridge()?.setTrackVolume?.(id, volume); },
+    setMasterVolume(volume) {
+        const v = typeof volume === 'number' ? volume : parseFloat(volume);
+        getBridge()?.setMasterVolume?.(Number.isFinite(v) ? v : 1);
+    },
     setTrackMute(id, muted) { getBridge()?.setTrackMute?.(id, muted); },
     setTrackSolo(id, solo) { getBridge()?.setTrackSolo?.(id, solo); },
     setTempoRatio(ratio) { getBridge()?.setTempoRatio?.(ratio); },

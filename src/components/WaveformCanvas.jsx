@@ -73,16 +73,29 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         if (suppressHeavyWork) return;
 
         const pickBufferFromEngine = () => {
-            // Web: decoded buffers live on audioEngine.tracks. Native: only _trackMeta has optional buffer (tracks Map stays empty).
-            const map = isNative ? audioEngine._trackMeta : audioEngine.tracks;
-            if (!map || map.size === 0) return null;
+            const buffers = [];
+            const pushFromMap = (map) => {
+                if (!map || map.size === 0) return;
+                for (const [id, t] of map.entries()) {
+                    if (!t || !t.buffer || typeof t.buffer.getChannelData !== 'function') continue;
+                    buffers.push({ id, buf: t.buffer });
+                }
+            };
+            if (isNative) {
+                pushFromMap(audioEngine._trackMeta);
+            } else {
+                pushFromMap(audioEngine.tracks);
+                if (buffers.length === 0) {
+                    pushFromMap(audioEngine._trackMeta);
+                }
+            }
+            if (buffers.length === 0) return null;
 
             let bufferToUse = null;
             let bestScore = -1;
 
-            for (const [id, t] of map.entries()) {
-                if (!t || !t.buffer || typeof t.buffer.getChannelData !== 'function') continue;
-                const name = id.toLowerCase();
+            for (const { id, buf } of buffers) {
+                const name = String(id).toLowerCase();
                 let score = 10;
                 if (name.includes('__previewmix')) score = 100;
                 else if (name.includes('drum')) score = 50;
@@ -90,7 +103,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
 
                 if (score > bestScore) {
                     bestScore = score;
-                    bufferToUse = t.buffer;
+                    bufferToUse = buf;
                 }
             }
             return bufferToUse;

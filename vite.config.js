@@ -8,6 +8,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 const appVersion = pkg.version || '0.0.0'
 
+/** Inyecta en `index.html` la URL del .exe de escritorio (build CI: `VITE_DESKTOP_INSTALLER_URL`). */
+function injectZionDesktopInstallerGlobals(version) {
+  const installerUrl = process.env.VITE_DESKTOP_INSTALLER_URL || ''
+  return {
+    name: 'inject-zion-desktop-installer-globals',
+    transformIndexHtml(html) {
+      const payload = `<script>window.__ZION_DESKTOP_INSTALLER_URL__=${JSON.stringify(
+        installerUrl
+      )};window.__ZION_APP_VERSION__=${JSON.stringify(version)};</script>`
+      return html.replace('</head>', `${payload}\n</head>`)
+    },
+  }
+}
+
 /**
  * Vite inyecta `crossorigin` en <script type="module"> del index de producción.
  * Con `file://` en Electron eso puede impedir que el bundle cargue → pantalla en blanco.
@@ -27,12 +41,15 @@ function removeHtmlCrossorigin() {
 export default defineConfig({
   // Rutas relativas para que `dist/` funcione con Electron (`file://`) sin depender de un servidor.
   base: './',
-  plugins: [react(), removeHtmlCrossorigin()],
+  plugins: [injectZionDesktopInstallerGlobals(appVersion), react(), removeHtmlCrossorigin()],
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+    'import.meta.env.VITE_DESKTOP_INSTALLER_URL': JSON.stringify(process.env.VITE_DESKTOP_INSTALLER_URL || ''),
   },
   server: {
     port: 3000,
+    /** Abre el navegador al hacer `npm run dev` (la app web no corre con `npm run desktop`). */
+    open: true,
   },
   optimizeDeps: {
     include: ['qrcode.react'],

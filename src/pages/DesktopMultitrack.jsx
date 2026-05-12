@@ -5,6 +5,7 @@ import LanguageSwitch from '../components/LanguageSwitch'
 import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine.js'
 import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js'
+import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl.js'
 
 /**
  * Electron: mismos offsets que la UI para reaplicar tempo/pitch tras cargar stems
@@ -24,8 +25,10 @@ const DESKTOP_PHYSICAL_OUT_OPTIONS = Array.from({ length: 16 }, (_, i) => i + 1)
 function defaultDesktopAudioRoutingState() {
     return {
         routingVersion: 2,
+        /** Solo true: reconfigura el driver (N canales) y aplica orderedRouting. Por defecto = estéreo estable. */
+        multiOutHardware: false,
         deviceName: '',
-        outputChannelCount: 16,
+        outputChannelCount: 2,
         orderedRouting: [],
     };
 }
@@ -206,7 +209,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Search, ArrowRight, QrCode } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, setDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -644,16 +647,6 @@ function mapRemoteAppUpdateRow(data) {
         desktopDownloadUrl: data.desktopDownloadUrl != null ? String(data.desktopDownloadUrl).trim() : '',
         releaseNotes: data.releaseNotes != null ? String(data.releaseNotes).trim() : '',
     };
-}
-
-/** URL del instalador Windows: campo dedicado o `downloadUrl` si ya apunta a .exe */
-function getDesktopInstallerUrl(row) {
-    if (!row) return '';
-    const d = (row.desktopDownloadUrl || '').trim();
-    if (d) return d;
-    const u = (row.downloadUrl || '').trim();
-    if (/\.exe(\?|$)/i.test(u)) return u;
-    return '';
 }
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
@@ -1374,7 +1367,7 @@ export default function Multitrack({ session }) {
                         if (!r.ok) continue;
                         const j = await r.json();
                         const candidate = mapRemoteAppUpdateRow(j);
-                        if (candidate && getDesktopInstallerUrl(candidate)) {
+                        if (candidate && resolveDesktopInstallerDownloadUrl(candidate)) {
                             row = candidate;
                             break;
                         }
@@ -1386,7 +1379,7 @@ export default function Multitrack({ session }) {
             }
             if (cancelled) return;
 
-            const installerUrl = getDesktopInstallerUrl(row);
+            const installerUrl = resolveDesktopInstallerDownloadUrl(row);
             if (!row?.versionName || !installerUrl) return;
 
             const dismissKey = `mixer_dismiss_update_${row.versionName}`;
@@ -1437,16 +1430,24 @@ export default function Multitrack({ session }) {
                 } catch {
                     setAudioDevicesList([]);
                 }
+                let statusObj = null;
                 try {
-                    setAudioOutputStatus(JSON.parse(statusJson || '{}'));
+                    statusObj = JSON.parse(statusJson || '{}');
+                    setAudioOutputStatus(statusObj);
                 } catch {
                     setAudioOutputStatus(null);
                 }
+                const maxNc = Number(statusObj?.maxOutputChannels);
+                const canMultiHw = !Number.isFinite(maxNc) || maxNc > 2;
                 let base = defaultDesktopAudioRoutingState();
                 if (prefs && typeof prefs === 'string') {
                     try {
                         const p = JSON.parse(prefs);
-                        base = { ...defaultDesktopAudioRoutingState(), ...p };
+                        base = {
+                            ...defaultDesktopAudioRoutingState(),
+                            ...p,
+                            multiOutHardware: p.multiOutHardware === true && canMultiHw,
+                        };
                     } catch { /* */ }
                 }
                 const ordered = buildOrderedRoutingFromTracks(tracks, base.orderedRouting);
@@ -1462,22 +1463,21 @@ export default function Multitrack({ session }) {
         if (!isElectronDesktopMixer() || typeof window === 'undefined' || !window.zionNative?.applyAudioRoutingJson) return;
         setAudioRoutingApplying(true);
         try {
+            const multi = audioRoutingDraft.multiOutHardware === true;
             const orderedRouting = (audioRoutingDraft.orderedRouting || []).map((row) => ({
                 id: row.id,
                 outStart: Math.min(16, Math.max(1, parseInt(row.outStart, 10) || 1)),
             }));
+            let nch = Math.min(16, Math.max(2, Number(audioRoutingDraft.outputChannelCount) || 2));
+            if ((nch % 2) !== 0) nch -= 1;
+            if (nch < 2) nch = 2;
             const payload = {
                 routingVersion: 2,
-                deviceName: audioRoutingDraft.deviceName || '',
-                outputChannelCount: Math.min(16, Math.max(2, Number(audioRoutingDraft.outputChannelCount) || 16)),
+                multiOutHardware: multi,
+                deviceName: multi ? (audioRoutingDraft.deviceName || '') : '',
+                outputChannelCount: multi ? nch : 2,
                 orderedRouting,
             };
-            if ((payload.outputChannelCount % 2) !== 0) {
-                payload.outputChannelCount -= 1;
-            }
-            if (payload.outputChannelCount < 2) {
-                payload.outputChannelCount = 2;
-            }
             const r = await window.zionNative.applyAudioRoutingJson(JSON.stringify(payload));
             if (!r?.ok) window.alert(r?.error || 'No se pudo aplicar el ruteo');
             const st = await window.zionNative.getAudioOutputStatusJson();
@@ -3678,9 +3678,9 @@ export default function Multitrack({ session }) {
                             height: '34px',
                             padding: '0 16px',
                             borderRadius: '999px',
-                            border: '1px solid rgba(0, 210, 211, 0.55)',
-                            background: 'rgba(0, 210, 211, 0.12)',
-                            color: '#5eead4',
+                            border: '1px solid rgba(180, 140, 40, 0.95)',
+                            background: 'linear-gradient(180deg, #fcefb7 0%, #e6c35c 38%, #c9a227 72%, #a67c00 100%)',
+                            color: '#1a1408',
                             fontSize: '0.82rem',
                             fontWeight: 800,
                             letterSpacing: '0.5px',
@@ -3689,7 +3689,8 @@ export default function Multitrack({ session }) {
                             alignItems: 'center',
                             justifyContent: 'center',
                             whiteSpace: 'nowrap',
-                            animation: 'pulse 2s infinite'
+                            boxShadow: '0 2px 12px rgba(180, 130, 20, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.45)',
+                            textShadow: '0 1px 0 rgba(255, 255, 255, 0.35)',
                         }}
                     >
                         Hazte PRO
@@ -3713,16 +3714,6 @@ export default function Multitrack({ session }) {
                         {desktopLicenseTier === 'pro_online' ? 'PRO Online' : 'PRO'}
                     </span>
                 )}
-
-                {/* MOBILE DRAWER BUTTONS */}
-                <div className="mobile-only-flex" style={{ display: 'flex', gap: '4px' }}>
-                    <button className="transport-btn-mini" onClick={() => setIsSetlistMenuOpen(true)} title={t('multitrack.setlistsTitle')}>
-                        <ListMusic size={18} />
-                    </button>
-                    <button className="transport-btn-mini" onClick={() => setIsLibraryMenuOpen(true)} title={t('multitrack.libraryTitle')}>
-                        <LibraryIcon size={18} />
-                    </button>
-                </div>
 
                 {/* MASTER VOLUME SLIDER — % fijo junto al rail para que no quede fuera en tablets */}
                 <div
@@ -3885,7 +3876,6 @@ export default function Multitrack({ session }) {
                             <QrCode size={20} />
                         </button>
                     )}
-                    <button className="transport-btn" title={t('multitrack.rewind')} onClick={handleRewind}><RefreshCw size={20} /></button>
                     {isElectronDesktopMixer() && (
                         <button
                             type="button"
@@ -4012,7 +4002,7 @@ export default function Multitrack({ session }) {
                                 </div>
                                 <div>
                                     <div id="route-modal-title" style={{ color: '#f1f5f9', fontWeight: 800, fontSize: '1rem' }}>Ruteo de audio</div>
-                                    <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Ordená las pistas arrastrando; canal 1 = L, 2 = R del par, hasta 16 salidas.</div>
+                                    <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>Activá «Ruteo físico multi-salida» solo si tu interfaz tiene más de 2 salidas; si no, el audio queda en modo estéreo estable.</div>
                                 </div>
                             </div>
                             <button
@@ -4040,9 +4030,48 @@ export default function Multitrack({ session }) {
                                     <span>{' · '}{String(audioOutputStatus.deviceName)}</span>
                                 ) : null}
                             </div>
+                            <label
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: 10,
+                                    cursor: (Number.isFinite(Number(audioOutputStatus?.maxOutputChannels))
+                                        && Number(audioOutputStatus.maxOutputChannels) <= 2) ? 'default' : 'pointer',
+                                    fontSize: '0.8rem',
+                                    color: '#e2e8f0',
+                                    lineHeight: 1.35,
+                                }}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={audioRoutingDraft.multiOutHardware === true}
+                                    disabled={
+                                        Number.isFinite(Number(audioOutputStatus?.maxOutputChannels))
+                                        && Number(audioOutputStatus.maxOutputChannels) <= 2
+                                    }
+                                    onChange={(e) => setAudioRoutingDraft((d) => ({
+                                        ...d,
+                                        multiOutHardware: e.target.checked,
+                                    }))}
+                                    style={{ marginTop: 3, width: 16, height: 16, flexShrink: 0 }}
+                                />
+                                <span>
+                                    <strong>Ruteo físico multi-salida</strong>
+                                    <span style={{ display: 'block', color: '#94a3b8', fontSize: '0.72rem', marginTop: 4 }}>
+                                        Desactivado: audio estable en estéreo (sin pedir más canales al driver). Activá solo si tu interfaz tiene más de 2 salidas y necesitás pares físicos por pista.
+                                    </span>
+                                    {Number.isFinite(Number(audioOutputStatus?.maxOutputChannels))
+                                        && Number(audioOutputStatus.maxOutputChannels) <= 2 ? (
+                                            <span style={{ display: 'block', color: '#fbbf24', fontSize: '0.72rem', marginTop: 6 }}>
+                                                Esta salida reporta solo {String(audioOutputStatus.maxOutputChannels)} canal(es); el ruteo multi-par no está disponible.
+                                            </span>
+                                        ) : null}
+                                </span>
+                            </label>
                             <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>
                                 Dispositivo
                                 <select
+                                    disabled={audioRoutingDraft.multiOutHardware !== true}
                                     value={audioRoutingDraft.deviceName}
                                     onChange={(e) => setAudioRoutingDraft((d) => ({ ...d, deviceName: e.target.value }))}
                                     style={{
@@ -4067,10 +4096,11 @@ export default function Multitrack({ session }) {
                             <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>
                                 Canales de salida (máx. 16, par)
                                 <select
+                                    disabled={audioRoutingDraft.multiOutHardware !== true}
                                     value={String(audioRoutingDraft.outputChannelCount)}
                                     onChange={(e) => setAudioRoutingDraft((d) => ({
                                         ...d,
-                                        outputChannelCount: parseInt(e.target.value, 10) || 16,
+                                        outputChannelCount: parseInt(e.target.value, 10) || 2,
                                     }))}
                                     style={{
                                         width: '100%',
@@ -4103,7 +4133,7 @@ export default function Multitrack({ session }) {
                                     (audioRoutingDraft.orderedRouting || []).map((row, idx) => (
                                         <div
                                             key={row.id}
-                                            draggable
+                                            draggable={audioRoutingDraft.multiOutHardware === true}
                                             onDragStart={(e) => {
                                                 e.dataTransfer.setData('routeRowIdx', String(idx));
                                                 e.dataTransfer.effectAllowed = 'move';
@@ -4126,7 +4156,7 @@ export default function Multitrack({ session }) {
                                                 borderRadius: 10,
                                                 border: '1px solid #334155',
                                                 background: '#1e293b',
-                                                cursor: 'grab',
+                                                cursor: audioRoutingDraft.multiOutHardware === true ? 'grab' : 'default',
                                             }}
                                         >
                                             <GripVertical size={16} color="#64748b" style={{ flexShrink: 0 }} />
@@ -4135,6 +4165,7 @@ export default function Multitrack({ session }) {
                                             <label style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, fontSize: '0.72rem', color: '#94a3b8' }}>
                                                 Salida L
                                                 <select
+                                                    disabled={audioRoutingDraft.multiOutHardware !== true}
                                                     value={String(row.outStart ?? 1)}
                                                     onChange={(e) => {
                                                         const v = parseInt(e.target.value, 10) || 1;
@@ -4174,7 +4205,7 @@ export default function Multitrack({ session }) {
                             </button>
                             <button
                                 type="button"
-                                disabled={audioRoutingApplying || !(audioRoutingDraft.orderedRouting || []).length}
+                                disabled={audioRoutingApplying || (audioRoutingDraft.multiOutHardware === true && !(audioRoutingDraft.orderedRouting || []).length)}
                                 onClick={() => { applyDesktopAudioRouting(); }}
                                 style={{
                                     padding: '10px 18px',
@@ -4184,7 +4215,7 @@ export default function Multitrack({ session }) {
                                     color: 'white',
                                     fontWeight: 800,
                                     cursor: audioRoutingApplying ? 'wait' : 'pointer',
-                                    opacity: (!(audioRoutingDraft.orderedRouting || []).length) ? 0.45 : 1,
+                                    opacity: (audioRoutingDraft.multiOutHardware === true && !(audioRoutingDraft.orderedRouting || []).length) ? 0.45 : 1,
                                 }}
                             >
                                 {audioRoutingApplying ? 'Guardando…' : 'Aplicar y guardar'}

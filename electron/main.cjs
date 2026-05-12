@@ -234,10 +234,10 @@ app.whenReady().then(() => {
             const proto = Object.getPrototypeOf(engine);
             const names = proto ? Object.getOwnPropertyNames(proto) : [];
             if (!names.includes('setPitchSemitones') || !names.includes('setTempoRatio')
-                || !names.includes('setTrackVolume') || !names.includes('setTrackMute')
-                || !names.includes('setTrackSolo')) {
+                || !names.includes('setTrackVolume') || !names.includes('setMasterVolume')
+                || !names.includes('setTrackMute') || !names.includes('setTrackSolo')) {
                 console.error(
-                    '[Zion] El .node está desactualizado (faltan setTrackVolume/mute/solo o pitch/tempo). Cierra Zion Stage, ejecuta npm run rebuild:native y vuelve a abrir.'
+                    '[Zion] El .node está desactualizado (faltan setTrackVolume/setMasterVolume/mute/solo o pitch/tempo). Cierra Zion Stage, ejecuta npm run rebuild:native y vuelve a abrir.'
                 );
             }
         } catch (e) {
@@ -669,6 +669,15 @@ app.whenReady().then(() => {
             engine.setTrackVolume(tid, Number.isFinite(v) ? v : 1);
         } catch (e) {
             console.error('[Zion] audio:set-volume', e);
+        }
+    });
+    ipcMain.on('audio:set-master-volume', (_e, vol) => {
+        try {
+            if (!engine || typeof engine.setMasterVolume !== 'function') return;
+            const v = typeof vol === 'number' ? vol : parseFloat(String(vol));
+            engine.setMasterVolume(Number.isFinite(v) ? v : 1);
+        } catch (e) {
+            console.error('[Zion] audio:set-master-volume', e);
         }
     });
     ipcMain.on('audio:set-mute', (_e, id, muted) => {

@@ -18,15 +18,7 @@
 <body>
   <div id="root" translate="no"></div>
   <script type="module" src="/src/main.jsx"></script>
-  <script>
-    // Service Worker solo en build de producción — ver main.jsx (en dev el SW rompe manifest.json + HMR)
-    // Capture PWA install prompt so the Windows install button can trigger it
-    window._pwaInstallPrompt = null;
-    window.addEventListener('beforeinstallprompt', e => {
-      e.preventDefault();
-      window._pwaInstallPrompt = e;
-    });
-  </script>
+  <!-- URL del instalador .exe: Vite inyecta `window.__ZION_DESKTOP_INSTALLER_URL__` al compilar (VITE_DESKTOP_INSTALLER_URL). -->
 </body>
 
 </html>

@@ -268,14 +268,23 @@ class AudioEngine {
 
         if (this.isWASMReady && this.wasm) {
             this._wasmTrackCount = 0;
+            this._trackMeta.clear();
             for (const t of tracksArray) {
                 if (t.isVisualOnly) continue;
-                const ok = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
-                if (ok) this._wasmTrackCount += 1;
-                // Flag guide/click tracks so C++ routes them to the secondary bus (bypassing pitch)
+                const buffer = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
+                if (buffer) {
+                    this._trackMeta.set(t.id, {
+                        buffer,
+                        volume: 1,
+                        muted: false,
+                        solo: false,
+                        isVisualOnly: false,
+                    });
+                    this._wasmTrackCount += 1;
+                }
                 const stemName = t.name || '';
                 const isGuideOrClick = isMixerClickStem(stemName) || isMixerGuideStem(stemName);
-                if (ok && isGuideOrClick) {
+                if (buffer && isGuideOrClick) {
                     this.wasm.setTrackIsGuide(t.id, true);
                 }
             }
@@ -312,7 +321,7 @@ class AudioEngine {
                     buffer = await this.ctx.decodeAudioData(arrayBuf.slice(0));
                 }
             }
-            if (!buffer) return false;
+            if (!buffer) return null;
 
             const length = buffer.length;
             // Get channel data — always stereo in C++
@@ -327,17 +336,28 @@ class AudioEngine {
             this.wasm.loadTrackData(id, ptrL, ptrR, length);
 
             console.log(`[ZionCore] Track '${id}' loaded: ${(length / (buffer.sampleRate || 44100)).toFixed(1)}s`);
-            return true;
+            return buffer;
         } catch (e) {
             console.error(`[ZionCore] Failed to load track '${id}':`, e);
-            return false;
+            return null;
         }
     }
 
     async addTrack(id, audioBuffer, sourceData = null, options = {}) {
         if (IS_DESKTOP) return;
         if (this.isWASMReady && this.wasm) {
-            if (!options.isVisualOnly) await this._loadTrackToWASM(id, audioBuffer, sourceData);
+            if (!options.isVisualOnly) {
+                const buf = await this._loadTrackToWASM(id, audioBuffer, sourceData);
+                if (buf) {
+                    this._trackMeta.set(id, {
+                        buffer: buf,
+                        volume: 1,
+                        muted: false,
+                        solo: false,
+                        isVisualOnly: false,
+                    });
+                }
+            }
             return;
         }
 
@@ -391,6 +411,7 @@ class AudioEngine {
         if (this.isWASMReady && this.wasm) {
             this.wasm.clearTracks();
             this._wasmTrackCount = 0;
+            this._trackMeta.clear();
             return;
         }
         this._trackMeta.clear();
@@ -413,7 +434,10 @@ class AudioEngine {
     // ---- Volume / Mute / Solo / Pan ----
     setMasterVolume(vol) {
         const v = Math.max(0, Math.min(1, isFinite(vol) ? vol : 1));
-        if (IS_DESKTOP) { /* IPC master TBD en main process */ return; }
+        if (IS_DESKTOP) {
+            DesktopAudioBridge.setMasterVolume(v);
+            return;
+        }
         if (this.isWASMReady && this.wasm) { this.wasm.setVolume(v); }
         else if (IS_NATIVE) { void NextGenMixerBridge.setMasterVolume({ volume: v }); }
         else if (this.masterGain) { this.masterGain.gain.setTargetAtTime(v, this.ctx.currentTime, 0.015); }
@@ -630,7 +654,11 @@ class AudioEngine {
     }
 
     removeTrack(id) {
-        if (this.isWASMReady && this.wasm) { this.wasm.removeTrack(id); return; }
+        if (this.isWASMReady && this.wasm) {
+            this.wasm.removeTrack(id);
+            this._trackMeta.delete(id);
+            return;
+        }
         if (IS_DESKTOP) { this._trackMeta.delete(id); return; }
         if (IS_NATIVE) { this._trackMeta.delete(id); getNative().then(n => n.removeTrack?.(id)); return; }
         const t = this.tracks.get(id);

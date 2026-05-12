@@ -16,7 +16,7 @@
     "upload:apk": "node upload-final-apk.mjs",
     "release": "npm run build:android && npm run upload:apk",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "vite preview --open",
     "desktop": "npm run build && electron electron/main.cjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "zion-stage": "node scripts/launch-zion-stage.mjs",

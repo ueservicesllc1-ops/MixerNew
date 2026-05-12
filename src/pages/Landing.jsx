@@ -10,6 +10,7 @@ import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, Ke
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
+import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl';
 
 export default function Landing() {
     const navigate = useNavigate();
@@ -90,15 +91,14 @@ export default function Landing() {
         setTimeout(() => setToast(null), 3000);
     };
 
-    const handlePwaInstall = async () => {
-        const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-        if (standalone) {
-            setToast(t('landing.toastPwa'));
-            setTimeout(() => setToast(null), 3000);
+    const handleDesktopInstallerDownload = () => {
+        const url = resolveDesktopInstallerDownloadUrl(latestApp);
+        if (!url) {
+            setToast(t('landing.toastDesktopNoUrl'));
+            setTimeout(() => setToast(null), 4000);
             return;
         }
-        localStorage.setItem('mixer_pwa_install_flow', '1');
-        navigate('/multitrack?installPwa=1');
+        window.open(url, '_blank', 'noopener,noreferrer');
     };
 
     useEffect(() => {
@@ -478,7 +478,7 @@ export default function Landing() {
                             </span>
                         )}
                         <span
-                            onClick={handlePwaInstall}
+                            onClick={handleDesktopInstallerDownload}
                             style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
                             onMouseEnter={e => e.target.style.color = '#fff'}
                             onMouseLeave={e => e.target.style.color = '#60a5fa'}
@@ -642,9 +642,9 @@ export default function Landing() {
                                     {t('landing.downloadAndroid', { ver: latestApp.versionName })}
                                 </button>
                             )}
-                            {!window.matchMedia('(display-mode: standalone)').matches && (
+                            {resolveDesktopInstallerDownloadUrl(latestApp) && (
                                 <button
-                                    onClick={handlePwaInstall}
+                                    onClick={handleDesktopInstallerDownload}
                                     style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
                                 >
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>

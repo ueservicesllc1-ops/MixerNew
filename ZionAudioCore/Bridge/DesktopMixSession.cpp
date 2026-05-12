@@ -18,7 +18,10 @@ PositionableSoundTouchBridge::PositionableSoundTouchBridge(std::unique_ptr<juce:
       numChannels(juce::jmax(1, numChannelsIn)) {}
 
 void PositionableSoundTouchBridge::configureStretch() {
-    stretch.setSampleRate((uint) juce::jlimit(8000.0, 192000.0, sourceSampleRate));
+    // La cadena JUCE entrega PCM a la tasa del dispositivo (`hostSampleRate`), no a la del archivo.
+    // Si SoundTouch usa `sourceSampleRate` con datos ya a host rate, el audio suena débil / desafinado / “mareado”.
+    const double sr = (hostSampleRate > 0.0 ? hostSampleRate : sourceSampleRate);
+    stretch.setSampleRate((uint) juce::jlimit(8000.0, 192000.0, sr));
     stretch.setChannels((uint) numChannels);
     // virtualRate = 1: no control global "rate" (eso sería tempo+pitch a la vez).
     stretch.setRate(1.0);
@@ -212,6 +215,11 @@ void DesktopMixSession::clear() {
     scratch.setSize(0, 0);
 }
 
+void DesktopMixSession::setMasterLinearGain(float linear) {
+    const float g = juce::jlimit(0.0f, 1.0f, linear);
+    masterLinearGain.store(g, std::memory_order_relaxed);
+}
+
 void DesktopMixSession::resyncTransportsToGuide() {
     juce::AudioTransportSource* ref = nullptr;
     for (auto& s : stemSlots) {
@@ -325,8 +333,21 @@ void DesktopMixSession::applyRoutingFromJson(const juce::String& json) {
     if (o == nullptr)
         return;
 
+    bool multiOutHardware = false;
+    if (o->hasProperty("multiOutHardware")) {
+        const juce::var mv = o->getProperty("multiOutHardware");
+        if (mv.isBool())
+            multiOutHardware = (bool) mv;
+        else if (mv.isInt())
+            multiOutHardware = ((int) mv) != 0;
+        else {
+            const juce::String s = mv.toString().trim().toLowerCase();
+            multiOutHardware = (s == "true" || s == "1");
+        }
+    }
+
     const juce::var orVar = o->getProperty("orderedRouting");
-    if (orVar.isArray()) {
+    if (multiOutHardware && orVar.isArray()) {
         if (auto* arr = orVar.getArray()) {
             if (arr->size() > 0) {
                 useOrderedPhysicalRouting = true;
@@ -672,10 +693,12 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         }
     }
 
+    const float masterG = masterLinearGain.load(std::memory_order_relaxed);
+
     for (int c = 0; c < outChannels; ++c) {
         float* ch = outBuf->getWritePointer(c, start);
         for (int i = 0; i < nSamp; ++i) {
-            ch[i] *= kMasterTrim;
+            ch[i] *= kMasterTrim * masterG;
             const float v = ch[i];
             const float p = std::abs(v);
             if (p > masterPeak)

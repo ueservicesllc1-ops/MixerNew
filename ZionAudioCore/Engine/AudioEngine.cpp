@@ -30,11 +30,7 @@ AudioEngine::~AudioEngine() {
 }
 
 void AudioEngine::initialize() {
-    juce::String error = deviceManager.initialiseWithDefaultDevices(defaultNumInputChannels, defaultNumOutputChannels);
-    if (error.isNotEmpty()) {
-        juce::Logger::writeToLog("AudioEngine: reintento 2 salidas: " + error);
-        error = deviceManager.initialiseWithDefaultDevices(defaultNumInputChannels, 2);
-    }
+    const juce::String error = deviceManager.initialiseWithDefaultDevices(defaultNumInputChannels, defaultNumOutputChannels);
     if (error.isNotEmpty()) {
         juce::Logger::writeToLog("AudioEngine Error: " + error);
     }

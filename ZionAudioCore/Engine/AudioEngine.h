@@ -32,9 +32,9 @@ private:
     juce::AudioDeviceManager deviceManager;
     juce::AudioSourcePlayer audioSourcePlayer;
     
-    // Default audio settings (pedir hasta 8 salidas; el driver usa las que existan)
+    // Salida estéreo por defecto (estable). Multi-salida solo tras "Aplicar" en el modal de ruteo.
     static constexpr int defaultNumInputChannels = 0;
-    static constexpr int defaultNumOutputChannels = 8;
+    static constexpr int defaultNumOutputChannels = 2;
 };
 
 } // namespace Zion
