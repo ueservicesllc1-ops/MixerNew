@@ -1,5 +1,13 @@
+function sanitizeInstallerUrlString(s) {
+    return String(s ?? '')
+        .replace(/^\uFEFF/, '')
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
+}
+
 function isUsableHttpsUrl(s) {
-    const t = String(s || '').trim();
+    const t = sanitizeInstallerUrlString(s);
     if (!t) return false;
     try {
         const u = new URL(t);
@@ -21,9 +29,9 @@ function isElectronZionDesktopMixer() {
  */
 export function desktopInstallerUrlFromAppVersionDoc(data) {
     if (!data) return '';
-    const d = String(data.desktopDownloadUrl ?? '').trim();
-    if (d) return d;
-    const u = String(data.downloadUrl ?? '').trim();
+    const d = sanitizeInstallerUrlString(data.desktopDownloadUrl);
+    if (d && isUsableHttpsUrl(d)) return d;
+    const u = sanitizeInstallerUrlString(data.downloadUrl);
     if (!u) return '';
     /** Instalador vía proxy B2 (el .exe va en el query `url=`). */
     if (/^https:\/\//i.test(u) && /\/api\/download\?/i.test(u) && /url=/i.test(u)) return u;
@@ -32,15 +40,19 @@ export function desktopInstallerUrlFromAppVersionDoc(data) {
 }
 
 /**
- * Prioridad: URL inyectada en el build (index / Vite) → metadato remoto `app_versions`.
+ * Prioridad: `desktopDownloadUrl` del documento (Firestore) → global Vite (solo web/PWA) → `downloadUrl` (.exe / proxy).
  */
 export function resolveDesktopInstallerDownloadUrl(appVersionDoc) {
+    // Siempre preferir `desktopDownloadUrl` del documento (Firestore / Landing) sobre Vite: el global suele ser otra página, no el .exe.
+    const fromDoc = appVersionDoc && sanitizeInstallerUrlString(appVersionDoc.desktopDownloadUrl);
+    if (fromDoc && isUsableHttpsUrl(fromDoc)) return fromDoc;
+
     const fromBuild =
         typeof window !== 'undefined' && window.__ZION_DESKTOP_INSTALLER_URL__ != null
-            ? String(window.__ZION_DESKTOP_INSTALLER_URL__).trim()
+            ? sanitizeInstallerUrlString(window.__ZION_DESKTOP_INSTALLER_URL__)
             : '';
-    // Web / PWA: URL fija de marketing. Electron escritorio: solo Firestore/proxy (evita "URL no válida" al actualizar).
     if (!isElectronZionDesktopMixer() && fromBuild && isUsableHttpsUrl(fromBuild)) return fromBuild;
+
     const remote = desktopInstallerUrlFromAppVersionDoc(appVersionDoc);
     if (isUsableHttpsUrl(remote)) return remote;
     return '';

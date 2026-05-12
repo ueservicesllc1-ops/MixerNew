@@ -187,7 +187,21 @@ export default function Landing() {
                     if (!androidRow) {
                         androidRow = rows.find((r) => r.downloadUrl && !isExeUrl(r.downloadUrl));
                     }
-                    withDesktopField = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
+                    /** Doc de escritorio más reciente por `createdAt` (no el primero del array que tenga URL: puede ser una fila vieja). */
+                    let bestTs = -Infinity;
+                    for (const r of rows) {
+                        const u = String(r.desktopDownloadUrl || '').trim();
+                        if (!u) continue;
+                        let ts = 0;
+                        try {
+                            if (r.createdAt?.toMillis) ts = r.createdAt.toMillis();
+                            else if (typeof r.createdAt?.seconds === 'number') ts = r.createdAt.seconds * 1000;
+                        } catch { /* ignore */ }
+                        if (ts >= bestTs) {
+                            bestTs = ts;
+                            withDesktopField = r;
+                        }
+                    }
                     if (withDesktopField) {
                         desktopUrlFs = String(withDesktopField.desktopDownloadUrl).trim();
                     }
