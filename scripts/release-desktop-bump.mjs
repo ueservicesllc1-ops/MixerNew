@@ -100,6 +100,7 @@ function runNode(scriptRel) {
 
 const cli = parseCli();
 const pkg = readPkg();
+const mobileVersionLocked = String(pkg.version || '').trim();
 
 if (!pkg.desktopVersion || !String(pkg.desktopVersion).trim()) {
     pkg.desktopVersion = '1.0.0';
@@ -118,6 +119,12 @@ if (cli.set) {
 
 writePkg(pkg);
 
+const pkgVerify = readPkg();
+if (String(pkgVerify.version || '').trim() !== mobileVersionLocked) {
+    console.error('❌ Invariante: `package.json` → `version` (app móvil) no debe cambiar en release escritorio. Revisá el script.');
+    process.exit(1);
+}
+
 const dv = String(pkg.desktopVersion).trim();
 const vc = semverToVersionCode(dv);
 
@@ -132,9 +139,10 @@ const appLatest = {
 fs.mkdirSync(path.dirname(publicJsonPath), { recursive: true });
 fs.writeFileSync(publicJsonPath, `${JSON.stringify(appLatest, null, 2)}\n`, 'utf8');
 
-console.log('\n🖥️  Zion Stage — release escritorio');
+console.log('\n🖥️  Zion Stage — release escritorio (solo Windows .exe)');
+console.log('   ⛔ Este script NO ejecuta build:android, NO toca android/ ni genera APK.');
+console.log(`   📱 package.json version (móvil/web), sin tocar: ${mobileVersionLocked}`);
 console.log(`   desktopVersion (escritorio): ${dv}  (código ${vc})`);
-console.log(`   version (móvil / web):       ${pkg.version}`);
 console.log(`   ${cli.bump || cli.set ? 'Versión escritorio actualizada en package.json.' : 'Sin bump: misma desktopVersion.'}`);
 console.log(`   Escrito: public/app-latest-desktop.json\n`);
 
