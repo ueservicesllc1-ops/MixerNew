@@ -6,18 +6,42 @@ function sanitizeInstallerUrlString(s) {
         .replace(/^['"]|['"]$/g, '');
 }
 
-function isUsableHttpsUrl(s) {
-    const t = sanitizeInstallerUrlString(s);
-    if (!t) return false;
+/**
+ * Acepta el enlace que guarda Admin (B2 o `/api/download?url=…`).
+ * Solo descarta APK evidente por extensión (evita falsos positivos de `includes('.apk')` / `package` en URLs largas).
+ */
+function isAcceptableWindowsInstallLink(t) {
+    const raw = sanitizeInstallerUrlString(t);
+    if (!raw) return false;
+    let uo;
     try {
-        const u = new URL(t);
-        return u.protocol === 'https:';
+        uo = new URL(raw);
     } catch {
         return false;
     }
+    const p = uo.protocol.toLowerCase();
+    if (p !== 'https:' && p !== 'http:') return false;
+    const full = raw.toLowerCase();
+    if (full.endsWith('.apk') || /\.apk(\?|#|&)/i.test(full)) return false;
+    const inner = uo.searchParams.get('url');
+    if (inner) {
+        try {
+            const dec = decodeURIComponent(inner).toLowerCase();
+            if (dec.endsWith('.apk') || /\.apk(\?|#|&)/i.test(dec)) return false;
+        } catch {
+            /* query interna mal formada: no lo tratamos como APK */
+        }
+    }
+    return true;
 }
 
-/** En Electron escritorio el aviso de actualización debe usar siempre el enlace del servidor, no `VITE_DESKTOP_INSTALLER_URL` (suele ser otra URL o vacío). */
+/** Listo para mostrar / abrir desde Firestore o manifest. */
+export function isPlausibleWindowsInstallerHttpsUrl(u) {
+    const t = sanitizeInstallerUrlString(u);
+    return isAcceptableWindowsInstallLink(t);
+}
+
+/** En Electron escritorio el aviso de actualización debe usar siempre el enlace del servidor, no `VITE_DESKTOP_INSTALLER_URL`. */
 function isElectronZionDesktopMixer() {
     return typeof window !== 'undefined'
         && window.zionNative?.isDesktop === true
@@ -25,35 +49,27 @@ function isElectronZionDesktopMixer() {
 }
 
 /**
- * URL del instalador Windows (.exe) desde documento `app_versions` (Firestore).
+ * Solo `desktopDownloadUrl` (nunca `downloadUrl`: ahí va el APK u otros).
  */
 export function desktopInstallerUrlFromAppVersionDoc(data) {
     if (!data) return '';
     const d = sanitizeInstallerUrlString(data.desktopDownloadUrl);
-    if (d && isUsableHttpsUrl(d)) return d;
-    const u = sanitizeInstallerUrlString(data.downloadUrl);
-    if (!u) return '';
-    /** Instalador vía proxy B2 (el .exe va en el query `url=`). */
-    if (/^https:\/\//i.test(u) && /\/api\/download\?/i.test(u) && /url=/i.test(u)) return u;
-    if (/\.exe(\?|$)/i.test(u)) return u;
+    if (d && isAcceptableWindowsInstallLink(d)) return d;
     return '';
 }
 
 /**
- * Prioridad: `desktopDownloadUrl` del documento (Firestore) → global Vite (solo web/PWA) → `downloadUrl` (.exe / proxy).
+ * Prioridad: `desktopDownloadUrl` del documento → variable de build (solo web/PWA, no Electron).
  */
 export function resolveDesktopInstallerDownloadUrl(appVersionDoc) {
-    // Siempre preferir `desktopDownloadUrl` del documento (Firestore / Landing) sobre Vite: el global suele ser otra página, no el .exe.
     const fromDoc = appVersionDoc && sanitizeInstallerUrlString(appVersionDoc.desktopDownloadUrl);
-    if (fromDoc && isUsableHttpsUrl(fromDoc)) return fromDoc;
+    if (fromDoc && isAcceptableWindowsInstallLink(fromDoc)) return fromDoc;
 
     const fromBuild =
         typeof window !== 'undefined' && window.__ZION_DESKTOP_INSTALLER_URL__ != null
             ? sanitizeInstallerUrlString(window.__ZION_DESKTOP_INSTALLER_URL__)
             : '';
-    if (!isElectronZionDesktopMixer() && fromBuild && isUsableHttpsUrl(fromBuild)) return fromBuild;
+    if (!isElectronZionDesktopMixer() && fromBuild && isAcceptableWindowsInstallLink(fromBuild)) return fromBuild;
 
-    const remote = desktopInstallerUrlFromAppVersionDoc(appVersionDoc);
-    if (isUsableHttpsUrl(remote)) return remote;
     return '';
 }

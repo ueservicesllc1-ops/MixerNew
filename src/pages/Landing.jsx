@@ -10,7 +10,7 @@ import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, Ke
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
-import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl';
+import { isPlausibleWindowsInstallerHttpsUrl } from '../utils/desktopInstallerUrl';
 import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
 
 export default function Landing() {
@@ -92,9 +92,12 @@ export default function Landing() {
         setTimeout(() => setToast(null), 3000);
     };
 
+    const desktopWinUrlReady = isPlausibleWindowsInstallerHttpsUrl(String(latestApp?.desktopDownloadUrl || '').trim());
+
+    /** Admin → B2 → `desktopDownloadUrl` en Firestore; el hero abre exactamente eso. */
     const handleDesktopInstallerDownload = () => {
-        const url = resolveDesktopInstallerDownloadUrl(latestApp);
-        if (!url) {
+        const url = String(latestApp?.desktopDownloadUrl || '').trim();
+        if (!isPlausibleWindowsInstallerHttpsUrl(url)) {
             setToast(t('landing.toastDesktopNoUrl'));
             setTimeout(() => setToast(null), 4000);
             return;
@@ -183,27 +186,10 @@ export default function Landing() {
                     if (!androidRow) {
                         androidRow = rows.find((r) => r.downloadUrl && !isExeUrl(r.downloadUrl));
                     }
-                    /** Doc de escritorio más reciente por `createdAt` (no el primero del array que tenga URL: puede ser una fila vieja). */
-                    let bestTs = -Infinity;
-                    for (const r of rows) {
-                        const u = String(r.desktopDownloadUrl || '').trim();
-                        if (!u) continue;
-                        let ts = 0;
-                        try {
-                            if (r.createdAt?.toMillis) ts = r.createdAt.toMillis();
-                            else if (typeof r.createdAt?.seconds === 'number') ts = r.createdAt.seconds * 1000;
-                        } catch { /* ignore */ }
-                        if (ts >= bestTs) {
-                            bestTs = ts;
-                            withDesktopField = r;
-                        }
-                    }
+                    /** Primer doc con `desktopDownloadUrl` en lista ya ordenada por `createdAt` desc = el más nuevo con ese campo. */
+                    withDesktopField = rows.find((r) => String(r.desktopDownloadUrl || '').trim()) || null;
                     if (withDesktopField) {
                         desktopUrlFs = String(withDesktopField.desktopDownloadUrl).trim();
-                    }
-                    if (!desktopUrlFs) {
-                        const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
-                        if (exeRow) desktopUrlFs = String(exeRow.downloadUrl).trim();
                     }
                 }
             } catch (err) {
@@ -234,7 +220,7 @@ export default function Landing() {
                             if (!r.ok) continue;
                             const j = await r.json();
                             const u = String(j?.desktopDownloadUrl || '').trim();
-                            if (!u) continue;
+                            if (!u || !isPlausibleWindowsInstallerHttpsUrl(u)) continue;
                             const vn = String(j?.versionName || '').trim() || '0.0.0';
                             if (!best || semverGt(vn, String(best.versionName || '').trim() || '0.0.0')) best = j;
                         } catch {
@@ -247,10 +233,38 @@ export default function Landing() {
                 console.warn('app-latest-desktop (proxy):', e?.message || e);
             }
 
-            const desktopUrl = desktopUrlFs || String(desktopJson?.desktopDownloadUrl || '').trim();
+            /** Firestore y JSON del proxy: elegir la URL de escritorio con semver más alto (no `fs || json`). */
+            const jsonDeskUrl = desktopJson && String(desktopJson.desktopDownloadUrl || '').trim();
+            const jsonDeskVer = (desktopJson && String(desktopJson.versionName || '').trim()) || '0.0.0';
+            const fsDeskVer = (withDesktopField && String(withDesktopField.versionName || '').trim()) || '0.0.0';
+            const deskCandidates = [];
+            if (desktopUrlFs && isPlausibleWindowsInstallerHttpsUrl(desktopUrlFs)) {
+                deskCandidates.push({ url: desktopUrlFs, ver: fsDeskVer });
+            }
+            if (jsonDeskUrl && isPlausibleWindowsInstallerHttpsUrl(jsonDeskUrl)) {
+                deskCandidates.push({ url: jsonDeskUrl, ver: jsonDeskVer });
+            }
+            const semverPartsPick = (s) => {
+                const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+                return m ? [+m[1], +(m[2] || 0), +(m[3] || 0)] : [0, 0, 0];
+            };
+            const semverGtPick = (a, b) => {
+                const x = semverPartsPick(a);
+                const y = semverPartsPick(b);
+                for (let i = 0; i < 3; i++) {
+                    if (x[i] !== y[i]) return x[i] > y[i];
+                }
+                return false;
+            };
+            let desktopWinner = null;
+            for (const c of deskCandidates) {
+                if (!desktopWinner || semverGtPick(c.ver, desktopWinner.ver)) desktopWinner = c;
+            }
+            const desktopUrl = desktopWinner?.url || '';
             const exeRow = rows.find((r) => r.downloadUrl && isExeUrl(r.downloadUrl));
             const desktopVersionName =
-                (withDesktopField && String(withDesktopField.versionName || '').trim())
+                (desktopWinner && String(desktopWinner.ver || '').trim())
+                || (withDesktopField && String(withDesktopField.versionName || '').trim())
                 || (desktopJson && String(desktopJson.versionName || '').trim())
                 || (exeRow && String(exeRow.versionName || '').trim())
                 || '';
@@ -585,16 +599,26 @@ export default function Landing() {
                                 {t('nav.android')}
                             </span>
                         )}
-                        {resolveDesktopInstallerDownloadUrl(latestApp) && (
-                            <span
-                                onClick={handleDesktopInstallerDownload}
-                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#60a5fa', fontWeight: 'bold' }}
-                                onMouseEnter={e => e.target.style.color = '#fff'}
-                                onMouseLeave={e => e.target.style.color = '#60a5fa'}
-                            >
-                                {t('nav.windows')}
-                            </span>
-                        )}
+                        <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={handleDesktopInstallerDownload}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDesktopInstallerDownload(); } }}
+                            style={{
+                                cursor: 'pointer',
+                                transition: 'color 0.2s, opacity 0.2s',
+                                textDecoration: 'none',
+                                color: desktopWinUrlReady ? '#60a5fa' : '#64748b',
+                                fontWeight: 'bold',
+                                opacity: desktopWinUrlReady ? 1 : 0.85,
+                            }}
+                            onMouseEnter={(e) => { if (desktopWinUrlReady) e.currentTarget.style.color = '#fff'; }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.color = desktopWinUrlReady ? '#60a5fa' : '#64748b';
+                            }}
+                        >
+                            {t('nav.windows')}
+                        </span>
                         <span
                             onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
                             style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
@@ -752,17 +776,30 @@ export default function Landing() {
                                     {t('landing.downloadAndroid', { ver: latestApp.versionName })}
                                 </button>
                             )}
-                            {resolveDesktopInstallerDownloadUrl(latestApp) && (
-                                <button
-                                    onClick={handleDesktopInstallerDownload}
-                                    style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#0078d4,#005a9e)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(0,120,212,0.35)' }}
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
-                                    {t('landing.installWin', {
-                                        ver: latestApp.desktopVersionName || latestApp.versionName || '—',
-                                    })}
-                                </button>
-                            )}
+                            <button
+                                type="button"
+                                onClick={handleDesktopInstallerDownload}
+                                style={{
+                                    padding: '12px 22px',
+                                    fontSize: '0.82rem',
+                                    background: 'linear-gradient(135deg,#0078d4,#005a9e)',
+                                    border: 'none',
+                                    color: 'white',
+                                    borderRadius: '50px',
+                                    fontWeight: '700',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '9px',
+                                    boxShadow: desktopWinUrlReady ? '0 4px 15px rgba(0,120,212,0.35)' : 'none',
+                                    opacity: desktopWinUrlReady ? 1 : 0.72,
+                                }}
+                            >
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/></svg>
+                                {t('landing.installWin', {
+                                    ver: latestApp?.desktopVersionName || latestApp?.versionName || '—',
+                                })}
+                            </button>
                         </div>
                     </div>
 

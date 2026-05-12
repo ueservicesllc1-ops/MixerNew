@@ -646,15 +646,29 @@ const HOSTING_APP_LATEST_ORIGINS = [
     'https://zionstage.app',
 ];
 
-/** Misma heurística que Landing: último doc con enlace de instalador escritorio. */
+/** Igual que Landing: entre docs con `desktopDownloadUrl`, el de `createdAt` más reciente. */
 async function fetchLatestDesktopRowFromFirestore() {
     const q = query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(40));
     const snap = await getDocs(q);
     if (snap.empty) return null;
     const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const withDesktop = rows.find((r) => String(r.desktopDownloadUrl || '').trim());
-    if (!withDesktop) return null;
-    return mapRemoteAppUpdateRow(withDesktop);
+    let bestTs = -Infinity;
+    let best = null;
+    for (const r of rows) {
+        const u = String(r.desktopDownloadUrl || '').trim();
+        if (!u) continue;
+        let ts = 0;
+        try {
+            if (r.createdAt?.toMillis) ts = r.createdAt.toMillis();
+            else if (typeof r.createdAt?.seconds === 'number') ts = r.createdAt.seconds * 1000;
+        } catch { /* ignore */ }
+        if (ts >= bestTs) {
+            bestTs = ts;
+            best = r;
+        }
+    }
+    if (!best) return null;
+    return mapRemoteAppUpdateRow(best);
 }
 
 /** Igual idea que Multitrack `pickNewerMeta`: entre dos manifiestos con .exe válido, gana el semver más alto. */

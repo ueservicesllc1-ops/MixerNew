@@ -141,7 +141,10 @@ async function uploadDesktopExe() {
     console.log(`   Tamaño: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
 
     const form = new FormData();
-    form.append('audioFile', fs.createReadStream(exePath));
+    form.append('audioFile', fs.createReadStream(exePath), {
+        filename: path.basename(exePath),
+        contentType: 'application/octet-stream',
+    });
     form.append('fileName', `apps/zion-stage-desktop-v${versionLabel}-${Date.now()}.exe`);
     form.append('generatePreview', 'false');
 
@@ -155,7 +158,17 @@ async function uploadDesktopExe() {
     });
 
     if (!resp.ok) {
-        console.error(`❌ Upload failed: ${resp.status} ${resp.statusText}`);
+        let detail = '';
+        try {
+            const text = await resp.text();
+            try {
+                const j = JSON.parse(text);
+                detail = j?.error ? ` — ${j.error}` : (text ? ` — ${text.slice(0, 500)}` : '');
+            } catch {
+                if (text) detail = ` — ${text.slice(0, 500)}`;
+            }
+        } catch { /* ignore */ }
+        console.error(`❌ Upload failed: ${resp.status} ${resp.statusText}${detail}`);
         process.exit(1);
     }
 

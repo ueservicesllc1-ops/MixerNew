@@ -339,12 +339,28 @@ let b2ApiUrl = null;
 
 async function getB2Auth() {
     if (b2AuthToken && b2ApiUrl) return { apiUrl: b2ApiUrl, token: b2AuthToken };
+    if (!B2_KEY_ID || !B2_APPLICATION_KEY) {
+        throw new Error('Faltan B2_KEY_ID o B2_APPLICATION_KEY en el servidor (Railway env).');
+    }
     console.log("Renovando B2 Auth Token...");
     const credentials = Buffer.from(`${B2_KEY_ID}:${B2_APPLICATION_KEY}`).toString('base64');
     const res = await fetch('https://api.backblazeb2.com/b2api/v2/b2_authorize_account', {
         headers: { 'Authorization': `Basic ${credentials}` }
     });
-    const data = await res.json();
+    const raw = await res.text();
+    let data;
+    try {
+        data = raw ? JSON.parse(raw) : {};
+    } catch {
+        throw new Error(`B2 authorize: respuesta no JSON (${res.status}): ${raw.slice(0, 200)}`);
+    }
+    if (!res.ok) {
+        const msg = data?.message || data?.code || raw.slice(0, 200) || res.statusText;
+        throw new Error(`B2 authorize falló (${res.status}): ${msg}`);
+    }
+    if (!data.authorizationToken || !data.apiUrl) {
+        throw new Error('B2 authorize: respuesta sin authorizationToken o apiUrl (revisá claves B2).');
+    }
     b2AuthToken = data.authorizationToken;
     b2ApiUrl = data.apiUrl;
     return { apiUrl: b2ApiUrl, token: b2AuthToken };
@@ -381,16 +397,33 @@ function fileStartsWithPE_MZ(filePath) {
 
 async function getUploadNode() {
     const { apiUrl, token } = await getB2Auth();
+    if (!B2_BUCKET_ID) {
+        throw new Error('Falta B2_BUCKET_ID en el servidor (Railway env).');
+    }
     const res = await fetch(`${apiUrl}/b2api/v2/b2_get_upload_url`, {
         method: 'POST',
         headers: { 'Authorization': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ bucketId: B2_BUCKET_ID })
     });
+    const raw = await res.text();
+    let node;
+    try {
+        node = raw ? JSON.parse(raw) : {};
+    } catch {
+        b2AuthToken = null;
+        b2ApiUrl = null;
+        throw new Error(`B2 get_upload_url: respuesta no JSON: ${raw.slice(0, 200)}`);
+    }
     if (!res.ok) {
         b2AuthToken = null;
-        throw new Error('Upload URL fail');
+        b2ApiUrl = null;
+        const msg = node?.message || node?.code || raw.slice(0, 200) || res.statusText;
+        throw new Error(`B2 get_upload_url falló (${res.status}): ${msg}`);
     }
-    return res.json();
+    if (!node.uploadUrl || !node.authorizationToken) {
+        throw new Error('B2 get_upload_url: respuesta sin uploadUrl o authorizationToken.');
+    }
+    return node;
 }
 
 app.get('/api/health', (req, res) => res.json({
@@ -726,11 +759,19 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
                     'X-Bz-Content-Sha1': sha1Exe,
                     'Content-Length': String(st.size),
                 },
+                /** Node 18+ exige duplex al enviar un stream como body (si no, falla la subida a B2). */
+                duplex: 'half',
                 body: fs.createReadStream(multerLocalPath),
             });
-            const b2Data = await b2Response.json();
+            const b2Raw = await b2Response.text();
+            let b2Data;
+            try {
+                b2Data = b2Raw ? JSON.parse(b2Raw) : {};
+            } catch {
+                b2Data = { message: b2Raw?.slice(0, 500) || 'respuesta no JSON' };
+            }
             if (!b2Response.ok) {
-                throw new Error(`B2 Upload Error: ${b2Data.message || b2Data.code || 'Unknown error'}`);
+                throw new Error(`B2 Upload Error: ${b2Data.message || b2Data.code || b2Response.statusText || 'Unknown error'}`);
             }
             const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
             return res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
@@ -1447,9 +1488,14 @@ app.use((req, res, next) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Servidor listo escuchando en puerto ${PORT}`);
     console.log(`📌 Stripe webhook (configurar en Dashboard): POST ${PROXY_SELF}/api/stripe/webhook`);
 });
+/** Instaladores .exe grandes: el default de Node (p. ej. 5 min) corta la subida entrante y devuelve 500. */
+const LONG_MS = 60 * 60 * 1000;
+if (typeof server.requestTimeout === 'number') server.requestTimeout = LONG_MS;
+if (typeof server.headersTimeout === 'number') server.headersTimeout = LONG_MS + 60_000;
+if (typeof server.timeout === 'number') server.timeout = LONG_MS;
 
 
