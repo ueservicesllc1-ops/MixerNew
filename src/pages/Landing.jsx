@@ -11,7 +11,7 @@ import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
 import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl';
-import { getMixerApiBase } from '../mixerApiBase';
+import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
 
 export default function Landing() {
     const navigate = useNavigate();
@@ -159,10 +159,6 @@ export default function Landing() {
             }
         };
 
-        const appReleaseProxy = getMixerApiBase();
-        /** En localhost el proxy suele no estar levantado: mismo fallback que el mixer escritorio (Railway). */
-        const DEFAULT_DESKTOP_RELEASE_BASE = 'https://mixernew-production.up.railway.app';
-
         const fetchLatestApp = async () => {
             const isApkUrl = (u) => {
                 const s = String(u || '').trim().toLowerCase();
@@ -230,10 +226,7 @@ export default function Landing() {
                     return false;
                 };
                 let best = null;
-                const bases = [...new Set([
-                    String(appReleaseProxy || '').replace(/\/$/, ''),
-                    DEFAULT_DESKTOP_RELEASE_BASE,
-                ].filter((b) => b && /^https?:\/\//i.test(b)))];
+                const bases = getMixerApiBaseCandidates();
                 for (const base of bases) {
                     for (const path of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
                         try {
