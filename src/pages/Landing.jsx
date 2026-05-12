@@ -160,6 +160,8 @@ export default function Landing() {
         };
 
         const appReleaseProxy = getMixerApiBase();
+        /** En localhost el proxy suele no estar levantado: mismo fallback que el mixer escritorio (Railway). */
+        const DEFAULT_DESKTOP_RELEASE_BASE = 'https://mixernew-production.up.railway.app';
 
         const fetchLatestApp = async () => {
             const isApkUrl = (u) => {
@@ -198,7 +200,7 @@ export default function Landing() {
                 console.error('Error fetching latest app (Firestore):', err);
             }
 
-            /** Proxy: API primero (fusiona Firestore en Railway); el .json estático suele ir sin URL tras release hasta subir el .exe. */
+            /** Proxy: API primero; varias bases (local + Railway) para dev sin `b2-proxy` en :3001. */
             let desktopJson = null;
             try {
                 const semverParts = (s) => {
@@ -214,14 +216,24 @@ export default function Landing() {
                     return false;
                 };
                 let best = null;
-                for (const path of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
-                    const r = await fetch(`${appReleaseProxy}${path}?cb=${Date.now()}`, { cache: 'no-store' });
-                    if (!r.ok) continue;
-                    const j = await r.json();
-                    const u = String(j?.desktopDownloadUrl || '').trim();
-                    if (!u) continue;
-                    const vn = String(j?.versionName || '').trim() || '0.0.0';
-                    if (!best || semverGt(vn, String(best.versionName || '').trim() || '0.0.0')) best = j;
+                const bases = [...new Set([
+                    String(appReleaseProxy || '').replace(/\/$/, ''),
+                    DEFAULT_DESKTOP_RELEASE_BASE,
+                ].filter((b) => b && /^https?:\/\//i.test(b)))];
+                for (const base of bases) {
+                    for (const path of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
+                        try {
+                            const r = await fetch(`${base}${path}?cb=${Date.now()}`, { cache: 'no-store' });
+                            if (!r.ok) continue;
+                            const j = await r.json();
+                            const u = String(j?.desktopDownloadUrl || '').trim();
+                            if (!u) continue;
+                            const vn = String(j?.versionName || '').trim() || '0.0.0';
+                            if (!best || semverGt(vn, String(best.versionName || '').trim() || '0.0.0')) best = j;
+                        } catch {
+                            /* siguiente base / ruta */
+                        }
+                    }
                 }
                 desktopJson = best;
             } catch (e) {
