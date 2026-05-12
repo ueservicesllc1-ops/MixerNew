@@ -1,7 +1,7 @@
 {
-  "versionName": "1.1.8",
-  "versionCode": 10108,
+  "versionName": "1.1.9",
+  "versionCode": 10109,
   "desktopDownloadUrl": "",
   "releaseNotes": "Generado con npm run release:desktop:auto. Subí el .exe (Admin o npm run upload:desktop) y rellenará el enlace.",
-  "updatedAt": "2026-05-12T17:57:33.146Z"
+  "updatedAt": "2026-05-12T18:35:35.839Z"
 }
