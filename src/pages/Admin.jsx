@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch, query, orderBy, limit } from 'firebase/firestore';
 import { semverToVersionCode } from '../utils/semverReleaseCompare.js';
 import { getMixerApiBase } from '../mixerApiBase.js';
-import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3, Download } from 'lucide-react';
+import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3, Download, Monitor } from 'lucide-react';
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -72,6 +72,10 @@ export default function Admin() {
     const [bannerFile, setBannerFile] = useState(null);
     const [bannerTitle, setBannerTitle] = useState('');
     const [bannerSubtitle, setBannerSubtitle] = useState('');
+
+    /** Telemetría escritorio: descargas (web) y heartbeats (app .exe). */
+    const [desktopDownloadEvents, setDesktopDownloadEvents] = useState([]);
+    const [desktopClients, setDesktopClients] = useState([]);
 
     // ── Letras Editor ─────────────────────────────────────────────────────
     const [lyricsSearch, setLyricsSearch] = useState('');
@@ -218,6 +222,18 @@ export default function Admin() {
             snap.forEach(doc => b.push({ id: doc.id, ...doc.data() }));
             setBanners(b.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
         });
+
+        onSnapshot(query(collection(db, 'desktop_download_events'), orderBy('createdAt', 'desc'), limit(500)), (snap) => {
+            const rows = [];
+            snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+            setDesktopDownloadEvents(rows);
+        }, (e) => console.error('desktop_download_events', e));
+
+        onSnapshot(query(collection(db, 'desktop_clients'), orderBy('lastSeenAt', 'desc'), limit(800)), (snap) => {
+            const rows = [];
+            snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+            setDesktopClients(rows);
+        }, (e) => console.error('desktop_clients', e));
     };
 
     const approveSeller = async (userId) => {
@@ -1197,6 +1213,27 @@ export default function Admin() {
         return matchesSearch && s.isGlobal !== true;
     });
 
+    const desktopFsTsMs = (ts) => {
+        if (!ts) return 0;
+        if (typeof ts.toMillis === 'function') return ts.toMillis();
+        if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+        return 0;
+    };
+    const nowTs = Date.now();
+    const desktopActive15m = desktopClients.filter((c) => nowTs - desktopFsTsMs(c.lastSeenAt) <= 15 * 60 * 1000).length;
+    const desktopActive24h = desktopClients.filter((c) => nowTs - desktopFsTsMs(c.lastSeenAt) <= 24 * 60 * 60 * 1000).length;
+    const desktopDl7d = desktopDownloadEvents.filter((e) => nowTs - desktopFsTsMs(e.createdAt) <= 7 * 24 * 60 * 60 * 1000).length;
+    const desktopDlByVersion = {};
+    desktopDownloadEvents.forEach((e) => {
+        const k = e.versionName || '?';
+        desktopDlByVersion[k] = (desktopDlByVersion[k] || 0) + 1;
+    });
+    const desktopClientsByVersion = {};
+    desktopClients.forEach((c) => {
+        const k = c.versionName || '?';
+        desktopClientsByVersion[k] = (desktopClientsByVersion[k] || 0) + 1;
+    });
+
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '30px', justifyContent: 'space-between' }}>
@@ -1255,6 +1292,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({users.filter(u => u.isSeller).length})</button>
                 <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({users.length})</button>
                 <button onClick={() => setActiveTab('reports')} style={{ background: activeTab === 'reports' ? '#22c55e' : 'rgba(255,255,255,0.05)', color: activeTab === 'reports' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Reportes</button>
+                <button onClick={() => setActiveTab('desktop')} style={{ background: activeTab === 'desktop' ? '#38bdf8' : 'rgba(255,255,255,0.05)', color: activeTab === 'desktop' ? '#0f172a' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Escritorio</button>
                 <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({coupons.length})</button>
                 <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
                 <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
@@ -2203,6 +2241,120 @@ export default function Admin() {
                                 Generado: {usageReport.generatedAt.toLocaleString()}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'desktop' && (
+                <div className="fade-in">
+                    <div style={{ background: '#1e293b', borderRadius: '20px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <Monitor size={24} color="#38bdf8" />
+                            Escritorio Windows
+                        </h2>
+                        <p style={{ color: '#94a3b8', margin: '8px 0 22px 0', maxWidth: '900px', lineHeight: 1.45 }}>
+                            Descargas registradas al abrir el instalador desde la landing (<code style={{ color: '#e2e8f0' }}>desktop_download_events</code>)
+                            y equipos con la app abierta que envían un latido cada ~2 minutos (<code style={{ color: '#e2e8f0' }}>desktop_clients</code>).
+                            Desplegá las reglas de Firestore tras actualizar el repo.
+                        </p>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '26px' }}>
+                            <div style={{ background: 'rgba(56,189,248,0.12)', border: '1px solid rgba(56,189,248,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#7dd3fc', fontSize: '0.8rem' }}>Instalaciones (clicks) total</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{desktopDownloadEvents.length}</div>
+                            </div>
+                            <div style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(14,165,233,0.3)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#bae6fd', fontSize: '0.8rem' }}>Clicks últimos 7 días</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{desktopDl7d}</div>
+                            </div>
+                            <div style={{ background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.35)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#86efac', fontSize: '0.8rem' }}>App .exe activa (~15 min)</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{desktopActive15m}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Clientes vistos (24 h)</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{desktopActive24h}</div>
+                            </div>
+                            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px', padding: '16px' }}>
+                                <div style={{ color: '#94a3b8', fontSize: '0.8rem' }}>Filas clientes (snapshot)</div>
+                                <div style={{ fontSize: '1.75rem', fontWeight: '900' }}>{desktopClients.length}</div>
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', marginBottom: '28px' }}>
+                            <div>
+                                <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem' }}>Descargas por versión (todas)</h3>
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxHeight: '220px', overflow: 'auto' }}>
+                                    {Object.keys(desktopDlByVersion).length === 0 ? (
+                                        <div style={{ padding: '14px', color: '#64748b' }}>Sin eventos todavía.</div>
+                                    ) : (
+                                        Object.entries(desktopDlByVersion)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .map(([ver, n]) => (
+                                                <div key={ver} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                    <span style={{ fontWeight: '700' }}>{ver}</span>
+                                                    <span style={{ color: '#38bdf8' }}>{n}</span>
+                                                </div>
+                                            ))
+                                    )}
+                                </div>
+                            </div>
+                            <div>
+                                <h3 style={{ margin: '0 0 10px 0', fontSize: '1rem' }}>Clientes por versión reportada</h3>
+                                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', maxHeight: '220px', overflow: 'auto' }}>
+                                    {Object.keys(desktopClientsByVersion).length === 0 ? (
+                                        <div style={{ padding: '14px', color: '#64748b' }}>Sin heartbeats todavía.</div>
+                                    ) : (
+                                        Object.entries(desktopClientsByVersion)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .map(([ver, n]) => (
+                                                <div key={ver} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                    <span style={{ fontWeight: '700' }}>{ver}</span>
+                                                    <span style={{ color: '#22c55e' }}>{n}</span>
+                                                </div>
+                                            ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 style={{ margin: '0 0 10px 0' }}>Últimos clicks de descarga</h3>
+                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', marginBottom: '28px', maxHeight: '280px', overflowY: 'auto' }}>
+                            {desktopDownloadEvents.length === 0 ? (
+                                <div style={{ padding: '14px', color: '#64748b' }}>Ningún registro.</div>
+                            ) : (
+                                desktopDownloadEvents.slice(0, 80).map((e) => (
+                                    <div key={e.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.2fr', gap: '10px', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.85rem' }}>
+                                        <span style={{ color: '#94a3b8' }}>{e.source || '—'}</span>
+                                        <span style={{ fontWeight: '700' }}>{e.versionName || '?'}</span>
+                                        <span>{e.locale || ''}</span>
+                                        <span style={{ color: '#64748b' }}>
+                                            {desktopFsTsMs(e.createdAt) ? new Date(desktopFsTsMs(e.createdAt)).toLocaleString() : '—'}
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <h3 style={{ margin: '0 0 10px 0' }}>Clientes (último latido)</h3>
+                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto' }}>
+                            {desktopClients.length === 0 ? (
+                                <div style={{ padding: '14px', color: '#64748b' }}>Ningún cliente.</div>
+                            ) : (
+                                desktopClients.slice(0, 120).map((c) => {
+                                    const last = desktopFsTsMs(c.lastSeenAt);
+                                    const fresh = last && (nowTs - last <= 15 * 60 * 1000);
+                                    return (
+                                        <div key={c.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.82rem', alignItems: 'center' }}>
+                                            <span style={{ fontFamily: 'ui-monospace, monospace', color: '#cbd5e1', wordBreak: 'break-all' }}>{c.id}</span>
+                                            <span style={{ fontWeight: '700' }}>{c.versionName || '?'}</span>
+                                            <span style={{ color: fresh ? '#4ade80' : '#94a3b8', fontWeight: '700' }}>{fresh ? 'activo' : 'idle'}</span>
+                                            <span style={{ color: '#64748b' }}>{last ? new Date(last).toLocaleString() : '—'}</span>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

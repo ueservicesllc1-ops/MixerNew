@@ -7,6 +7,7 @@ import { QRCodeSVG } from 'qrcode.react'
 import { audioEngine } from '../AudioEngine.js'
 import { isMixerClickStem, isMixerGuideStem } from '../mixerStemRoles.js'
 import { resolveDesktopInstallerDownloadUrl } from '../utils/desktopInstallerUrl.js'
+import { pingDesktopClient } from '../utils/desktopTelemetry.js'
 import { isRemoteReleaseNewer, isRemoteVersionNewerByName, semverToVersionCode } from '../utils/semverReleaseCompare.js'
 
 /**
@@ -1386,6 +1387,29 @@ export default function Multitrack({ session }) {
             /* ignore */
         }
     }, []);
+
+    /** Heartbeat escritorio → Firestore (Admin: clientes activos). */
+    useEffect(() => {
+        if (!isElectronDesktopMixer() || typeof document === 'undefined') return undefined;
+        const version = String(installedRelease?.versionName || '').trim();
+        if (!version || !db) return undefined;
+        const firebaseUid = currentUser && !currentUser.isOffline && currentUser.uid
+            ? String(currentUser.uid)
+            : null;
+        const send = () => {
+            void pingDesktopClient(db, version, firebaseUid).catch(() => {});
+        };
+        send();
+        const iv = setInterval(send, 2 * 60 * 1000);
+        const onVis = () => {
+            if (document.visibilityState === 'visible') send();
+        };
+        document.addEventListener('visibilitychange', onVis);
+        return () => {
+            clearInterval(iv);
+            document.removeEventListener('visibilitychange', onVis);
+        };
+    }, [installedRelease.versionName, currentUser?.uid, currentUser?.isOffline]);
 
     useEffect(() => {
         const params = new URLSearchParams(location.search || '');

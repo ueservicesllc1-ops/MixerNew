@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import LanguageSwitch from '../components/LanguageSwitch';
 import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp, Monitor } from 'lucide-react';
 import Footer from '../components/Footer';
@@ -108,6 +108,13 @@ export default function Landing() {
             return;
         }
         window.open(url, '_blank', 'noopener,noreferrer');
+        const vn = String(latestApp?.desktopVersionName || latestApp?.versionName || '').trim() || 'unknown';
+        void addDoc(collection(db, 'desktop_download_events'), {
+            source: 'landing_modal',
+            versionName: vn.slice(0, 47),
+            createdAt: serverTimestamp(),
+            locale: typeof navigator !== 'undefined' ? String(navigator.language || '').slice(0, 47) : '',
+        }).catch(() => {});
     };
 
     useEffect(() => {

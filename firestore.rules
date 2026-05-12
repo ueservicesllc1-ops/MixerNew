@@ -105,5 +105,35 @@ service cloud.firestore {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
+
+    // -- Desktop: clicks de descarga del instalador (web). Solo admin lee.
+    match /desktop_download_events/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['source', 'versionName', 'createdAt', 'locale'])
+        && request.resource.data.source in ['landing_modal', 'landing_hero', 'landing_win']
+        && request.resource.data.versionName is string
+        && request.resource.data.versionName.size() > 0
+        && request.resource.data.versionName.size() < 48
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.locale is string
+        && request.resource.data.locale.size() < 48;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // -- Desktop: heartbeat por instalación (clientId = UUID). Solo admin lee/borra; create/update públicos acotados.
+    match /desktop_clients/{clientId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if clientId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+        && request.resource.data.keys().hasOnly(['lastSeenAt', 'firstSeenAt', 'versionName', 'platform', 'firebaseUid'])
+        && request.resource.data.lastSeenAt == request.time
+        && request.resource.data.versionName is string
+        && request.resource.data.versionName.size() > 0
+        && request.resource.data.versionName.size() <= 32
+        && request.resource.data.platform == 'electron_win'
+        && (!('firstSeenAt' in request.resource.data)
+            || (request.resource.data.firstSeenAt is timestamp
+                && (resource == null || request.resource.data.firstSeenAt == resource.data.firstSeenAt)))
+        && (!('firebaseUid' in request.resource.data)
+            || (request.resource.data.firebaseUid is string && request.resource.data.firebaseUid.size() <= 128));
+    }
   }
 }
