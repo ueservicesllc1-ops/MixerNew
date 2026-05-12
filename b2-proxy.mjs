@@ -186,7 +186,22 @@ const __dirname = dirname(__filename);
 const distPath = path.join(__dirname, 'dist');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
+/** Instaladores .exe pueden superar 200 MB; disco evita agotar RAM del contenedor (p. ej. Railway). */
+const uploadTmpDir = path.join(os.tmpdir(), 'mixer-b2-upload');
+try {
+    if (!fs.existsSync(uploadTmpDir)) fs.mkdirSync(uploadTmpDir, { recursive: true });
+} catch { /* ignore */ }
+
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, uploadTmpDir),
+        filename: (_req, file, cb) => {
+            const ext = path.extname(file.originalname || '') || '.bin';
+            cb(null, `${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`);
+        },
+    }),
+    limits: { fileSize: 600 * 1024 * 1024 },
+});
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({
@@ -264,6 +279,35 @@ async function getB2Auth() {
     b2AuthToken = data.authorizationToken;
     b2ApiUrl = data.apiUrl;
     return { apiUrl: b2ApiUrl, token: b2AuthToken };
+}
+
+/** SHA1 de archivo en disco sin cargar todo en un solo buffer. */
+function sha1OfFileFromDisk(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha1');
+        const rs = fs.createReadStream(filePath);
+        rs.on('data', (chunk) => hash.update(chunk));
+        rs.on('end', () => resolve(hash.digest('hex')));
+        rs.on('error', reject);
+    });
+}
+
+/** Windows PE / DOS stub starts with "MZ" (0x4D 0x5A). Catches .exe when MIME/name are wrong. */
+function fileStartsWithPE_MZ(filePath) {
+    try {
+        if (!filePath || !fs.existsSync(filePath)) return false;
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buf = Buffer.alloc(2);
+            const n = fs.readSync(fd, buf, 0, 2, 0);
+            if (n < 2) return false;
+            return buf[0] === 0x4d && buf[1] === 0x5a;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch {
+        return false;
+    }
 }
 
 async function getUploadNode() {
@@ -368,7 +412,12 @@ const handleDownload = async (req, res) => {
         url = url.trim();
         console.log(`[PROXY] Descargando audio desde: ${url}`);
         
-        const response = await fetch(url);
+        // Identity: si B2/CDN devuelve gzip y fetch descomprime, reenviar el Content-Length
+        // del origen puede NO coincidir con los bytes reales del stream → .exe/.apk corruptos
+        // (MZ válido pero instalador roto). No reenviar Content-Length; dejar chunked al cliente.
+        const response = await fetch(url, {
+            headers: { 'Accept-Encoding': 'identity' },
+        });
         if (!response.ok) {
             console.error(`[PROXY] B2 devolvió error ${response.status} para: ${url}`);
             throw new Error(`B2 Error ${response.status}`);
@@ -381,11 +430,9 @@ const handleDownload = async (req, res) => {
             'Content-Type': isApk
                 ? 'application/vnd.android.package-archive'
                 : (isExe ? 'application/vnd.microsoft.portable-executable' : contentType),
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store, no-cache, must-revalidate',
         };
-        if (response.headers.get('content-length')) {
-            headers['Content-Length'] = response.headers.get('content-length');
-        }
         if (isApk) {
             // Force browser/device to download instead of trying to render
             const fileName = url.split('/').pop().split('?')[0] || 'zion-stage.apk';
@@ -536,12 +583,20 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
     let tempOutputPath = '';
     let tempPreviewPath = '';
     let tempFlacPath = '';
+    let multerLocalPath = '';
     try {
         const file = req.file;
         const b2Filename = req.body.fileName;
         const generatePreview = req.body.generatePreview === 'true';
 
         if (!file || !b2Filename) return res.status(400).json({ error: 'Falta archivo' });
+
+        multerLocalPath = file.path || '';
+        const loadUploadBytes = () => {
+            if (file.buffer && file.buffer.length) return file.buffer;
+            if (multerLocalPath && fs.existsSync(multerLocalPath)) return fs.readFileSync(multerLocalPath);
+            throw new Error('No se pudo leer el archivo subido');
+        };
 
         const uploadNode = await getUploadNode();
         const tempId = crypto.randomBytes(8).toString('hex');
@@ -551,33 +606,76 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         tempPreviewPath = path.join(tmpDir, `prev_${tempId}.mp3`);
         tempFlacPath = path.join(tmpDir, `flac_${tempId}.flac`);
 
+        const origLower = (file.originalname || '').toLowerCase();
+        const b2Lower = (b2Filename || '').toLowerCase();
+
         const isMp3 = file.mimetype === 'audio/mpeg' ||
             file.mimetype === 'audio/mp3' ||
-            file.originalname.toLowerCase().endsWith('.mp3');
+            origLower.endsWith('.mp3');
 
         const isImage = file.mimetype?.startsWith('image/') ||
             /\.(png|jpe?g|gif|webp)$/i.test(file.originalname);
 
         const isApk = file.mimetype === 'application/vnd.android.package-archive' ||
-            file.originalname.toLowerCase().endsWith('.apk');
+            origLower.endsWith('.apk');
+
+        const b2BaseLower = path.basename(b2Lower);
+        const sniffExe = multerLocalPath && fileStartsWithPE_MZ(multerLocalPath);
+        const isExe = sniffExe ||
+            file.mimetype === 'application/x-msdownload' ||
+            file.mimetype === 'application/octet-stream' ||
+            file.mimetype === 'application/vnd.microsoft.portable-executable' ||
+            origLower.endsWith('.exe') ||
+            b2Lower.endsWith('.exe') ||
+            b2BaseLower.endsWith('.exe');
 
         const isPdf = file.mimetype === 'application/pdf' ||
-            file.originalname.toLowerCase().endsWith('.pdf');
+            origLower.endsWith('.pdf');
 
         const isJson = file.mimetype === 'application/json' ||
-            file.originalname.toLowerCase().endsWith('.json');
+            origLower.endsWith('.json');
+
+        // Instalador Windows: subida directa por stream (evita ffmpeg y buffers enormes en RAM).
+        if (isExe) {
+            if (!multerLocalPath || !fs.existsSync(multerLocalPath)) {
+                return res.status(400).json({ error: 'Archivo .exe no encontrado en disco' });
+            }
+            const sha1Exe = await sha1OfFileFromDisk(multerLocalPath);
+            const st = fs.statSync(multerLocalPath);
+            const b2Response = await fetch(uploadNode.uploadUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': uploadNode.authorizationToken,
+                    'X-Bz-File-Name': encodeURIComponent(b2Filename),
+                    'Content-Type': 'application/octet-stream',
+                    'X-Bz-Content-Sha1': sha1Exe,
+                    'Content-Length': String(st.size),
+                },
+                body: fs.createReadStream(multerLocalPath),
+            });
+            const b2Data = await b2Response.json();
+            if (!b2Response.ok) {
+                throw new Error(`B2 Upload Error: ${b2Data.message || b2Data.code || 'Unknown error'}`);
+            }
+            const finalUrl = `https://f005.backblazeb2.com/file/${B2_BUCKET_NAME}/${encodeURI(b2Filename)}`;
+            return res.json({ success: true, url: finalUrl, fileId: b2Data.fileId });
+        }
 
         // Audio tracks eligible for FLAC normalization (not waveform preview, not non-audio files)
-        const isAudioTrack = !isImage && !isApk && !isPdf && !isJson &&
+        const isAudioTrack = !isImage && !isApk && !isPdf && !isJson && !isExe &&
             !b2Filename.includes('__PreviewMix');
 
         let mp3Buffer;
 
         if (isMp3 || isImage || isApk || isPdf || isJson) {
-            mp3Buffer = file.buffer;
+            mp3Buffer = loadUploadBytes();
         } else {
             console.log("🔄 Transcodificando a MP3...");
-            fs.writeFileSync(tempInputPath, file.buffer);
+            if (multerLocalPath && fs.existsSync(multerLocalPath)) {
+                fs.copyFileSync(multerLocalPath, tempInputPath);
+            } else {
+                fs.writeFileSync(tempInputPath, loadUploadBytes());
+            }
             await new Promise((resolve, reject) => {
                 ffmpeg()
                     .input(tempInputPath)
@@ -618,10 +716,16 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         // --- GENERACIÓN Y SUBIDA DE PREVIEW (OPCIONAL) ---
         let previewUrl = null;
-        if (generatePreview && !isImage && !isJson) {
+        if (generatePreview && !isImage && !isJson && !isApk && !isPdf) {
             console.log(`🎬 Generando clip de prueba (20s-40s) para ${b2Filename}...`);
             try {
-                if (!fs.existsSync(tempInputPath)) fs.writeFileSync(tempInputPath, file.buffer);
+                if (!fs.existsSync(tempInputPath)) {
+                    if (multerLocalPath && fs.existsSync(multerLocalPath)) {
+                        fs.copyFileSync(multerLocalPath, tempInputPath);
+                    } else {
+                        fs.writeFileSync(tempInputPath, loadUploadBytes());
+                    }
+                }
 
                 await new Promise((resolve, reject) => {
                     ffmpeg()
@@ -670,7 +774,13 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         if (isAudioTrack) {
             try {
                 // Ensure source is on disk for FFmpeg
-                if (!fs.existsSync(tempInputPath)) fs.writeFileSync(tempInputPath, file.buffer);
+                if (!fs.existsSync(tempInputPath)) {
+                    if (multerLocalPath && fs.existsSync(multerLocalPath)) {
+                        fs.copyFileSync(multerLocalPath, tempInputPath);
+                    } else {
+                        fs.writeFileSync(tempInputPath, loadUploadBytes());
+                    }
+                }
 
                 console.log(`🎵 Normalizando a FLAC: ${b2Filename}...`);
                 await new Promise((resolve, reject) => {
@@ -734,6 +844,7 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         console.error("Upload error:", error);
         res.status(500).json({ error: error.message });
     } finally {
+        if (multerLocalPath && fs.existsSync(multerLocalPath)) try { fs.unlinkSync(multerLocalPath); } catch { /* ignore */ }
         for (const p of [tempInputPath, tempOutputPath, tempPreviewPath, tempFlacPath]) {
             if (p && fs.existsSync(p)) try { fs.unlinkSync(p); } catch { /* ignore */ }
         }
