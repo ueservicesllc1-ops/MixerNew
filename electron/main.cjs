@@ -313,8 +313,38 @@ app.whenReady().then(() => {
         return false;
     }
 
+    /** Absolutiza rutas relativas (p. ej. `/api/download?...`) contra el proxy público. */
+    function resolveAbsoluteInstallerUrl(raw) {
+        const t = (typeof raw === 'string' ? raw : String(raw ?? '')).trim().replace(/[\r\n\t]+/g, '');
+        if (!t) return null;
+        try {
+            return new URL(t).href;
+        } catch {
+            /* ignore */
+        }
+        if (t.startsWith('//')) {
+            try {
+                return new URL(`https:${t}`).href;
+            } catch {
+                return null;
+            }
+        }
+        if (t.startsWith('/')) {
+            const base = String(process.env.PROXY_URL || 'https://mixernew-production.up.railway.app').replace(/\/$/, '');
+            try {
+                return new URL(t, `${base}/`).href;
+            } catch {
+                return null;
+            }
+        }
+        return null;
+    }
+
     ipcMain.handle('desktop:download-and-launch-update', async (_e, urlStr) => {
-        const urlNorm = (typeof urlStr === 'string' ? urlStr : '').trim().replace(/[\r\n\t]+/g, '');
+        const urlNorm = resolveAbsoluteInstallerUrl(urlStr);
+        if (!urlNorm) {
+            return { ok: false, error: 'URL no válida' };
+        }
         let u;
         try {
             u = new URL(urlNorm);

@@ -9,6 +9,13 @@ function isUsableHttpsUrl(s) {
     }
 }
 
+/** En Electron escritorio el aviso de actualización debe usar siempre el enlace del servidor, no `VITE_DESKTOP_INSTALLER_URL` (suele ser otra URL o vacío). */
+function isElectronZionDesktopMixer() {
+    return typeof window !== 'undefined'
+        && window.zionNative?.isDesktop === true
+        && !window.Capacitor?.isNativePlatform?.();
+}
+
 /**
  * URL del instalador Windows (.exe) desde documento `app_versions` (Firestore).
  */
@@ -29,8 +36,8 @@ export function resolveDesktopInstallerDownloadUrl(appVersionDoc) {
         typeof window !== 'undefined' && window.__ZION_DESKTOP_INSTALLER_URL__ != null
             ? String(window.__ZION_DESKTOP_INSTALLER_URL__).trim()
             : '';
-    // Si Vite inyectó una URL rota o vacía, no bloquear el enlace remoto (proxy / Firestore).
-    if (fromBuild && isUsableHttpsUrl(fromBuild)) return fromBuild;
+    // Web / PWA: URL fija de marketing. Electron escritorio: solo Firestore/proxy (evita "URL no válida" al actualizar).
+    if (!isElectronZionDesktopMixer() && fromBuild && isUsableHttpsUrl(fromBuild)) return fromBuild;
     const remote = desktopInstallerUrlFromAppVersionDoc(appVersionDoc);
     if (isUsableHttpsUrl(remote)) return remote;
     return '';
