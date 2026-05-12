@@ -198,19 +198,32 @@ export default function Landing() {
                 console.error('Error fetching latest app (Firestore):', err);
             }
 
-            /** Igual que el mixer escritorio: JSON en el proxy tras `npm run upload:desktop` (sin depender solo de Firestore). */
+            /** Proxy: API primero (fusiona Firestore en Railway); el .json estático suele ir sin URL tras release hasta subir el .exe. */
             let desktopJson = null;
             try {
-                for (const path of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
+                const semverParts = (s) => {
+                    const m = String(s || '').trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+                    return m ? [+m[1], +(m[2] || 0), +(m[3] || 0)] : [0, 0, 0];
+                };
+                const semverGt = (a, b) => {
+                    const x = semverParts(a);
+                    const y = semverParts(b);
+                    for (let i = 0; i < 3; i++) {
+                        if (x[i] !== y[i]) return x[i] > y[i];
+                    }
+                    return false;
+                };
+                let best = null;
+                for (const path of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
                     const r = await fetch(`${appReleaseProxy}${path}?cb=${Date.now()}`, { cache: 'no-store' });
                     if (!r.ok) continue;
                     const j = await r.json();
                     const u = String(j?.desktopDownloadUrl || '').trim();
-                    if (u) {
-                        desktopJson = j;
-                        break;
-                    }
+                    if (!u) continue;
+                    const vn = String(j?.versionName || '').trim() || '0.0.0';
+                    if (!best || semverGt(vn, String(best.versionName || '').trim() || '0.0.0')) best = j;
                 }
+                desktopJson = best;
             } catch (e) {
                 console.warn('app-latest-desktop (proxy):', e?.message || e);
             }

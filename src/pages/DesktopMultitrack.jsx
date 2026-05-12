@@ -1418,7 +1418,7 @@ export default function Multitrack({ session }) {
                         DEFAULT_PROXY_FOR_UPDATES,
                     ].filter(Boolean))];
                     for (const base of bases) {
-                        for (const jsonPath of ['/app-latest-desktop.json', '/api/app-latest-desktop']) {
+                        for (const jsonPath of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
                             const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
                             if (!r.ok) continue;
                             const j = await r.json();

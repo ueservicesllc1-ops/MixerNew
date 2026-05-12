@@ -24,6 +24,9 @@ export function desktopInstallerUrlFromAppVersionDoc(data) {
     const d = String(data.desktopDownloadUrl ?? '').trim();
     if (d) return d;
     const u = String(data.downloadUrl ?? '').trim();
+    if (!u) return '';
+    /** Instalador vía proxy B2 (el .exe va en el query `url=`). */
+    if (/^https:\/\//i.test(u) && /\/api\/download\?/i.test(u) && /url=/i.test(u)) return u;
     if (/\.exe(\?|$)/i.test(u)) return u;
     return '';
 }
