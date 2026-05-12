@@ -294,6 +294,7 @@ export const ProgressBar = React.memo(
             ctx.fillStyle = 'rgba(255,255,255,0.78)';
             ctx.fill();
             ctx.restore();
+
             const px = Math.round(playheadX);
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.shadowBlur = 4;
@@ -302,7 +303,7 @@ export const ProgressBar = React.memo(
             ctx.shadowBlur = 0;
             ctx.fillStyle = '#fffef0';
             ctx.fillRect(px - 1, 0, 2, h);
-        }, [nativeUi]);
+        }, [nativeUi, durationProp]);
 
         // ── Native Android: Zion waveform (cache → deferred PreviewMix decode → synthetic placeholder) ──
         useEffect(() => {
@@ -710,21 +711,30 @@ export const ProgressBar = React.memo(
                     userSelect: 'none',
                 }}
             >
-                <span
-                    ref={timeRef}
+                <div
                     style={{
-                        fontSize: '0.82rem',
-                        fontWeight: '900',
-                        color: '#fff',
-                        opacity: 0.95,
-                        fontVariantNumeric: 'tabular-nums',
-                        letterSpacing: '0.05em',
-                        textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: nativeUi ? 5 : 4,
                         flexShrink: 0,
                     }}
                 >
-                    0:00 / {formatTime(durationProp)}
-                </span>
+                    <span
+                        ref={timeRef}
+                        style={{
+                            fontSize: '0.82rem',
+                            fontWeight: '900',
+                            color: '#fff',
+                            opacity: 0.95,
+                            fontVariantNumeric: 'tabular-nums',
+                            letterSpacing: '0.05em',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                            flexShrink: 0,
+                        }}
+                    >
+                        0:00 / {formatTime(durationProp)}
+                    </span>
+                </div>
 
                 {nativeUi ? (
                     <div

@@ -1146,7 +1146,7 @@ export default function Multitrack({ session }) {
     const [bandSyncInfo, setBandSyncInfo] = useState(null);
     const [showBandSyncQr, setShowBandSyncQr] = useState(false);
     // Bottom tab panel
-    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings' | 'partituras'
+    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'partituras' | 'metronome'
 
     // ── PARTITURAS STATES ──────────────────────────────────────────
     const [activePartituras, setActivePartituras] = useState([]); // list of {id, instrument, pdfUrl, songId}
@@ -1359,7 +1359,8 @@ export default function Multitrack({ session }) {
 
     /** APK nativo / Electron: aviso si hay una versión más nueva (Firestore + app-latest.json). */
     const [appUpdateOffer, setAppUpdateOffer] = useState(null);
-    const [appUpdateDownloading, setAppUpdateDownloading] = useState(false);
+    /** Tras abrir la descarga del .exe en el navegador: pantalla bloqueada hasta cerrar la app para instalar. */
+    const [desktopUpdateBlocking, setDesktopUpdateBlocking] = useState(null);
     const [showPwaInstallBanner, setShowPwaInstallBanner] = useState(false);
     const [showPwaInstallHint, setShowPwaInstallHint] = useState(false);
     const [pwaHintCountdown, setPwaHintCountdown] = useState(5);
@@ -1431,16 +1432,25 @@ export default function Multitrack({ session }) {
                         ...HOSTING_APP_LATEST_ORIGINS,
                         DEFAULT_PROXY_FOR_UPDATES,
                     ].filter(Boolean))];
+                    /** Mismo criterio que `Landing.jsx`: no quedarse con el primer JSON con URL (p. ej. hosting estático en 1.0.3) ignorando Railway en 1.0.4. */
+                    let best = null;
                     for (const base of bases) {
                         for (const jsonPath of ['/api/app-latest-desktop', '/app-latest-desktop.json']) {
-                            const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
-                            if (!r.ok) continue;
-                            const j = await r.json();
-                            const candidate = mapRemoteAppUpdateRow(j);
-                            if (candidate && resolveDesktopInstallerDownloadUrl(candidate)) return candidate;
+                            try {
+                                const r = await fetch(`${base}${jsonPath}?cb=${Date.now()}`, { cache: 'no-store' });
+                                if (!r.ok) continue;
+                                const j = await r.json();
+                                const candidate = mapRemoteAppUpdateRow(j);
+                                if (!candidate || !resolveDesktopInstallerDownloadUrl(candidate)) continue;
+                                if (!best || isRemoteVersionNewerByName(candidate.versionName, best.versionName)) {
+                                    best = candidate;
+                                }
+                            } catch {
+                                /* siguiente base / ruta */
+                            }
                         }
                     }
-                    return null;
+                    return best;
                 })();
 
                 const [fromFs, fromJson] = await Promise.all([fromFsPromise, fromJsonPromise]);
@@ -3647,44 +3657,44 @@ export default function Multitrack({ session }) {
                     <span style={{ color: '#e2e8f0', fontSize: '0.85rem', fontWeight: '700', textAlign: 'center' }}>
                         Nueva versión {appUpdateOffer.versionName} disponible (tenés la {installedRelease.versionName}, código {installedRelease.versionCode})
                     </span>
-                    <button
-                        type="button"
-                        disabled={appUpdateDownloading}
-                        onClick={async () => {
-                            const canNative = appUpdateOffer.isDesktopInstaller
-                                && typeof window.zionNative?.downloadAndLaunchDesktopUpdate === 'function';
-                            if (canNative) {
-                                setAppUpdateDownloading(true);
-                                try {
-                                    const r = await window.zionNative.downloadAndLaunchDesktopUpdate(
-                                        appUpdateOffer.downloadUrl
-                                    );
-                                    if (!r?.ok) {
-                                        window.alert(r?.error || 'No se pudo iniciar la actualización');
-                                    }
-                                } finally {
-                                    setAppUpdateDownloading(false);
+                    <a
+                        href={appUpdateOffer.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={async (e) => {
+                            const url = appUpdateOffer.downloadUrl;
+                            const useShell =
+                                appUpdateOffer.isDesktopInstaller
+                                && typeof window.zionNative?.openExternalUrl === 'function';
+                            if (useShell) {
+                                e.preventDefault();
+                                const r = await window.zionNative.openExternalUrl(url);
+                                if (!r?.ok) {
+                                    window.alert(r?.error || 'No se pudo abrir el enlace de descarga');
+                                    return;
                                 }
-                            } else {
-                                window.open(appUpdateOffer.downloadUrl, '_blank');
+                                setDesktopUpdateBlocking({
+                                    newVersion: appUpdateOffer.versionName,
+                                    currentVersion: installedRelease.versionName,
+                                });
+                                setAppUpdateOffer(null);
                             }
                         }}
                         style={{
+                            display: 'inline-block',
                             background: '#00d2d3',
                             color: '#0f172a',
                             border: 'none',
                             padding: '8px 18px',
                             borderRadius: '8px',
                             fontWeight: '800',
-                            cursor: appUpdateDownloading ? 'wait' : 'pointer',
+                            cursor: 'pointer',
                             fontSize: '0.85rem',
-                            opacity: appUpdateDownloading ? 0.75 : 1,
+                            textDecoration: 'none',
                         }}
                     >
-                        {appUpdateDownloading
-                            ? 'Descargando…'
-                            : (appUpdateOffer.isDesktopInstaller ? 'Descargar e instalar' : 'Descargar APK')}
-                    </button>
+                        {appUpdateOffer.isDesktopInstaller ? 'Abrir descarga (navegador)' : 'Descargar APK'}
+                    </a>
                     <button
                         type="button"
                         onClick={() => {
@@ -3703,6 +3713,99 @@ export default function Multitrack({ session }) {
                     >
                         Más tarde
                     </button>
+                </div>
+            )}
+
+            {desktopUpdateBlocking && (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="desktop-update-blocking-title"
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 400000,
+                        background: 'rgba(2, 6, 23, 0.97)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '24px',
+                        boxSizing: 'border-box',
+                    }}
+                >
+                    <div
+                        style={{
+                            maxWidth: 520,
+                            width: '100%',
+                            background: 'linear-gradient(165deg, #0f172a 0%, #1e293b 100%)',
+                            border: '1px solid rgba(0, 210, 211, 0.45)',
+                            borderRadius: '14px',
+                            padding: '26px 28px',
+                            boxShadow: '0 24px 80px rgba(0,0,0,0.65)',
+                        }}
+                    >
+                        <h2
+                            id="desktop-update-blocking-title"
+                            style={{
+                                margin: '0 0 14px',
+                                color: '#f8fafc',
+                                fontSize: '1.25rem',
+                                fontWeight: 800,
+                                letterSpacing: '0.02em',
+                                lineHeight: 1.25,
+                            }}
+                        >
+                            Cerrá Zion Stage e instalá la versión nueva
+                        </h2>
+                        <p style={{ margin: '0 0 12px', color: '#cbd5e1', fontSize: '0.95rem', lineHeight: 1.55 }}>
+                            Se abrió el navegador para descargar el instalador de la versión{' '}
+                            <strong style={{ color: '#5eead4' }}>{desktopUpdateBlocking.newVersion}</strong>
+                            {' '}(ahora tenés la{' '}
+                            <strong style={{ color: '#e2e8f0' }}>{desktopUpdateBlocking.currentVersion}</strong>).
+                        </p>
+                        <ol
+                            style={{
+                                margin: '0 0 20px',
+                                paddingLeft: '1.25rem',
+                                color: '#94a3b8',
+                                fontSize: '0.9rem',
+                                lineHeight: 1.65,
+                            }}
+                        >
+                            <li>Esperá a que termine la descarga (archivo tipo <code style={{ color: '#7dd3fc' }}>ZionStage-Desktop-…-Setup.exe</code>).</li>
+                            <li>Cerrá esta aplicación por completo (no dejes la mezcla abierta en segundo plano).</li>
+                            <li>Abrí el archivo descargado desde Descargas y seguí el asistente de instalación.</li>
+                            <li>Volvé a abrir Zion Stage desde el acceso directo o el menú Inicio.</li>
+                        </ol>
+                        <p style={{ margin: '0 0 18px', color: '#64748b', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                            Esta pantalla queda bloqueada a propósito: el instalador necesita que el programa no esté en uso.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                try {
+                                    if (typeof window.zionNative?.quitApp === 'function') {
+                                        await window.zionNative.quitApp();
+                                    }
+                                } catch {
+                                    /* la app debería cerrarse */
+                                }
+                            }}
+                            style={{
+                                width: '100%',
+                                background: '#00d2d3',
+                                color: '#0f172a',
+                                border: 'none',
+                                padding: '14px 18px',
+                                borderRadius: '10px',
+                                fontWeight: 800,
+                                fontSize: '0.95rem',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            Cerrar aplicación ahora
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -4511,7 +4614,6 @@ export default function Multitrack({ session }) {
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
                     { id: 'metronome', label: 'Metrónomo' },
-                    { id: 'settings', label: 'Ajustes' },
                 ].map(tab => {
                     const isActive = activeTab === tab.id;
                     // Lista and Pads open drawers directly (especially useful on mobile)
@@ -5029,24 +5131,16 @@ export default function Multitrack({ session }) {
                             </div>
                             <button
                                 type="button"
-                                className={`transport-btn ${routeModalOpen ? 'active' : ''}`}
+                                className="settings-route-config-btn"
                                 title="Abrir configuración de ruteo"
                                 onClick={() => {
                                     setIsSettingsOpen(false);
                                     setRouteModalOpen(true);
                                 }}
                                 style={{
-                                    padding: '10px 16px',
-                                    borderRadius: '10px',
-                                    border: '1px solid #cbd5e1',
+                                    borderColor: routeModalOpen ? '#0284c7' : (darkMode ? '#475569' : '#cbd5e1'),
                                     background: routeModalOpen ? '#0369a1' : (darkMode ? '#334155' : '#f8fafc'),
                                     color: routeModalOpen ? '#fff' : (darkMode ? '#e2e8f0' : '#0f172a'),
-                                    fontWeight: 700,
-                                    fontSize: '0.8rem',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '8px',
                                 }}
                             >
                                 <Network size={18} />

@@ -54,11 +54,14 @@ contextBridge.exposeInMainWorld('zionNative', {
     bandSyncGetInfo: () => ipcRenderer.invoke('band-sync:get-info'),
     bandSyncBroadcastState: (state) => ipcRenderer.invoke('band-sync:broadcast', state),
 
-    /** Descarga el .exe a temp y abre el instalador (Windows). */
-    downloadAndLaunchDesktopUpdate: (url) => {
+    /** Abrir URL en el navegador (p. ej. descarga del instalador .exe). */
+    openExternalUrl: (url) => {
         const s = url == null ? '' : String(url).trim().replace(/[\r\n\t]+/g, '');
-        return ipcRenderer.invoke('desktop:download-and-launch-update', s);
+        return ipcRenderer.invoke('shell:open-external', s);
     },
+
+    /** Cierra toda la aplicación de escritorio. */
+    quitApp: () => ipcRenderer.invoke('app:quit'),
 
     /** Versión instalada (package.json del build) + código numérico para comparar con el servidor. */
     getDesktopReleaseInfo: () => ipcRenderer.invoke('app:get-desktop-release-info'),

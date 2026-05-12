@@ -285,98 +285,31 @@ app.whenReady().then(() => {
         };
     });
 
-    /** Coma-separados; si está vacío, cualquier host https permitido (solo .exe). */
-    function parseAllowedDesktopUpdateHosts() {
-        const raw = process.env.ZION_DESKTOP_UPDATE_HOSTS || '';
-        if (!String(raw).trim()) return null;
-        return String(raw).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    }
-
-    /** .exe directo o proxy tipo `/api/download?url=https%3A%2F%2F...%2Ffile.exe` (pathname no termina en .exe). */
-    function isHttpsDesktopInstallerUrl(u) {
-        if (!u || u.protocol !== 'https:') return false;
-        const pathname = u.pathname.toLowerCase();
-        if (pathname.endsWith('.exe')) return true;
-        const base = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-        if (base.endsWith('/api/download')) {
-            const inner = u.searchParams.get('url');
-            if (!inner || typeof inner !== 'string') return false;
-            try {
-                const innerU = new URL(inner.trim());
-                if (innerU.protocol !== 'https:') return false;
-                const p = innerU.pathname.toLowerCase();
-                return p.endsWith('.exe') || /\.exe(\?|#|$)/i.test(innerU.pathname + innerU.search);
-            } catch {
-                return false;
-            }
-        }
-        return false;
-    }
-
-    /** Absolutiza rutas relativas (p. ej. `/api/download?...`) contra el proxy público. */
-    function resolveAbsoluteInstallerUrl(raw) {
-        const t = (typeof raw === 'string' ? raw : String(raw ?? '')).trim().replace(/[\r\n\t]+/g, '');
-        if (!t) return null;
-        try {
-            return new URL(t).href;
-        } catch {
-            /* ignore */
-        }
-        if (t.startsWith('//')) {
-            try {
-                return new URL(`https:${t}`).href;
-            } catch {
-                return null;
-            }
-        }
-        if (t.startsWith('/')) {
-            const base = String(process.env.PROXY_URL || 'https://mixernew-production.up.railway.app').replace(/\/$/, '');
-            try {
-                return new URL(t, `${base}/`).href;
-            } catch {
-                return null;
-            }
-        }
-        return null;
-    }
-
-    ipcMain.handle('desktop:download-and-launch-update', async (_e, urlStr) => {
-        const urlNorm = resolveAbsoluteInstallerUrl(urlStr);
-        if (!urlNorm) {
-            return { ok: false, error: 'URL no válida' };
-        }
+    /** Actualización escritorio: abrir la URL en el navegador predeterminado (TLS del navegador, sin fetch en Electron). */
+    ipcMain.handle('shell:open-external', async (_e, urlStr) => {
+        const s = String(urlStr ?? '').trim().replace(/[\r\n\t\u00a0\u200b-\u200d\ufeff]+/g, '');
+        if (!s) return { ok: false, error: 'URL vacía' };
         let u;
         try {
-            u = new URL(urlNorm);
+            u = new URL(s);
         } catch {
             return { ok: false, error: 'URL no válida' };
         }
-        if (!isHttpsDesktopInstallerUrl(u)) {
-            return { ok: false, error: 'El enlace debe ser https y apuntar a un instalador .exe (o al proxy /api/download?url=…)' };
+        if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+            return { ok: false, error: 'Solo enlaces http(s)' };
         }
-        const allowed = parseAllowedDesktopUpdateHosts();
-        if (allowed?.length && !allowed.includes(u.hostname.toLowerCase())) {
-            return { ok: false, error: 'Dominio del instalador no permitido' };
-        }
-        const dest = path.join(app.getPath('temp'), `zion_stage_update_${Date.now()}.exe`);
         try {
-            const res = await fetch(urlNorm, { redirect: 'follow' });
-            if (!res.ok) {
-                return { ok: false, error: `Descarga fallida (${res.status})` };
-            }
-            const buf = Buffer.from(await res.arrayBuffer());
-            if (buf.length < 50_000) {
-                return { ok: false, error: 'Archivo demasiado pequeño o corrupto' };
-            }
-            await fs.promises.writeFile(dest, buf, { mode: 0o644 });
-            const errMsg = await shell.openPath(dest);
-            if (errMsg) {
-                return { ok: false, error: errMsg };
-            }
-            return { ok: true, path: dest };
-        } catch (err) {
-            return { ok: false, error: String(err?.message || err) };
+            await shell.openExternal(u.href);
+            return { ok: true };
+        } catch (e) {
+            return { ok: false, error: String(e?.message || e) };
         }
+    });
+
+    /** Cerrar la app por completo (p. ej. tras iniciar descarga del instalador para que el usuario ejecute el .exe). */
+    ipcMain.handle('app:quit', () => {
+        app.quit();
+        return { ok: true };
     });
 
     ipcMain.handle('cache:save', async (e, filename, buffer) => {

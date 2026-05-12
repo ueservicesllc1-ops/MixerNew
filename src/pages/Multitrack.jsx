@@ -458,7 +458,7 @@ export default function Multitrack() {
     const [bandSyncInfo, setBandSyncInfo] = useState(null);
     const [showBandSyncQr, setShowBandSyncQr] = useState(false);
     // Bottom tab panel
-    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'settings' | 'partituras'
+    const [activeTab, setActiveTab] = useState(null); // null | 'lyrics' | 'chords' | 'video' | 'partituras' | 'metronome'
 
     // ── PARTITURAS STATES ──────────────────────────────────────────
     const [activePartituras, setActivePartituras] = useState([]); // list of {id, instrument, pdfUrl, songId}
@@ -3053,7 +3053,6 @@ export default function Multitrack() {
                     { id: 'lyrics', label: 'Lyrics' },
                     { id: 'chords', label: 'Acordes' },
                     { id: 'metronome', label: 'Metrónomo' },
-                    { id: 'settings', label: 'Ajustes' },
                 ].map(tab => {
                     const isActive = activeTab === tab.id;
                     // Lista and Pads open drawers directly (especially useful on mobile)
