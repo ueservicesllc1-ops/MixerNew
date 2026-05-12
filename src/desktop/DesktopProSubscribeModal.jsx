@@ -95,7 +95,15 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                     isAnnual: false,
                 }),
             });
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                const msg = data.error || res.statusText || 'Error del servidor';
+                const hint =
+                    /invalid api key/i.test(String(msg))
+                        ? ' Revisa en Railway (o donde corre b2-proxy) la variable STRIPE_SECRET_KEY: debe ser sk_live_… o sk_test_ válida y del mismo modo que la clave publicable en el front.'
+                        : '';
+                throw new Error(`${msg}${hint}`);
+            }
             if (!data.clientSecret) {
                 throw new Error(data.error || 'No se pudo iniciar el pago. Si acabas de publicar estos planes, el servidor debe tener los Price IDs de Stripe para estos planId.');
             }
