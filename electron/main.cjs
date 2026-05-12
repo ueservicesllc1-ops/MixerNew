@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('./db.cjs');
 const encCache = require('./EncryptedCacheService.cjs');
+const bandSyncServer = require('./bandSyncServer.cjs');
 
 /** Título de diálogos nativos (alert/confirm del renderer) y nombre visible de la app. */
 app.setName('Zion Stage');
@@ -312,6 +313,20 @@ app.whenReady().then(() => {
     ipcMain.handle('cache:read', (e, filename) => encCache.readDecryptedBuffer(filename));
     ipcMain.handle('cache:exists', (e, filename) => encCache.fileExists(filename));
 
+    /** Band Sync — vista seguidora en http://<LAN>:<puerto>/band */
+    ipcMain.handle('band-sync:start', async (_e, port) => bandSyncServer.start(port ?? 8080));
+    ipcMain.handle('band-sync:stop', () => bandSyncServer.stop());
+    ipcMain.handle('band-sync:get-info', () => bandSyncServer.getInfo());
+    ipcMain.handle('band-sync:broadcast', (_e, state) => {
+        bandSyncServer.broadcastState(state);
+        return bandSyncServer.getInfo();
+    });
+    app.on('will-quit', () => {
+        try {
+            bandSyncServer.stop();
+        } catch (_) { /* ignore */ }
+    });
+
     function sanitizePcStemName(raw) {
         let s = String(raw || 'Stem').replace(/\.[^.]+$/i, '');
         s = s.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ _-]/g, '').trim().replace(/\s+/g, '_');
@@ -363,41 +378,88 @@ app.whenReady().then(() => {
         }
     });
 
-    /** Un stem en bruto para decodificar la onda en el renderer (sin __PreviewMix). */
+    /** Bytes de audio para decodificar la onda en el renderer (prioriza __PreviewMix si existe). */
     ipcMain.handle('desktop:read-waveform-stem-buffer', async (_e, songId) => {
+        const scoreStem = (tr) => {
+            const nm = String(tr?.name || '').toLowerCase();
+            if (nm === '__previewmix') return 100;
+            if (nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue')) return -1;
+            if (nm.includes('drum') || nm.includes('bass') || nm.includes('kick')) return 50;
+            return 10;
+        };
+
+        const looksLikeFsPath = (p) => {
+            const s = String(p || '').trim();
+            if (!s) return false;
+            return /^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('/') || s.startsWith('\\\\');
+        };
+
+        const tryReadStemBytes = async (tr) => {
+            if (!tr?.name) return null;
+            const pathCandidates = [
+                tr.sourceAbsolutePath,
+                tr.absolutePath,
+                tr.path,
+                tr.filename,
+            ]
+                .map((x) => String(x || '').trim())
+                .filter(Boolean);
+            for (const p of pathCandidates) {
+                try {
+                    if (p && fs.existsSync(p)) {
+                        return fs.readFileSync(p);
+                    }
+                } catch { /* ignore */ }
+            }
+
+            const keyCandidates = [];
+            const pushKey = (raw) => {
+                const s = String(raw || '').trim();
+                if (!s) return;
+                if (!keyCandidates.includes(s)) keyCandidates.push(s);
+                const bn = path.basename(s);
+                if (bn && bn !== s && !keyCandidates.includes(bn)) keyCandidates.push(bn);
+            };
+            pushKey(tr.cacheKey);
+            pushKey(tr.localPath);
+            for (const ext of ['.mp3', '.wav', '.flac']) {
+                pushKey(`${songId}_${tr.name}${ext}`);
+            }
+
+            for (const k of keyCandidates) {
+                const kk = String(k).trim();
+                if (!kk) continue;
+                if (looksLikeFsPath(kk)) {
+                    try {
+                        if (fs.existsSync(kk)) return fs.readFileSync(kk);
+                    } catch { /* ignore */ }
+                    continue;
+                }
+                const bn = path.basename(kk);
+                if (!bn) continue;
+                try {
+                    const decPath = await encCache.getDecryptedTempPath(bn);
+                    if (decPath && fs.existsSync(decPath)) {
+                        return fs.readFileSync(decPath);
+                    }
+                } catch { /* ignore */ }
+                try {
+                    const mem = await encCache.readDecryptedBuffer(bn);
+                    if (mem && mem.length) return mem;
+                } catch { /* ignore */ }
+            }
+            return null;
+        };
+
         try {
             const row = db.getSong(songId);
-            const tracks = parseSongTracksFromRow(row).filter((t) => t && t.name && t.name !== '__PreviewMix');
-            const scoreStem = (tr) => {
-                const nm = (tr.name || '').toLowerCase();
-                if (nm.includes('click') || nm.includes('guide') || nm.includes('guia') || nm.includes('cue')) return -1;
-                if (nm.includes('drum') || nm.includes('bass') || nm.includes('kick')) return 50;
-                return 10;
-            };
-            let best = null;
-            let bestS = -999;
-            for (const tr of tracks) {
-                const s = scoreStem(tr);
-                if (s > bestS) {
-                    bestS = s;
-                    best = tr;
-                }
-            }
-            if (!best) return null;
+            const tracks = parseSongTracksFromRow(row).filter((t) => t && t.name);
+            if (!tracks.length) return null;
 
-            const src = String(best.sourceAbsolutePath || '').trim();
-            if (src && fs.existsSync(src)) {
-                return fs.readFileSync(src);
-            }
-
-            const keyCandidates = [best.cacheKey, best.localPath, `${songId}_${best.name}.mp3`, `${songId}_${best.name}.wav`].filter(Boolean);
-            for (const k of keyCandidates) {
-                const bn = path.basename(String(k).trim());
-                if (!bn) continue;
-                const decPath = await encCache.getDecryptedTempPath(bn);
-                if (decPath && fs.existsSync(decPath)) {
-                    return fs.readFileSync(decPath);
-                }
+            const ordered = [...tracks].sort((a, b) => scoreStem(b) - scoreStem(a));
+            for (const tr of ordered) {
+                const buf = await tryReadStemBytes(tr);
+                if (buf && buf.length) return buf;
             }
             return null;
         } catch (e) {

@@ -48,6 +48,12 @@ contextBridge.exposeInMainWorld('zionNative', {
     resolveStem: (songId, stemName, isNormalized) => ipcRenderer.invoke('desktop:resolve-stem', songId, stemName, !!isNormalized),
     readWaveformStemBuffer: (songId) => ipcRenderer.invoke('desktop:read-waveform-stem-buffer', songId),
 
+    /** Band Sync: HTTP + SSE en LAN (móviles abren la URL del QR). */
+    bandSyncStart: (port) => ipcRenderer.invoke('band-sync:start', port),
+    bandSyncStop: () => ipcRenderer.invoke('band-sync:stop'),
+    bandSyncGetInfo: () => ipcRenderer.invoke('band-sync:get-info'),
+    bandSyncBroadcastState: (state) => ipcRenderer.invoke('band-sync:broadcast', state),
+
     /** Descarga el .exe a temp y abre el instalador (Windows). */
     downloadAndLaunchDesktopUpdate: (url) => ipcRenderer.invoke('desktop:download-and-launch-update', url),
 

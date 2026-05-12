@@ -26,7 +26,7 @@ function clearMixerLastSetlistId() {
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
 import { padEngine } from '../PadEngine'
-import { BandSyncEngine } from '../BandSyncEngine'
+import { BandSyncEngine, isBandSyncHostSupported } from '../BandSyncEngine'
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
     DndContext,
@@ -501,10 +501,19 @@ export default function Multitrack() {
             setShowBandSyncQr(false);
             return;
         }
+        if (!isBandSyncHostSupported()) {
+            alert(t('multitrack.bandSyncUnavailableHost'));
+            return;
+        }
         const info = await BandSyncEngine.ensureServer(8080);
+        if (!info?.running || !String(info.url || '').trim()) {
+            alert(t('multitrack.bandSyncServerFailed'));
+            setBandSyncInfo(info);
+            return;
+        }
         setBandSyncInfo(info);
         setShowBandSyncQr(true);
-    }, [showBandSyncQr]);
+    }, [showBandSyncQr, t]);
 
     // Login Details
     const [showLoginModal, setShowLoginModal] = useState(false);
@@ -2105,7 +2114,7 @@ export default function Multitrack() {
     }, [activeSongId]);
 
     useEffect(() => {
-        if (!isAppNative) return undefined;
+        if (!isAppNative || !isBandSyncHostSupported()) return undefined;
         if (!bandSyncInfo?.running) return undefined;
         const fullTeleprompterText = (text) => {
             if (typeof text !== 'string') return '';
@@ -2169,7 +2178,7 @@ export default function Multitrack() {
     }, [activeSong, activeSetlist, activePartituras, activeTab, activeLyrics, activeChords, activeMarkers, isPlaying, selectedPartitura, bandSyncInfo?.running]);
 
     useEffect(() => {
-        if (!isAppNative || !bandSyncInfo?.running) return undefined;
+        if (!isAppNative || !isBandSyncHostSupported() || !bandSyncInfo?.running) return undefined;
         const poll = async () => {
             const info = await BandSyncEngine.getInfo();
             setBandSyncInfo(info);
@@ -2829,7 +2838,7 @@ export default function Multitrack() {
                             <button onClick={handleLogout} className="transport-btn" title={t('multitrack.logoutTitle')}><LogOut size={18} /></button>
                         </div>
                     )}
-                    {isAppNative && (
+                    {isAppNative && isBandSyncHostSupported() && (
                         <button
                             className={`transport-btn ${showBandSyncQr ? 'active' : ''}`}
                             title={t('multitrack.bandSyncTitle')}
@@ -2855,7 +2864,7 @@ export default function Multitrack() {
                 </div>
             </div>
 
-            {isAppNative && showBandSyncQr && bandSyncInfo?.url && (
+            {isAppNative && isBandSyncHostSupported() && showBandSyncQr && bandSyncInfo?.url && (
                 <div
                     style={{
                         position: 'fixed',
@@ -2907,6 +2916,20 @@ export default function Multitrack() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                                 <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>Escanea para entrar</div>
                                 <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Clientes conectados: {bandSyncInfo.clients || 0}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.7rem', lineHeight: 1.35 }}>
+                                    Misma Wi‑Fi que este dispositivo. Si no escanea, abre la URL en el móvil.
+                                </div>
+                                <div
+                                    style={{
+                                        color: '#22d3ee',
+                                        fontSize: '0.68rem',
+                                        wordBreak: 'break-all',
+                                        fontFamily: 'ui-monospace, monospace',
+                                        marginTop: 4,
+                                    }}
+                                >
+                                    {bandSyncInfo.url}
+                                </div>
                             </div>
                         </div>
                     </div>

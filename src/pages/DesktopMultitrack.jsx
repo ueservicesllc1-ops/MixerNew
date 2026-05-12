@@ -209,7 +209,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Search, ArrowRight, QrCode } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Search, ArrowRight, QrCode, Languages } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, setDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -228,7 +228,7 @@ function clearMixerLastSetlistId() {
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
 import { padEngine } from '../PadEngine'
-import { BandSyncEngine } from '../BandSyncEngine'
+import { BandSyncEngine, isBandSyncHostSupported } from '../BandSyncEngine'
 import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
     DndContext,
@@ -1291,10 +1291,19 @@ export default function Multitrack({ session }) {
             setShowBandSyncQr(false);
             return;
         }
+        if (!isBandSyncHostSupported()) {
+            alert(t('multitrack.bandSyncUnavailableHost'));
+            return;
+        }
         const info = await BandSyncEngine.ensureServer(8080);
+        if (!info?.running || !String(info.url || '').trim()) {
+            alert(t('multitrack.bandSyncServerFailed'));
+            setBandSyncInfo(info);
+            return;
+        }
         setBandSyncInfo(info);
         setShowBandSyncQr(true);
-    }, [showBandSyncQr]);
+    }, [showBandSyncQr, t]);
 
     // Login Details
     const [showLoginModal, setShowLoginModal] = useState(false);
@@ -3103,7 +3112,7 @@ export default function Multitrack({ session }) {
     }, [activeSongId]);
 
     useEffect(() => {
-        if (!isAppNative) return undefined;
+        if (!isAppNative || !isBandSyncHostSupported()) return undefined;
         if (!bandSyncInfo?.running) return undefined;
         const fullTeleprompterText = (text) => {
             if (typeof text !== 'string') return '';
@@ -3167,7 +3176,7 @@ export default function Multitrack({ session }) {
     }, [activeSong, activeSetlist, activePartituras, activeTab, activeLyrics, activeChords, activeMarkers, isPlaying, selectedPartitura, bandSyncInfo?.running]);
 
     useEffect(() => {
-        if (!isAppNative || !bandSyncInfo?.running) return undefined;
+        if (!isAppNative || !isBandSyncHostSupported() || !bandSyncInfo?.running) return undefined;
         const poll = async () => {
             const info = await BandSyncEngine.getInfo();
             setBandSyncInfo(info);
@@ -3850,7 +3859,6 @@ export default function Multitrack({ session }) {
                 </div>
 
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <LanguageSwitch compact />
                     {!currentUser || (currentUser && currentUser.isAnonymous) ? (
                         <button
                             onClick={() => { setAuthMode('login'); setShowAuthModal(true); }}
@@ -3866,7 +3874,7 @@ export default function Multitrack({ session }) {
                             <button onClick={handleLogout} className="transport-btn" title={t('multitrack.logoutTitle')}><LogOut size={18} /></button>
                         </div>
                     )}
-                    {isAppNative && (
+                    {isAppNative && isBandSyncHostSupported() && (
                         <button
                             className={`transport-btn ${showBandSyncQr ? 'active' : ''}`}
                             title={t('multitrack.bandSyncTitle')}
@@ -3874,20 +3882,6 @@ export default function Multitrack({ session }) {
                             style={{ background: showBandSyncQr ? '#00bcd4' : undefined, color: showBandSyncQr ? 'white' : undefined }}
                         >
                             <QrCode size={20} />
-                        </button>
-                    )}
-                    {isElectronDesktopMixer() && (
-                        <button
-                            type="button"
-                            className={`transport-btn ${routeModalOpen ? 'active' : ''}`}
-                            title="Ruteo multi-salida (orden de pistas)"
-                            onClick={() => setRouteModalOpen(true)}
-                            style={{
-                                background: routeModalOpen ? '#0369a1' : undefined,
-                                color: routeModalOpen ? 'white' : undefined,
-                            }}
-                        >
-                            <Network size={20} />
                         </button>
                     )}
                     <button
@@ -3905,7 +3899,7 @@ export default function Multitrack({ session }) {
                 </div>
             </div>
 
-            {isAppNative && showBandSyncQr && bandSyncInfo?.url && (
+            {isAppNative && isBandSyncHostSupported() && showBandSyncQr && bandSyncInfo?.url && (
                 <div
                     style={{
                         position: 'fixed',
@@ -3957,6 +3951,20 @@ export default function Multitrack({ session }) {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
                                 <div style={{ color: '#e2e8f0', fontWeight: 700, fontSize: '0.82rem' }}>Escanea para entrar</div>
                                 <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Clientes conectados: {bandSyncInfo.clients || 0}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.7rem', lineHeight: 1.35 }}>
+                                    Misma Wi‑Fi que este PC. Si no escanea, abre la URL en el móvil.
+                                </div>
+                                <div
+                                    style={{
+                                        color: '#22d3ee',
+                                        fontSize: '0.68rem',
+                                        wordBreak: 'break-all',
+                                        fontFamily: 'ui-monospace, monospace',
+                                        marginTop: 4,
+                                    }}
+                                >
+                                    {bandSyncInfo.url}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -4922,6 +4930,64 @@ export default function Multitrack({ session }) {
                         <X size={24} />
                     </button>
                 </div>
+
+                {/* ── Idioma (ES / EN) ─────────────────────────────── */}
+                <div className="settings-section">
+                    <div className="settings-row">
+                        <div className="settings-label">
+                            <div className="settings-icon-wrap" style={{ background: darkMode ? '#2d3748' : '#eef2ff' }}>
+                                <Languages size={16} color="#6366f1" />
+                            </div>
+                            <div>
+                                <div className="settings-title">Idioma</div>
+                                <div className="settings-sub">Interfaz en español o inglés</div>
+                            </div>
+                        </div>
+                        <LanguageSwitch light={!darkMode} />
+                    </div>
+                </div>
+
+                {/* ── Ruteo de audio (solo app escritorio) ─────────── */}
+                {isElectronDesktopMixer() && (
+                    <div className="settings-section">
+                        <div className="settings-row">
+                            <div className="settings-label">
+                                <div className="settings-icon-wrap" style={{ background: darkMode ? '#2d3748' : '#e0f2fe' }}>
+                                    <Network size={16} color="#0369a1" />
+                                </div>
+                                <div>
+                                    <div className="settings-title">Ruteo de audio</div>
+                                    <div className="settings-sub">Multi-salida y orden de pistas por canal</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className={`transport-btn ${routeModalOpen ? 'active' : ''}`}
+                                title="Abrir configuración de ruteo"
+                                onClick={() => {
+                                    setIsSettingsOpen(false);
+                                    setRouteModalOpen(true);
+                                }}
+                                style={{
+                                    padding: '10px 16px',
+                                    borderRadius: '10px',
+                                    border: '1px solid #cbd5e1',
+                                    background: routeModalOpen ? '#0369a1' : (darkMode ? '#334155' : '#f8fafc'),
+                                    color: routeModalOpen ? '#fff' : (darkMode ? '#e2e8f0' : '#0f172a'),
+                                    fontWeight: 700,
+                                    fontSize: '0.8rem',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                }}
+                            >
+                                <Network size={18} />
+                                Configurar
+                            </button>
+                        </div>
+                    </div>
+                )}
 
                 {/* ── 1. Dark Mode ──────────────────────────────────── */}
                 <div className="settings-section">

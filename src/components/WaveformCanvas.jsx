@@ -142,9 +142,13 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
             if (!bufferToUse && (isNative || window.zionNative) && !suppressHeavyWork) {
                 try {
                     await new Promise((r) => setTimeout(r, 0));
-                    
-                    // Throttle/Idle logic
+
+                    // Electron: el motor va por JUCE (sin buffers en audioEngine); no retrasar el I/O con idle largo.
                     await new Promise((r) => {
+                        if (isZionElectronDesktop) {
+                            setTimeout(r, 80);
+                            return;
+                        }
                         if (typeof requestIdleCallback !== 'undefined') {
                             requestIdleCallback(() => r(), { timeout: 60000 });
                         } else {
@@ -266,7 +270,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                 if (fallbackTimer) clearTimeout(fallbackTimer);
             };
         }
-    }, [songId, tracks, peaks, isNative, suppressHeavyWork]);
+    }, [songId, tracks, peaks, isNative, isZionElectronDesktop, suppressHeavyWork]);
 
     const isDraggingRef = useRef(false);
 

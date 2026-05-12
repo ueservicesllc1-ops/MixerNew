@@ -281,6 +281,10 @@ export default {
     skipFwd: 'Siguiente',
     volMaster: 'Volumen master',
     bandSyncTitle: 'Band Sync QR (activa servidor)',
+    bandSyncUnavailableHost:
+      'Band Sync no está disponible en este entorno. Usa la app de escritorio Zion Stage (Windows) o la app móvil cuando el servidor esté integrado.',
+    bandSyncServerFailed:
+      'No se pudo iniciar el servidor Band Sync (puerto ocupado o error de red). En Android/iOS hace falta el plugin nativo BandSyncBridge si aún no está en tu build.',
     close: 'Cerrar',
   },
   landing: {
