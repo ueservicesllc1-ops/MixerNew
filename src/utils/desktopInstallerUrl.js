@@ -1,3 +1,14 @@
+function isUsableHttpsUrl(s) {
+    const t = String(s || '').trim();
+    if (!t) return false;
+    try {
+        const u = new URL(t);
+        return u.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
 /**
  * URL del instalador Windows (.exe) desde documento `app_versions` (Firestore).
  */
@@ -15,9 +26,12 @@ export function desktopInstallerUrlFromAppVersionDoc(data) {
  */
 export function resolveDesktopInstallerDownloadUrl(appVersionDoc) {
     const fromBuild =
-        typeof window !== 'undefined' && window.__ZION_DESKTOP_INSTALLER_URL__
+        typeof window !== 'undefined' && window.__ZION_DESKTOP_INSTALLER_URL__ != null
             ? String(window.__ZION_DESKTOP_INSTALLER_URL__).trim()
             : '';
-    if (fromBuild) return fromBuild;
-    return desktopInstallerUrlFromAppVersionDoc(appVersionDoc);
+    // Si Vite inyectó una URL rota o vacía, no bloquear el enlace remoto (proxy / Firestore).
+    if (fromBuild && isUsableHttpsUrl(fromBuild)) return fromBuild;
+    const remote = desktopInstallerUrlFromAppVersionDoc(appVersionDoc);
+    if (isUsableHttpsUrl(remote)) return remote;
+    return '';
 }

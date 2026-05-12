@@ -292,20 +292,37 @@ app.whenReady().then(() => {
         return String(raw).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     }
 
+    /** .exe directo o proxy tipo `/api/download?url=https%3A%2F%2F...%2Ffile.exe` (pathname no termina en .exe). */
+    function isHttpsDesktopInstallerUrl(u) {
+        if (!u || u.protocol !== 'https:') return false;
+        const pathname = u.pathname.toLowerCase();
+        if (pathname.endsWith('.exe')) return true;
+        const base = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+        if (base.endsWith('/api/download')) {
+            const inner = u.searchParams.get('url');
+            if (!inner || typeof inner !== 'string') return false;
+            try {
+                const innerU = new URL(inner.trim());
+                if (innerU.protocol !== 'https:') return false;
+                const p = innerU.pathname.toLowerCase();
+                return p.endsWith('.exe') || /\.exe(\?|#|$)/i.test(innerU.pathname + innerU.search);
+            } catch {
+                return false;
+            }
+        }
+        return false;
+    }
+
     ipcMain.handle('desktop:download-and-launch-update', async (_e, urlStr) => {
-        const urlNorm = (typeof urlStr === 'string' ? urlStr : '').trim();
+        const urlNorm = (typeof urlStr === 'string' ? urlStr : '').trim().replace(/[\r\n\t]+/g, '');
         let u;
         try {
             u = new URL(urlNorm);
         } catch {
             return { ok: false, error: 'URL no válida' };
         }
-        if (u.protocol !== 'https:') {
-            return { ok: false, error: 'Solo se permiten enlaces https' };
-        }
-        const pathname = u.pathname.toLowerCase();
-        if (!pathname.endsWith('.exe')) {
-            return { ok: false, error: 'El instalador debe ser un archivo .exe' };
+        if (!isHttpsDesktopInstallerUrl(u)) {
+            return { ok: false, error: 'El enlace debe ser https y apuntar a un instalador .exe (o al proxy /api/download?url=…)' };
         }
         const allowed = parseAllowedDesktopUpdateHosts();
         if (allowed?.length && !allowed.includes(u.hostname.toLowerCase())) {
