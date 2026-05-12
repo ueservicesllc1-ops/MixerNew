@@ -114,7 +114,9 @@ export default function Landing() {
             versionName: vn.slice(0, 47),
             createdAt: serverTimestamp(),
             locale: typeof navigator !== 'undefined' ? String(navigator.language || '').slice(0, 47) : '',
-        }).catch(() => {});
+        }).catch((err) => {
+            console.warn('[desktop_download_events]', err?.code || err?.message || err);
+        });
     };
 
     useEffect(() => {

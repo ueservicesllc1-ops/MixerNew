@@ -108,12 +108,15 @@ service cloud.firestore {
 
     // -- Desktop: clicks de descarga del instalador (web). Solo admin lee.
     match /desktop_download_events/{id} {
+      // `serverTimestamp()` no siempre cumple `== request.time` en reglas; ventana corta alrededor del reloj del servidor.
       allow create: if request.resource.data.keys().hasOnly(['source', 'versionName', 'createdAt', 'locale'])
         && request.resource.data.source in ['landing_modal', 'landing_hero', 'landing_win']
         && request.resource.data.versionName is string
         && request.resource.data.versionName.size() > 0
         && request.resource.data.versionName.size() < 48
-        && request.resource.data.createdAt == request.time
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.createdAt <= request.time + duration.value(5, 's')
+        && request.resource.data.createdAt >= request.time - duration.value(5, 's')
         && request.resource.data.locale is string
         && request.resource.data.locale.size() < 48;
       allow read, update, delete: if isAdmin();
@@ -124,7 +127,9 @@ service cloud.firestore {
       allow read, delete: if isAdmin();
       allow create, update: if clientId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
         && request.resource.data.keys().hasOnly(['lastSeenAt', 'firstSeenAt', 'versionName', 'platform', 'firebaseUid'])
-        && request.resource.data.lastSeenAt == request.time
+        && request.resource.data.lastSeenAt is timestamp
+        && request.resource.data.lastSeenAt <= request.time + duration.value(5, 's')
+        && request.resource.data.lastSeenAt >= request.time - duration.value(5, 's')
         && request.resource.data.versionName is string
         && request.resource.data.versionName.size() > 0
         && request.resource.data.versionName.size() <= 32
