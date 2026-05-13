@@ -12,10 +12,16 @@ import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
 import { isPlausibleWindowsInstallerHttpsUrl } from '../utils/desktopInstallerUrl';
 import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
+import { DESKTOP_PRO_PLANS } from '../desktop/desktopProPlans';
 
 export default function Landing() {
     const navigate = useNavigate();
     const { t } = useTranslation();
+    /** Promo instalador Windows: siempre en inglés (CTA global), independiente del idioma del sitio. */
+    const tDesktopPromo = React.useCallback(
+        (key, opts) => t(`landing.${key}`, { ...opts, lng: 'en' }),
+        [t],
+    );
     const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
     /** Modal de entrada: descarga escritorio; 5 s y se cierra solo. */
     const [showDesktopDownloadPromo, setShowDesktopDownloadPromo] = useState(false);
@@ -1134,103 +1140,86 @@ export default function Landing() {
                 </div>
             </section >
 
-            {/* PRICING SECTION */}
+            {/* PRICING SECTION — app Windows (PRO / PRO Online), referencia; la compra es en la app */}
             <section id="precios" style={{ padding: '100px 60px', backgroundColor: '#020617' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: '60px' }}>
                         <h2 style={{ fontSize: '3rem', fontWeight: '900', margin: '0 0 16px' }}>{t('landing.pricingTitle')}</h2>
-                        <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '600px', margin: '0 0 30px' }}>
+                        <p style={{ color: '#94a3b8', fontSize: '1.2rem', maxWidth: '640px', margin: '0 auto 30px' }}>
                             {t('landing.pricingSub')}
                         </p>
                         <div style={{ display: 'flex', justifyContent: 'center' }}>
                             <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.monthly')}</button>
-                                <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.annual')}</button>
+                                <button type="button" onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.monthly')}</button>
+                                <button type="button" onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>{t('common.annual')}</button>
                             </div>
                         </div>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '30px' }}>
-                        {/* ESTANDAR */}
-                        <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(0,210,211,0.2)' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#00d2d3' }}>
-                                <Globe size={24} />
-                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>{t('landing.planStdTitle')}</h3>
-                            </div>
-                            <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
-                                {t('landing.planStdDesc')}
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                {[
-                                    { name: t('landing.planTierBasic'), gb: 10, price: 4.99, annual: 41.92, originalAnnual: 59.88 },
-                                    { name: t('landing.planTierStd'), gb: 20, price: 6.99, annual: 58.72, originalAnnual: 83.88 },
-                                    { name: t('landing.planTierPlus'), gb: 50, price: 9.99, annual: 83.92, originalAnnual: 119.88 }
-                                ].map((plan, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
-                                        <div>
-                                            <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{plan.name}</div>
-                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>{t('common.storageGb', { n: plan.gb })}</div>
+                        {DESKTOP_PRO_PLANS.map((plan) => {
+                            const isOnline = plan.tier === 'pro_online';
+                            const title = isOnline ? t('landing.desktopWinProOnlineTitle') : t('landing.desktopWinProTitle');
+                            const desc = isOnline ? t('landing.desktopWinProOnlineDesc') : t('landing.desktopWinProDesc');
+                            const accent = isOnline ? '#c4b5fd' : '#00d2d3';
+                            const border = isOnline ? '1px solid rgba(167, 139, 250, 0.35)' : '1px solid rgba(0,210,211,0.2)';
+                            const rowBg = isOnline ? 'rgba(139, 92, 246, 0.08)' : 'rgba(255,255,255,0.03)';
+                            const rowBorder = isOnline ? '1px solid rgba(167, 139, 250, 0.12)' : 'none';
+                            const price = isAnnual ? plan.annualUsd : plan.monthlyUsd;
+                            const fullYearAtMonthly = Math.round(plan.monthlyUsd * 12 * 100) / 100;
+                            return (
+                                <div
+                                    key={plan.id}
+                                    style={{
+                                        backgroundColor: '#0f172a',
+                                        padding: '40px',
+                                        borderRadius: '24px',
+                                        border,
+                                        position: 'relative',
+                                    }}
+                                >
+                                    {isOnline ? (
+                                        <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#f1c40f', color: '#000', padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', letterSpacing: '1px' }}>
+                                            {t('landing.planVipBadge')}
+                                        </div>
+                                    ) : null}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: accent }}>
+                                        {isOnline ? <KeyRound size={24} /> : <Monitor size={24} />}
+                                        <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>{title}</h3>
+                                    </div>
+                                    <p style={{ color: '#94a3b8', marginBottom: '28px', minHeight: '52px', lineHeight: 1.55 }}>{desc}</p>
+                                    <div
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '18px 16px',
+                                            backgroundColor: rowBg,
+                                            borderRadius: '12px',
+                                            border: rowBorder,
+                                        }}
+                                    >
+                                        <div style={{ fontWeight: '800', fontSize: '1.05rem', color: '#e2e8f0' }}>
+                                            {isOnline ? t('landing.desktopWinPriceRowOnline') : t('landing.desktopWinPriceRowPro')}
                                         </div>
                                         <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                                            {isAnnual && (
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b', textDecoration: 'line-through', marginBottom: '-2px' }}>
-                                                    ${plan.originalAnnual}
+                                            {isAnnual ? (
+                                                <span style={{ fontSize: '0.8rem', color: isOnline ? 'rgba(196,181,253,0.55)' : '#64748b', textDecoration: 'line-through', marginBottom: '2px' }}>
+                                                    ${fullYearAtMonthly.toFixed(2)}
                                                 </span>
-                                            )}
+                                            ) : null}
                                             <div>
-                                                <span style={{ fontSize: '1.2rem', fontWeight: '800' }}>${isAnnual ? plan.annual : plan.price}</span>
+                                                <span style={{ fontSize: '1.35rem', fontWeight: '800', color: isOnline ? '#e9d5ff' : '#fff' }}>${price.toFixed(2)}</span>
                                                 <span style={{ fontSize: '0.8rem', color: '#64748b' }}> {isAnnual ? t('common.perYear') : t('common.perMonth')}</span>
                                             </div>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                            <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} className="btn-teal" style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem' }}>
-                                {t('common.start')}
-                            </button>
-                        </div>
-
-                        {/* VIP */}
-                        <div style={{ backgroundColor: '#0f172a', padding: '40px', borderRadius: '24px', border: '1px solid rgba(241,196,15,0.3)', position: 'relative' }}>
-                            <div style={{ position: 'absolute', top: '-15px', left: '50%', transform: 'translateX(-50%)', backgroundColor: '#f1c40f', color: '#000', padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '800', letterSpacing: '1px' }}>
-                                {t('landing.planVipBadge')}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', color: '#f1c40f' }}>
-                                <KeyRound size={24} />
-                                <h3 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0 }}>{t('landing.planVipTitle')}</h3>
-                            </div>
-                            <p style={{ color: '#94a3b8', marginBottom: '30px', minHeight: '48px' }}>
-                                {t('landing.planVipDesc')}
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                                {[
-                                    { name: t('landing.planTierBasicVip'), gb: 10, price: 7.99, annual: 67.12, originalAnnual: 95.88 },
-                                    { name: t('landing.planTierStdVip'), gb: 20, price: 9.99, annual: 83.92, originalAnnual: 119.88 },
-                                    { name: t('landing.planTierPlusVip'), gb: 50, price: 12.99, annual: 109.12, originalAnnual: 155.88 }
-                                ].map((plan, i) => (
-                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(241,196,15,0.05)', borderRadius: '12px', border: '1px solid rgba(241,196,15,0.1)' }}>
-                                        <div>
-                                            <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>{plan.name}</div>
-                                            <div style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.7)' }}>{t('common.storageGb', { n: plan.gb })}</div>
-                                        </div>
-                                        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                                            {isAnnual && (
-                                                <span style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.5)', textDecoration: 'line-through', marginBottom: '-2px' }}>
-                                                    ${plan.originalAnnual}
-                                                </span>
-                                            )}
-                                            <div>
-                                                <span style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f1c40f' }}>${isAnnual ? plan.annual : plan.price}</span>
-                                                <span style={{ fontSize: '0.8rem', color: '#64748b' }}> {isAnnual ? t('common.perYear') : t('common.perMonth')}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            <button onClick={() => { setIsLogin(false); setShowLoginPanel(true); }} style={{ width: '100%', marginTop: '30px', padding: '16px', fontSize: '1.1rem', backgroundColor: '#f1c40f', color: '#000', border: 'none', borderRadius: '12px', fontWeight: '700', cursor: 'pointer' }}>
-                                {t('common.chooseVip')}
-                            </button>
-                        </div>
+                                    <p style={{ color: '#64748b', fontSize: '0.78rem', marginTop: '22px', lineHeight: 1.5, marginBottom: 0 }}>
+                                        {t('landing.desktopWinPricingDisclaimer')}
+                                    </p>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             </section >
@@ -1679,7 +1668,7 @@ export default function Landing() {
                                 e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
                                 e.currentTarget.style.background = 'rgba(15, 23, 42, 0.55)';
                             }}
-                            aria-label={t('landing.desktopPromoClose')}
+                            aria-label={tDesktopPromo('desktopPromoClose')}
                         >
                             <X size={18} strokeWidth={2.25} />
                         </button>
@@ -1713,7 +1702,7 @@ export default function Landing() {
                                     <Monitor size={26} color="#5eead4" strokeWidth={1.75} style={{ flexShrink: 0, opacity: 0.88 }} aria-hidden />
                                 </div>
                                 <div
-                                    title={t('landing.desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
+                                    title={tDesktopPromo('desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
                                     style={{
                                         flexShrink: 0,
                                         minWidth: '52px',
@@ -1743,7 +1732,7 @@ export default function Landing() {
                                     color: '#64748b',
                                 }}
                             >
-                                {t('landing.desktopPromoEyebrow')}
+                                {tDesktopPromo('desktopPromoEyebrow')}
                             </p>
                             <h2
                                 id="desktop-promo-title"
@@ -1756,7 +1745,7 @@ export default function Landing() {
                                     color: '#f8fafc',
                                 }}
                             >
-                                {t('landing.desktopPromoTitle')}
+                                {tDesktopPromo('desktopPromoTitle')}
                             </h2>
                             <p
                                 style={{
@@ -1768,7 +1757,7 @@ export default function Landing() {
                                     color: '#94a3b8',
                                 }}
                             >
-                                {t('landing.desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
+                                {tDesktopPromo('desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
                             </p>
 
                             <div
@@ -1804,7 +1793,7 @@ export default function Landing() {
                                 }}
                             >
                                 <span style={{ flex: 1, textAlign: 'center' }}>
-                                    {t('landing.desktopPromoDownload')}
+                                    {tDesktopPromo('desktopPromoDownload')}
                                     {latestApp?.desktopVersionName ? (
                                         <span style={{ fontWeight: 650, opacity: 0.92 }}>
                                             {' '}
@@ -1833,7 +1822,7 @@ export default function Landing() {
                                 onMouseEnter={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
                                 onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
                             >
-                                {t('landing.desktopPromoClose')}
+                                {tDesktopPromo('desktopPromoClose')}
                             </button>
                         </div>
                     </div>
