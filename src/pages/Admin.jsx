@@ -98,7 +98,6 @@ export default function Admin() {
             if (user && user.email === 'ueservicesllc1@gmail.com') {
                 console.log("Logged as Admin. UID:", user.uid);
                 setIsAdmin(true);
-                fetchData();
             } else {
                 if (user) console.log("Logged as non-admin:", user.email, "UID:", user.uid);
                 setIsAdmin(false);
@@ -156,85 +155,71 @@ export default function Admin() {
         return () => { cancelled = true; };
     }, []);
 
-    const fetchData = async () => {
-        onSnapshot(collection(db, 'users'), (snap) => {
-            const u = [];
-            snap.forEach(doc => u.push({ id: doc.id, ...doc.data() }));
-            setUsers(u);
-        });
+    /** Suscripciones generales del Admin: una sola vez por sesión, con cleanup al desmontar.
+     *  Cada suscripción tiene `limit` para acotar lecturas. La telemetría de escritorio
+     *  (`desktop_download_events` / `desktop_clients`) se carga aparte y solo cuando se entra
+     *  a la pestaña «Escritorio» — antes consumía 1300 reads garantizados al abrir Admin. */
+    useEffect(() => {
+        if (!isAdmin) return undefined;
+        const unsubs = [];
+        const sub = (q, setter, sortFn) => {
+            const u = onSnapshot(q, (snap) => {
+                const rows = [];
+                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+                setter(sortFn ? rows.sort(sortFn) : rows);
+            }, (e) => console.error('[admin onSnapshot]', e));
+            unsubs.push(u);
+        };
+        const byCreatedDesc = (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
 
-        onSnapshot(collection(db, 'songs'), (snap) => {
-            const s = [];
-            snap.forEach(doc => s.push({ id: doc.id, ...doc.data() }));
-            setSongs(s.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
+        sub(query(collection(db, 'users'), limit(500)), setUsers);
+        sub(query(collection(db, 'songs'), orderBy('createdAt', 'desc'), limit(300)), setSongs, byCreatedDesc);
+        sub(query(collection(db, 'contacts'), orderBy('createdAt', 'desc'), limit(100)), setContacts, byCreatedDesc);
+        sub(query(collection(db, 'account_deletion_requests'), orderBy('createdAt', 'desc'), limit(100)), setAccountDeletionRequests, byCreatedDesc);
+        sub(query(collection(db, 'master_artists'), limit(500)), setMasterArtists, (a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+        sub(query(collection(db, 'chords'), limit(500)), setLibraryChords);
+        sub(query(collection(db, 'lyrics'), limit(500)), setLibraryLyrics);
+        sub(query(collection(db, 'seller_applications'), orderBy('createdAt', 'desc'), limit(200)), setSellerApps, byCreatedDesc);
+        sub(query(collection(db, 'coupons'), orderBy('createdAt', 'desc'), limit(200)), setCoupons, byCreatedDesc);
+        sub(query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(50)), setAppHistory, byCreatedDesc);
+        sub(query(collection(db, 'banners'), orderBy('createdAt', 'desc'), limit(50)), setBanners, byCreatedDesc);
 
-        onSnapshot(collection(db, 'contacts'), (snap) => {
-            const c = [];
-            snap.forEach(doc => c.push({ id: doc.id, ...doc.data() }));
-            setContacts(c.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
+        return () => {
+            for (const u of unsubs) {
+                try { u(); } catch { /* ignore */ }
+            }
+        };
+    }, [isAdmin]);
 
-        onSnapshot(collection(db, 'account_deletion_requests'), (snap) => {
-            const r = [];
-            snap.forEach(doc => r.push({ id: doc.id, ...doc.data() }));
-            setAccountDeletionRequests(r.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
-
-        onSnapshot(collection(db, 'master_artists'), (snap) => {
-            const ma = [];
-            snap.forEach(doc => ma.push({ id: doc.id, ...doc.data() }));
-            setMasterArtists(ma.sort((a, b) => a.name.localeCompare(b.name)));
-        });
-
-        onSnapshot(collection(db, 'chords'), (snap) => {
-            const c = [];
-            snap.forEach(doc => c.push({ id: doc.id, ...doc.data() }));
-            setLibraryChords(c);
-        });
-
-        onSnapshot(collection(db, 'lyrics'), (snap) => {
-            const l = [];
-            snap.forEach(doc => l.push({ id: doc.id, ...doc.data() }));
-            setLibraryLyrics(l);
-        });
-
-        onSnapshot(collection(db, 'seller_applications'), (snap) => {
-            const sa = [];
-            snap.forEach(doc => sa.push({ id: doc.id, ...doc.data() }));
-            setSellerApps(sa.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
-
-        onSnapshot(collection(db, 'coupons'), (snap) => {
-            const cp = [];
-            snap.forEach(doc => cp.push({ id: doc.id, ...doc.data() }));
-            setCoupons(cp.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
-
-        onSnapshot(collection(db, 'app_versions'), (snap) => {
-            const av = [];
-            snap.forEach(doc => av.push({ id: doc.id, ...doc.data() }));
-            setAppHistory(av.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
-
-        onSnapshot(collection(db, 'banners'), (snap) => {
-            const b = [];
-            snap.forEach(doc => b.push({ id: doc.id, ...doc.data() }));
-            setBanners(b.sort((a, b) => (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0)));
-        });
-
-        onSnapshot(query(collection(db, 'desktop_download_events'), orderBy('createdAt', 'desc'), limit(500)), (snap) => {
-            const rows = [];
-            snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-            setDesktopDownloadEvents(rows);
-        }, (e) => console.error('desktop_download_events', e));
-
-        onSnapshot(query(collection(db, 'desktop_clients'), orderBy('lastSeenAt', 'desc'), limit(800)), (snap) => {
-            const rows = [];
-            snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-            setDesktopClients(rows);
-        }, (e) => console.error('desktop_clients', e));
-    };
+    /** Telemetría escritorio: solo cuando estás mirando la pestaña «Escritorio». Antes esto
+     *  hacía siempre 500 + 800 reads de arranque, y los listeners se quedaban vivos para siempre. */
+    useEffect(() => {
+        if (!isAdmin || activeTab !== 'desktop') return undefined;
+        const unsubs = [];
+        unsubs.push(onSnapshot(
+            query(collection(db, 'desktop_download_events'), orderBy('createdAt', 'desc'), limit(100)),
+            (snap) => {
+                const rows = [];
+                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+                setDesktopDownloadEvents(rows);
+            },
+            (e) => console.error('desktop_download_events', e),
+        ));
+        unsubs.push(onSnapshot(
+            query(collection(db, 'desktop_clients'), orderBy('lastSeenAt', 'desc'), limit(100)),
+            (snap) => {
+                const rows = [];
+                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+                setDesktopClients(rows);
+            },
+            (e) => console.error('desktop_clients', e),
+        ));
+        return () => {
+            for (const u of unsubs) {
+                try { u(); } catch { /* ignore */ }
+            }
+        };
+    }, [isAdmin, activeTab]);
 
     const approveSeller = async (userId) => {
         if (!window.confirm("¿Aprobar este vendedor oficialmente?")) return;

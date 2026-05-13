@@ -1400,7 +1400,7 @@ export default function Multitrack({ session }) {
             void pingDesktopClient(db, version, firebaseUid).catch(() => {});
         };
         send();
-        const iv = setInterval(send, 2 * 60 * 1000);
+        const iv = setInterval(send, 10 * 60 * 1000);
         const onVis = () => {
             if (document.visibilityState === 'visible') send();
         };
