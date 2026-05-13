@@ -247,6 +247,14 @@ app.post(
     }
 );
 
+/** GET en el navegador no ejecuta `app.post`; sin esto parece "ruta no encontrada". Stripe siempre usa POST. */
+app.get('/api/stripe/webhook', (_req, res) => {
+    res.status(405).json({
+        error: 'Este endpoint solo acepta POST firmado por Stripe (cabecera Stripe-Signature). Abrí la URL en el navegador no es una prueba válida.',
+        hint: 'En Stripe: Webhooks → tu destino → «Send test webhook». O redeploy si el POST también falla (código viejo en Railway).',
+    });
+});
+
 app.use(express.json({ limit: '5gb' }));
 app.use(express.urlencoded({ limit: '5gb', extended: true }));
 
