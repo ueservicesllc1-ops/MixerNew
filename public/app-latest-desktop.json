@@ -1,7 +1,7 @@
 {
   "versionName": "1.1.9",
   "versionCode": 10109,
-  "desktopDownloadUrl": "",
-  "releaseNotes": "Generado con npm run release:desktop:auto. Subí el .exe (Admin o npm run upload:desktop) y rellenará el enlace.",
-  "updatedAt": "2026-05-12T18:35:35.839Z"
+  "desktopDownloadUrl": "https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe",
+  "releaseNotes": "Zion Stage escritorio 1.1.9",
+  "updatedAt": "2026-05-13T01:10:00.000Z"
 }
