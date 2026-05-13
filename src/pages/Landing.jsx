@@ -97,21 +97,18 @@ export default function Landing() {
         setTimeout(() => setToast(null), 3000);
     };
 
-    const desktopWinUrlReady = isPlausibleWindowsInstallerHttpsUrl(String(latestApp?.desktopDownloadUrl || '').trim());
+    /** URL hardcodeada: siempre lista, sin esperar nada. */
+    const desktopWinUrlReady = true;
 
-    /** Admin → B2 → `desktopDownloadUrl` en Firestore; el hero abre exactamente eso. */
+    /** URL hardcodeada del .exe actual. Cuando subas una versión nueva, actualizá estas dos constantes y listo: instantáneo, sin Firestore, sin manifiesto, sin esperas. */
+    const HARDCODED_DESKTOP_INSTALLER_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe';
+    const HARDCODED_DESKTOP_VERSION_NAME = '1.1.9';
+
     const handleDesktopInstallerDownload = () => {
-        const url = String(latestApp?.desktopDownloadUrl || '').trim();
-        if (!isPlausibleWindowsInstallerHttpsUrl(url)) {
-            setToast(t('landing.toastDesktopNoUrl'));
-            setTimeout(() => setToast(null), 4000);
-            return;
-        }
-        window.open(url, '_blank', 'noopener,noreferrer');
-        const vn = String(latestApp?.desktopVersionName || latestApp?.versionName || '').trim() || 'unknown';
+        window.open(HARDCODED_DESKTOP_INSTALLER_URL, '_blank', 'noopener,noreferrer');
         void addDoc(collection(db, 'desktop_download_events'), {
             source: 'landing_modal',
-            versionName: vn.slice(0, 47),
+            versionName: HARDCODED_DESKTOP_VERSION_NAME,
             createdAt: serverTimestamp(),
             locale: typeof navigator !== 'undefined' ? String(navigator.language || '').slice(0, 47) : '',
         }).catch((err) => {
