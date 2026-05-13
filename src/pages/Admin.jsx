@@ -156,7 +156,7 @@ export default function Admin() {
     }, []);
 
     /** Suscripciones generales del Admin: una sola vez por sesión, con cleanup al desmontar.
-     *  Cada suscripción tiene `limit` para acotar lecturas. La telemetría de escritorio
+     *  Cada suscripción tiene `limit` para acotar lecturas (p. ej. users hasta 1000). La telemetría de escritorio
      *  (`desktop_download_events` / `desktop_clients`) se carga aparte y solo cuando se entra
      *  a la pestaña «Escritorio» — antes consumía 1300 reads garantizados al abrir Admin. */
     useEffect(() => {
@@ -172,7 +172,7 @@ export default function Admin() {
         };
         const byCreatedDesc = (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
 
-        sub(query(collection(db, 'users'), limit(500)), setUsers);
+        sub(query(collection(db, 'users'), limit(1000)), setUsers);
         sub(query(collection(db, 'songs'), orderBy('createdAt', 'desc'), limit(300)), setSongs, byCreatedDesc);
         sub(query(collection(db, 'contacts'), orderBy('createdAt', 'desc'), limit(100)), setContacts, byCreatedDesc);
         sub(query(collection(db, 'account_deletion_requests'), orderBy('createdAt', 'desc'), limit(100)), setAccountDeletionRequests, byCreatedDesc);
@@ -1231,6 +1231,61 @@ export default function Admin() {
     }).length;
     /** Alta de cuenta creada desde el modal de registro del .exe (desde este deploy en adelante). */
     const firebaseAccountsSignUpDesktop = users.filter((u) => u.signupClient === 'desktop_win').length;
+
+    /** Listado completo: usuarios "de escritorio" = signup desktop, o uso desktop, o ya tienen plan PRO escritorio,
+     *  o aparecieron con heartbeat (firebaseUid en desktop_clients). Se ordena por última actividad desktop_win. */
+    const desktopHeartbeatUidSet = new Set(
+        desktopClients.map((c) => c?.firebaseUid).filter((x) => typeof x === 'string' && x.length > 0)
+    );
+    const desktopUsersList = users
+        .map((u) => {
+            const p = u?.usageMetrics?.platforms?.desktop_win;
+            const lastSeen = toMillisSafe(p?.lastSeenAt) || toMillisSafe(p?.firstSeenAt) || 0;
+            const isDesktopRelated =
+                u.signupClient === 'desktop_win'
+                || lastSeen > 0
+                || u.desktopProActive === true
+                || u.desktopProActive === false  // ya pasó por on/off → tuvo PRO
+                || u.desktopLicenseTier === 'pro_local'
+                || u.desktopLicenseTier === 'pro_online'
+                || desktopHeartbeatUidSet.has(u.id);
+            return isDesktopRelated ? { ...u, _desktopLastSeen: lastSeen } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            // Activos PRO primero, luego por última actividad
+            const aPro = a.desktopProActive === true ? 1 : 0;
+            const bPro = b.desktopProActive === true ? 1 : 0;
+            if (aPro !== bPro) return bPro - aPro;
+            return (b._desktopLastSeen || 0) - (a._desktopLastSeen || 0);
+        });
+
+    const setDesktopPlan = async (uid, target) => {
+        if (!uid || !target) return;
+        try {
+            const ref = doc(db, 'users', uid);
+            if (target === 'pro_local' || target === 'pro_online') {
+                const planId = target === 'pro_local' ? 'zion_desktop_pro_local' : 'zion_desktop_pro_online';
+                await updateDoc(ref, {
+                    planId,
+                    desktopLicenseTier: target,
+                    desktopProActive: true,
+                    stripeSubscriptionStatus: 'active',
+                    updatedAt: serverTimestamp(),
+                });
+            } else if (target === 'revoke') {
+                await updateDoc(ref, {
+                    planId: 'free',
+                    desktopProActive: false,
+                    desktopLicenseTier: null,
+                    updatedAt: serverTimestamp(),
+                });
+            }
+        } catch (e) {
+            console.error('[admin set desktop plan]', e);
+            alert('No se pudo aplicar el cambio: ' + (e.message || e));
+        }
+    };
 
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
@@ -2355,7 +2410,7 @@ export default function Admin() {
                         </div>
 
                         <h3 style={{ margin: '0 0 10px 0' }}>Clientes (último latido)</h3>
-                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto' }}>
+                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden', maxHeight: '360px', overflowY: 'auto', marginBottom: '28px' }}>
                             {desktopClients.length === 0 ? (
                                 <div style={{ padding: '14px', color: '#64748b' }}>Ningún cliente.</div>
                             ) : (
@@ -2368,6 +2423,82 @@ export default function Admin() {
                                             <span style={{ fontWeight: '700' }}>{c.versionName || '?'}</span>
                                             <span style={{ color: fresh ? '#4ade80' : '#94a3b8', fontWeight: '700' }}>{fresh ? 'activo' : 'idle'}</span>
                                             <span style={{ color: '#64748b' }}>{last ? new Date(last).toLocaleString() : '—'}</span>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
+
+                        <h3 style={{ margin: '0 0 6px 0' }}>Usuarios con app de escritorio</h3>
+                        <p style={{ color: '#94a3b8', margin: '0 0 12px 0', fontSize: '0.85rem', maxWidth: '900px', lineHeight: 1.45 }}>
+                            Cuentas Firebase que <strong>se registraron desde el .exe</strong>, ya tienen plan PRO escritorio,
+                            o tuvieron actividad/heartbeat en la app de escritorio. Los botones simulan exactamente lo que
+                            haría el webhook de Stripe tras un pago real (sin cobrar).
+                        </p>
+                        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', overflow: 'hidden', maxHeight: '520px', overflowY: 'auto' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1.1fr 1fr 1.1fr 2.4fr', gap: '10px', padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#64748b', position: 'sticky', top: 0, background: '#1e293b' }}>
+                                <span>Email</span>
+                                <span>Origen</span>
+                                <span>Estado PRO</span>
+                                <span>Último uso .exe</span>
+                                <span style={{ textAlign: 'right' }}>Acciones</span>
+                            </div>
+                            {desktopUsersList.length === 0 ? (
+                                <div style={{ padding: '16px', color: '#64748b' }}>Aún no hay usuarios con actividad de escritorio.</div>
+                            ) : (
+                                desktopUsersList.slice(0, 200).map((u) => {
+                                    const tier = u.desktopLicenseTier;
+                                    const active = u.desktopProActive === true;
+                                    const billingIssue = u.desktopBillingIssue === true;
+                                    const last = u._desktopLastSeen;
+                                    const origen = u.signupClient === 'desktop_win' ? 'desktop_win' : (last > 0 ? 'usó .exe' : (desktopHeartbeatUidSet.has(u.id) ? 'heartbeat' : '—'));
+                                    const proLabel = active
+                                        ? (tier === 'pro_online' ? 'PRO Online' : (tier === 'pro_local' ? 'PRO Local' : 'PRO'))
+                                        : (tier === 'pro_online' || tier === 'pro_local' ? 'inactivo' : 'demo');
+                                    const proColor = active ? (tier === 'pro_online' ? '#c4b5fd' : '#5eead4') : '#94a3b8';
+                                    return (
+                                        <div key={u.id} style={{ display: 'grid', gridTemplateColumns: '2.2fr 1.1fr 1fr 1.1fr 2.4fr', gap: '10px', padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.85rem', alignItems: 'center' }}>
+                                            <span style={{ wordBreak: 'break-all' }}>
+                                                <div style={{ fontWeight: '700', color: '#e2e8f0' }}>{u.email || '(sin email)'}</div>
+                                                <div style={{ fontSize: '0.7rem', color: '#64748b', fontFamily: 'ui-monospace, monospace' }}>{u.id}</div>
+                                            </span>
+                                            <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{origen}</span>
+                                            <span style={{ color: proColor, fontWeight: '800' }}>
+                                                {proLabel}
+                                                {billingIssue && <span style={{ color: '#fbbf24', marginLeft: '6px', fontWeight: '600', fontSize: '0.7rem' }}>· cobro pendiente</span>}
+                                            </span>
+                                            <span style={{ color: '#64748b' }}>{last ? new Date(last).toLocaleDateString() : '—'}</span>
+                                            <span style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                                <button
+                                                    onClick={() => setDesktopPlan(u.id, 'pro_local')}
+                                                    disabled={active && tier === 'pro_local'}
+                                                    title="Activar PRO Local (US$1.99/mes — sin cobrar)"
+                                                    style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(94,234,212,0.4)', background: active && tier === 'pro_local' ? 'rgba(94,234,212,0.25)' : 'transparent', color: '#5eead4', cursor: active && tier === 'pro_local' ? 'default' : 'pointer', opacity: active && tier === 'pro_local' ? 0.7 : 1 }}
+                                                >
+                                                    {active && tier === 'pro_local' ? '✓ PRO Local' : 'Hacer PRO Local'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setDesktopPlan(u.id, 'pro_online')}
+                                                    disabled={active && tier === 'pro_online'}
+                                                    title="Activar PRO Online (US$5.99/mes — sin cobrar)"
+                                                    style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(196,181,253,0.4)', background: active && tier === 'pro_online' ? 'rgba(196,181,253,0.25)' : 'transparent', color: '#c4b5fd', cursor: active && tier === 'pro_online' ? 'default' : 'pointer', opacity: active && tier === 'pro_online' ? 0.7 : 1 }}
+                                                >
+                                                    {active && tier === 'pro_online' ? '✓ PRO Online' : 'Hacer PRO Online'}
+                                                </button>
+                                                {(active || tier) && (
+                                                    <button
+                                                        onClick={() => {
+                                                            if (window.confirm('¿Quitar plan PRO escritorio a ' + (u.email || u.id) + '? La app pasará a modo demo.')) {
+                                                                void setDesktopPlan(u.id, 'revoke');
+                                                            }
+                                                        }}
+                                                        title="Quitar PRO escritorio (vuelve a demo)"
+                                                        style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(248,113,113,0.4)', background: 'transparent', color: '#fca5a5', cursor: 'pointer' }}
+                                                    >
+                                                        Quitar
+                                                    </button>
+                                                )}
+                                            </span>
                                         </div>
                                     );
                                 })
