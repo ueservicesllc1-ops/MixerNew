@@ -1,9 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db, auth } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch, query, orderBy, limit } from 'firebase/firestore';
+import { collection, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { semverToVersionCode } from '../utils/semverReleaseCompare.js';
 import { getMixerApiBase } from '../mixerApiBase.js';
 import { ShieldAlert, Users, Music2, Settings2, Trash2, CheckCircle2, ListMusic, User, ChevronDown, ChevronRight, FileText, Save, Search, BarChart3, Download, Monitor } from 'lucide-react';
+
+/** Convierte un QuerySnapshot en filas; sort opcional en memoria (sin listener = menos lecturas/día). */
+function adminSnapToRows(snap, sortFn) {
+    const rows = [];
+    snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+    return sortFn ? rows.sort(sortFn) : rows;
+}
 
 export default function Admin() {
     const [isAdmin, setIsAdmin] = useState(false);
@@ -76,6 +83,12 @@ export default function Admin() {
     /** Telemetría escritorio: descargas (web) y heartbeats (app .exe). */
     const [desktopDownloadEvents, setDesktopDownloadEvents] = useState([]);
     const [desktopClients, setDesktopClients] = useState([]);
+    /** Plan ahorro Firestore: no listeners globales; getDocs bajo demanda. */
+    const [adminDataLoaded, setAdminDataLoaded] = useState(false);
+    const [adminDataLoadedAt, setAdminDataLoadedAt] = useState(null);
+    const [adminFetchLoading, setAdminFetchLoading] = useState(false);
+    const [desktopFetchLoading, setDesktopFetchLoading] = useState(false);
+    const [desktopTelemetryLoadedAt, setDesktopTelemetryLoadedAt] = useState(null);
 
     // ── Letras Editor ─────────────────────────────────────────────────────
     const [lyricsSearch, setLyricsSearch] = useState('');
@@ -155,71 +168,84 @@ export default function Admin() {
         return () => { cancelled = true; };
     }, []);
 
-    /** Suscripciones generales del Admin: una sola vez por sesión, con cleanup al desmontar.
-     *  Cada suscripción tiene `limit` para acotar lecturas (p. ej. users hasta 1000). La telemetría de escritorio
-     *  (`desktop_download_events` / `desktop_clients`) se carga aparte y solo cuando se entra
-     *  a la pestaña «Escritorio» — antes consumía 1300 reads garantizados al abrir Admin. */
-    useEffect(() => {
-        if (!isAdmin) return undefined;
-        const unsubs = [];
-        const sub = (q, setter, sortFn) => {
-            const u = onSnapshot(q, (snap) => {
-                const rows = [];
-                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-                setter(sortFn ? rows.sort(sortFn) : rows);
-            }, (e) => console.error('[admin onSnapshot]', e));
-            unsubs.push(u);
-        };
-        const byCreatedDesc = (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
+    const byCreatedDesc = (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
+    const byLastSeenDesc = (a, b) => {
+        const ta = a.lastSeenAt?.toMillis?.() ?? (typeof a.lastSeenAt?.seconds === 'number' ? a.lastSeenAt.seconds * 1000 : 0);
+        const tb = b.lastSeenAt?.toMillis?.() ?? (typeof b.lastSeenAt?.seconds === 'number' ? b.lastSeenAt.seconds * 1000 : 0);
+        return tb - ta;
+    };
 
-        sub(query(collection(db, 'users'), limit(1000)), setUsers);
-        sub(query(collection(db, 'songs'), orderBy('createdAt', 'desc'), limit(300)), setSongs, byCreatedDesc);
-        sub(query(collection(db, 'contacts'), orderBy('createdAt', 'desc'), limit(100)), setContacts, byCreatedDesc);
-        sub(query(collection(db, 'account_deletion_requests'), orderBy('createdAt', 'desc'), limit(100)), setAccountDeletionRequests, byCreatedDesc);
-        sub(query(collection(db, 'master_artists'), limit(500)), setMasterArtists, (a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-        sub(query(collection(db, 'chords'), limit(500)), setLibraryChords);
-        sub(query(collection(db, 'lyrics'), limit(500)), setLibraryLyrics);
-        sub(query(collection(db, 'seller_applications'), orderBy('createdAt', 'desc'), limit(200)), setSellerApps, byCreatedDesc);
-        sub(query(collection(db, 'coupons'), orderBy('createdAt', 'desc'), limit(200)), setCoupons, byCreatedDesc);
-        sub(query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'), limit(50)), setAppHistory, byCreatedDesc);
-        sub(query(collection(db, 'banners'), orderBy('createdAt', 'desc'), limit(50)), setBanners, byCreatedDesc);
-
-        return () => {
-            for (const u of unsubs) {
-                try { u(); } catch { /* ignore */ }
-            }
-        };
+    /** Lectura bajo demanda (getDocs): sin listeners = pocas lecturas hasta que pulses. La app pública no usa esto. */
+    const loadAdminFirestoreData = useCallback(async () => {
+        if (!isAdmin) return;
+        setAdminFetchLoading(true);
+        try {
+            const [
+                usersSnap,
+                songsSnap,
+                contactsSnap,
+                adrSnap,
+                maSnap,
+                chSnap,
+                lySnap,
+                saSnap,
+                cpSnap,
+                ahSnap,
+                baSnap,
+            ] = await Promise.all([
+                getDocs(query(collection(db, 'users'))),
+                getDocs(query(collection(db, 'songs'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'contacts'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'account_deletion_requests'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'master_artists'))),
+                getDocs(query(collection(db, 'chords'))),
+                getDocs(query(collection(db, 'lyrics'))),
+                getDocs(query(collection(db, 'seller_applications'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'coupons'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'app_versions'), orderBy('createdAt', 'desc'))),
+                getDocs(query(collection(db, 'banners'), orderBy('createdAt', 'desc'))),
+            ]);
+            setUsers(adminSnapToRows(usersSnap));
+            setSongs(adminSnapToRows(songsSnap, byCreatedDesc));
+            setContacts(adminSnapToRows(contactsSnap, byCreatedDesc));
+            setAccountDeletionRequests(adminSnapToRows(adrSnap, byCreatedDesc));
+            setMasterArtists(adminSnapToRows(maSnap, (a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
+            setLibraryChords(adminSnapToRows(chSnap));
+            setLibraryLyrics(adminSnapToRows(lySnap));
+            setSellerApps(adminSnapToRows(saSnap, byCreatedDesc));
+            setCoupons(adminSnapToRows(cpSnap, byCreatedDesc));
+            setAppHistory(adminSnapToRows(ahSnap, byCreatedDesc));
+            setBanners(adminSnapToRows(baSnap, byCreatedDesc));
+            setAdminDataLoaded(true);
+            setAdminDataLoadedAt(new Date());
+        } catch (e) {
+            console.error('[admin loadAdminFirestoreData]', e);
+            alert(`Error cargando datos: ${e?.message || e}`);
+        } finally {
+            setAdminFetchLoading(false);
+        }
     }, [isAdmin]);
 
-    /** Telemetría escritorio: solo cuando estás mirando la pestaña «Escritorio». Antes esto
-     *  hacía siempre 500 + 800 reads de arranque, y los listeners se quedaban vivos para siempre. */
-    useEffect(() => {
-        if (!isAdmin || activeTab !== 'desktop') return undefined;
-        const unsubs = [];
-        unsubs.push(onSnapshot(
-            query(collection(db, 'desktop_download_events'), orderBy('createdAt', 'desc'), limit(100)),
-            (snap) => {
-                const rows = [];
-                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-                setDesktopDownloadEvents(rows);
-            },
-            (e) => console.error('desktop_download_events', e),
-        ));
-        unsubs.push(onSnapshot(
-            query(collection(db, 'desktop_clients'), orderBy('lastSeenAt', 'desc'), limit(100)),
-            (snap) => {
-                const rows = [];
-                snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
-                setDesktopClients(rows);
-            },
-            (e) => console.error('desktop_clients', e),
-        ));
-        return () => {
-            for (const u of unsubs) {
-                try { u(); } catch { /* ignore */ }
-            }
-        };
-    }, [isAdmin, activeTab]);
+    /** Escritorio: solo al pulsar; top 2500 filas por colección para no disparar cuota. */
+    const loadDesktopTelemetry = useCallback(async () => {
+        if (!isAdmin) return;
+        setDesktopFetchLoading(true);
+        try {
+            const cap = 2500;
+            const [evSnap, clSnap] = await Promise.all([
+                getDocs(query(collection(db, 'desktop_download_events'), orderBy('createdAt', 'desc'), limit(cap))),
+                getDocs(query(collection(db, 'desktop_clients'), orderBy('lastSeenAt', 'desc'), limit(cap))),
+            ]);
+            setDesktopDownloadEvents(adminSnapToRows(evSnap, byCreatedDesc));
+            setDesktopClients(adminSnapToRows(clSnap, byLastSeenDesc));
+            setDesktopTelemetryLoadedAt(new Date());
+        } catch (e) {
+            console.error('[admin loadDesktopTelemetry]', e);
+            alert(`Error telemetría escritorio: ${e?.message || e}`);
+        } finally {
+            setDesktopFetchLoading(false);
+        }
+    }, [isAdmin]);
 
     const approveSeller = async (userId) => {
         if (!window.confirm("¿Aprobar este vendedor oficialmente?")) return;
@@ -1195,8 +1221,9 @@ export default function Admin() {
     if (loading) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}>Cargando Admin...</div>;
     if (!isAdmin) return <div style={{ color: 'white', padding: '50px', textAlign: 'center' }}><ShieldAlert size={48} color="red" /><h2>Acceso Denegado</h2></div>;
 
-    const forSaleSongs = songs.filter(s => s.forSale === true && s.isGlobal !== true);
-    const filteredSongs = songs.filter(s => {
+    const curateSongPool = songs.filter((s) => s.isGlobal !== true);
+    const forSaleSongs = curateSongPool.filter((s) => s.forSale === true);
+    const filteredSongs = curateSongPool.filter((s) => {
         const matchesSearch = s.userEmail?.toLowerCase().includes(searchUser.toLowerCase()) ||
                              s.name?.toLowerCase().includes(searchUser.toLowerCase()) ||
                              searchUser === '';
@@ -1340,20 +1367,52 @@ export default function Admin() {
                 </div>
             </div>
 
+            <div style={{ marginBottom: '24px', padding: '16px 20px', borderRadius: '14px', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.25)' }}>
+                <div style={{ fontWeight: '800', marginBottom: '8px', color: '#e0f2fe' }}>Lecturas Firestore (plan ahorro)</div>
+                <p style={{ margin: '0 0 12px', color: '#94a3b8', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                    El Admin <strong>no</strong> escucha la base al entrar: evita miles de lecturas/día. Pulsa <strong>Cargar datos principales</strong> cuando vayas a usar las pestañas (usuarios, canciones, artistas, cupones…).
+                    Tras borrar o editar en otra sesión, pulsa <strong>Recargar</strong>. La app pública (web, dashboard, etc.) <strong>no cambia</strong>.
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                    <button
+                        type="button"
+                        disabled={adminFetchLoading}
+                        onClick={loadAdminFirestoreData}
+                        style={{
+                            background: '#0ea5e9',
+                            color: '#0f172a',
+                            border: 'none',
+                            padding: '10px 18px',
+                            borderRadius: '10px',
+                            fontWeight: '800',
+                            cursor: adminFetchLoading ? 'wait' : 'pointer',
+                            opacity: adminFetchLoading ? 0.75 : 1,
+                        }}
+                    >
+                        {adminFetchLoading ? 'Leyendo Firestore…' : (adminDataLoaded ? 'Recargar datos principales' : 'Cargar datos principales')}
+                    </button>
+                    {adminDataLoadedAt && (
+                        <span style={{ color: '#64748b', fontSize: '0.85rem' }}>
+                            Última carga: {adminDataLoadedAt.toLocaleString()}
+                        </span>
+                    )}
+                </div>
+            </div>
+
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>
-                <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Marketplace ({forSaleSongs.length})</button>
-                <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({users.filter(u => u.isSeller).length})</button>
-                <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({users.length})</button>
+                <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Marketplace ({adminDataLoaded ? forSaleSongs.length : '—'})</button>
+                <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({adminDataLoaded ? users.filter(u => u.isSeller).length : '—'})</button>
+                <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({adminDataLoaded ? users.length : '—'})</button>
                 <button onClick={() => setActiveTab('reports')} style={{ background: activeTab === 'reports' ? '#22c55e' : 'rgba(255,255,255,0.05)', color: activeTab === 'reports' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Reportes</button>
                 <button onClick={() => setActiveTab('desktop')} style={{ background: activeTab === 'desktop' ? '#38bdf8' : 'rgba(255,255,255,0.05)', color: activeTab === 'desktop' ? '#0f172a' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Escritorio</button>
-                <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({coupons.length})</button>
-                <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({masterArtists.length})</button>
-                <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length})</button>
-                <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({filteredSongs.length})</button>
-                <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({appHistory.length})</button>
-                <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({banners.length})</button>
-                <button onClick={() => setActiveTab('letras')} style={{ background: activeTab === 'letras' ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: activeTab === 'letras' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>✏️ Letras ({libraryLyrics.length})</button>
-                <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({contacts.length + accountDeletionRequests.length})</button>
+                <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({adminDataLoaded ? coupons.length : '—'})</button>
+                <button onClick={() => setActiveTab('artists')} style={{ background: activeTab === 'artists' ? '#f43f5e' : 'rgba(255,255,255,0.05)', color: activeTab === 'artists' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Artistas Maestros ({adminDataLoaded ? masterArtists.length : '—'})</button>
+                <button onClick={() => setActiveTab('library')} style={{ background: activeTab === 'library' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'library' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Biblioteca CIF ({adminDataLoaded ? songs.filter(s => s.isGlobal && s.userEmail === 'admin@zionstage.com').length : '—'})</button>
+                <button onClick={() => setActiveTab('songs')} style={{ background: activeTab === 'songs' ? '#9b59b6' : 'rgba(255,255,255,0.05)', color: activeTab === 'songs' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Curar Canciones ({adminDataLoaded ? filteredSongs.length : '—'})</button>
+                <button onClick={() => setActiveTab('apps')} style={{ background: activeTab === 'apps' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'apps' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>App APK ({adminDataLoaded ? appHistory.length : '—'})</button>
+                <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({adminDataLoaded ? banners.length : '—'})</button>
+                <button onClick={() => setActiveTab('letras')} style={{ background: activeTab === 'letras' ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: activeTab === 'letras' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>✏️ Letras ({adminDataLoaded ? libraryLyrics.length : '—'})</button>
+                <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({adminDataLoaded ? contacts.length + accountDeletionRequests.length : '—'})</button>
             </div>
 
             {activeTab === 'artists' && (
@@ -2317,6 +2376,29 @@ export default function Admin() {
                             Descargas (<code style={{ color: '#e2e8f0' }}>desktop_download_events</code>) y latidos anónimos por PC (<code style={{ color: '#e2e8f0' }}>desktop_clients</code>).
                             Las cuentas <strong>Firebase</strong> con correo (pestaña Usuarios / Reportes) son distintas: abajo ves cuántas usaron o se dieron de alta desde el .exe; el resto suele ser web/PWA/APK.
                         </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center', marginBottom: '18px' }}>
+                            <button
+                                type="button"
+                                disabled={desktopFetchLoading}
+                                onClick={loadDesktopTelemetry}
+                                style={{
+                                    background: '#38bdf8',
+                                    color: '#0f172a',
+                                    border: 'none',
+                                    padding: '10px 16px',
+                                    borderRadius: '10px',
+                                    fontWeight: '800',
+                                    cursor: desktopFetchLoading ? 'wait' : 'pointer',
+                                    opacity: desktopFetchLoading ? 0.8 : 1,
+                                }}
+                            >
+                                {desktopFetchLoading ? 'Leyendo…' : (desktopTelemetryLoadedAt ? 'Recargar telemetría (top 2500)' : 'Cargar telemetría escritorio')}
+                            </button>
+                            {desktopTelemetryLoadedAt && (
+                                <span style={{ color: '#64748b', fontSize: '0.85rem' }}>Última telemetría: {desktopTelemetryLoadedAt.toLocaleString()}</span>
+                            )}
+                            <span style={{ color: '#64748b', fontSize: '0.8rem' }}>Los totales de Firebase arriba requieren «Cargar datos principales».</span>
+                        </div>
 
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px', marginBottom: '18px' }}>
                             <div style={{ background: 'rgba(251,191,36,0.1)', border: '1px solid rgba(251,191,36,0.35)', borderRadius: '14px', padding: '16px' }}>
@@ -2647,6 +2729,11 @@ export default function Admin() {
                         <div>
                             <h2 style={{ margin: 0 }}>Gestión del Marketplace</h2>
                             <p style={{ color: '#94a3b8', margin: '5px 0 0 0' }}>Controla qué canciones son visibles para el público.</p>
+                            {!adminDataLoaded && (
+                                <p style={{ color: '#fbbf24', margin: '10px 0 0 0', fontSize: '0.9rem' }}>
+                                    Pulsa <strong>Cargar datos principales</strong> arriba para ver el catálogo a la venta.
+                                </p>
+                            )}
                         </div>
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button

@@ -914,6 +914,8 @@ export default function Multitrack({ session }) {
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const progressRef = useRef(0); // Replaces progress state — avoids 60fps re-renders of the full component
+    /** Throttle pings visibles → Firestore (desktop_clients) para no saturar escrituras. */
+    const desktopPingLastVisibleAtRef = useRef(0);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(session || null);
     const [proxyUrl, setProxyUrl] = useState(() => {
@@ -1388,7 +1390,7 @@ export default function Multitrack({ session }) {
         }
     }, []);
 
-    /** Heartbeat escritorio → Firestore (Admin: clientes activos). Cada 30 min + al volver a primer plano. */
+    /** Latido escritorio → Firestore: una vez al montar y al volver a primer plano (máx. cada 5 min). Sin `setInterval` = casi no escribe en BD. */
     useEffect(() => {
         if (!isElectronDesktopMixer() || typeof document === 'undefined') return undefined;
         const version = String(installedRelease?.versionName || '').trim();
@@ -1399,14 +1401,17 @@ export default function Multitrack({ session }) {
         const send = () => {
             void pingDesktopClient(db, version, firebaseUid).catch(() => {});
         };
+        const VIS_THROTTLE_MS = 5 * 60 * 1000;
         send();
-        const iv = setInterval(send, 30 * 60 * 1000);
         const onVis = () => {
-            if (document.visibilityState === 'visible') send();
+            if (document.visibilityState !== 'visible') return;
+            const now = Date.now();
+            if (now - desktopPingLastVisibleAtRef.current < VIS_THROTTLE_MS) return;
+            desktopPingLastVisibleAtRef.current = now;
+            send();
         };
         document.addEventListener('visibilitychange', onVis);
         return () => {
-            clearInterval(iv);
             document.removeEventListener('visibilitychange', onVis);
         };
     }, [installedRelease.versionName, currentUser?.uid, currentUser?.isOffline]);
