@@ -14,6 +14,12 @@ import { isPlausibleWindowsInstallerHttpsUrl } from '../utils/desktopInstallerUr
 import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
 import { DESKTOP_PRO_PLANS } from '../desktop/desktopProPlans';
 
+/** URL hardcodeada del .exe actual. Cuando subas una versión nueva, actualizá estas dos constantes y listo: instantáneo, sin Firestore, sin manifiesto, sin esperas. */
+const HARDCODED_DESKTOP_INSTALLER_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe';
+const HARDCODED_DESKTOP_VERSION_NAME = '1.1.9';
+const HARDCODED_ANDROID_APK_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.58-1776137302918.apk';
+const HARDCODED_ANDROID_VERSION_NAME = '1.8.58';
+
 export default function Landing() {
     const navigate = useNavigate();
     const { t } = useTranslation();
@@ -111,12 +117,6 @@ export default function Landing() {
 
     /** URL hardcodeada: siempre lista, sin esperar nada. */
     const desktopWinUrlReady = true;
-
-    /** URL hardcodeada del .exe actual. Cuando subas una versión nueva, actualizá estas dos constantes y listo: instantáneo, sin Firestore, sin manifiesto, sin esperas. */
-    const HARDCODED_DESKTOP_INSTALLER_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe';
-    const HARDCODED_DESKTOP_VERSION_NAME = '1.1.9';
-    const HARDCODED_ANDROID_APK_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.58-1776137302918.apk';
-    const HARDCODED_ANDROID_VERSION_NAME = '1.8.58';
 
     const handleDesktopInstallerDownload = () => {
         window.open(HARDCODED_DESKTOP_INSTALLER_URL, '_blank', 'noopener,noreferrer');
