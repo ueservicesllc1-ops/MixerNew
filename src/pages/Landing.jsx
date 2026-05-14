@@ -70,7 +70,13 @@ export default function Landing() {
     const [cart, setCart] = useState([]);
     const [toast, setToast] = useState(null);
     const [currentHeroSlide, setCurrentHeroSlide] = useState(0);
-    const [latestApp, setLatestApp] = useState(null);
+    const [latestApp, setLatestApp] = useState({
+        versionName: HARDCODED_ANDROID_VERSION_NAME,
+        downloadUrl: HARDCODED_ANDROID_APK_URL,
+        desktopVersionName: HARDCODED_DESKTOP_VERSION_NAME,
+        desktopDownloadUrl: HARDCODED_DESKTOP_INSTALLER_URL,
+        releaseNotes: ''
+    });
 
     const [heroSlides, setHeroSlides] = useState([]);
 
@@ -294,7 +300,7 @@ export default function Landing() {
                 || (rows[0] && String(rows[0].versionName || '').trim())
                 || '';
 
-            if (!versionName && !androidRow?.downloadUrl && !desktopUrl) return;
+
 
             setLatestApp({
                 versionName: versionName || HARDCODED_ANDROID_VERSION_NAME,
