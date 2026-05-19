@@ -51,7 +51,7 @@ export default function Admin() {
     const DEFAULT_RELEASE_PROXY = 'https://mixernew-production.up.railway.app';
     /**
      * Subidas y borrados B2 (`/api/upload`, `/api/delete-file`).
-     * Misma base que el resto de la app: en `localhost` → `http://localhost:3001` (b2-proxy local).
+     * En localhost: API en `http://localhost:3001` (b2-proxy); la página en dev es Vite :3000.
      * Forzar otra URL: `VITE_B2_PROXY_URL=https://...` en `.env` y reiniciar Vite.
      */
     const b2UploadProxyBase = () => {
@@ -285,6 +285,7 @@ export default function Admin() {
                 isVipSeller: newState ? true : false,
                 updatedAt: serverTimestamp()
             });
+            setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, isSeller: newState, sellerStatus: newState ? 'active' : null, isVipSeller: newState ? true : false } : u));
             alert(newState ? "Privilegios otorgados." : "Privilegios removidos.");
         } catch (e) {
             console.error(e);
@@ -649,17 +650,28 @@ export default function Admin() {
     };
 
     const assignArtistToSong = async (songId, artistName) => {
+        const trimmed = (artistName || '').trim();
+        const previousArtist = songs.find((s) => s.id === songId)?.artist;
+        setSongs((prev) =>
+            prev.map((s) => (s.id === songId ? { ...s, artist: trimmed || null } : s))
+        );
         try {
-            await updateDoc(doc(db, 'songs', songId), { artist: artistName });
-        } catch { alert("Error al asignar artista"); }
+            await updateDoc(doc(db, 'songs', songId), { artist: trimmed });
+        } catch (e) {
+            console.error(e);
+            setSongs((prev) =>
+                prev.map((s) => (s.id === songId ? { ...s, artist: previousArtist } : s))
+            );
+            alert("Error al asignar artista");
+        }
     };
 
     const saveTrackNames = async () => {
         if (!editingTracks) return;
+        const { id, tracks } = editingTracks;
         try {
-            await updateDoc(doc(db, 'songs', editingTracks.id), {
-                tracks: editingTracks.tracks
-            });
+            await updateDoc(doc(db, 'songs', id), { tracks });
+            setSongs((prev) => prev.map((s) => (s.id === id ? { ...s, tracks } : s)));
             alert("Nombres de tracks actualizados correctamente");
             setEditingTracks(null);
         } catch (e) {
@@ -847,6 +859,7 @@ export default function Admin() {
         try {
             const parsed = val ? parseFloat(val) : null;
             await updateDoc(doc(db, 'users', userId), { customStorageGB: parsed });
+            setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, customStorageGB: parsed } : u));
         } catch (error) { console.error(error); }
     };
 
@@ -1300,6 +1313,7 @@ export default function Admin() {
                     stripeSubscriptionStatus: 'active',
                     updatedAt: serverTimestamp(),
                 });
+                setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, planId, desktopLicenseTier: target, desktopProActive: true, stripeSubscriptionStatus: 'active' } : u));
             } else if (target === 'revoke') {
                 await updateDoc(ref, {
                     planId: 'free',
@@ -1307,6 +1321,7 @@ export default function Admin() {
                     desktopLicenseTier: null,
                     updatedAt: serverTimestamp(),
                 });
+                setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, planId: 'free', desktopProActive: false, desktopLicenseTier: null } : u));
             }
         } catch (e) {
             console.error('[admin set desktop plan]', e);
@@ -1642,7 +1657,14 @@ export default function Admin() {
             {activeTab === 'songs' && (
                 <div className="fade-in">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h2>Organizar por Artista Oficial</h2>
+                        <div>
+                            <h2 style={{ margin: 0 }}>Organizar por Artista Oficial</h2>
+                            {!adminDataLoaded && (
+                                <p style={{ color: '#fbbf24', margin: '10px 0 0 0', fontSize: '0.9rem' }}>
+                                    Pulsa <strong>Cargar datos principales</strong> arriba para ver canciones y la lista de artistas.
+                                </p>
+                            )}
+                        </div>
                         <input type="text" placeholder="Buscar canción o usuario..." value={searchUser} onChange={e => setSearchUser(e.target.value)} style={{ padding: '10px', width: '300px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: 'white' }} />
                     </div>
                     <div style={{ background: '#1e293b', borderRadius: '12px', overflow: 'hidden' }}>
@@ -1699,9 +1721,19 @@ export default function Admin() {
                                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Original: {s.artist || '—'}</div>
                                 </div>
                                 <div style={{ paddingRight: '20px' }}>
-                                    <select value={s.artist || ''} onChange={(e) => assignArtistToSong(s.id, e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'white', color: 'black', border: '1px solid #cbd5e1' }}>
+                                    <select
+                                        value={s.artist || ''}
+                                        onChange={(e) => assignArtistToSong(s.id, e.target.value)}
+                                        disabled={!adminDataLoaded}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'white', color: 'black', border: '1px solid #cbd5e1', opacity: adminDataLoaded ? 1 : 0.6 }}
+                                    >
                                         <option value="">-- Seleccionar --</option>
-                                        {masterArtists.map(ma => <option key={ma.id} value={ma.name}>{ma.name}</option>)}
+                                        {s.artist && !masterArtists.some((ma) => ma.name === s.artist) && (
+                                            <option value={s.artist}>{s.artist} (asignado)</option>
+                                        )}
+                                        {masterArtists.map((ma) => (
+                                            <option key={ma.id} value={ma.name}>{ma.name}</option>
+                                        ))}
                                     </select>
                                 </div>
                                 <div style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.userEmail}</div>
@@ -2247,10 +2279,41 @@ export default function Admin() {
                                     </div>
                                     <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email}</div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontSize: '0.7rem', color: '#64748b' }}>ESPACIO GB:</span>
                                         <input type="number" value={u.customStorageGB || ''} onChange={(e) => updateCustomStorage(u.id, e.target.value)} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', textAlign: 'center', fontSize: '0.8rem' }} />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                        <button
+                                            onClick={() => setDesktopPlan(u.id, 'pro_local')}
+                                            disabled={u.desktopProActive === true && u.desktopLicenseTier === 'pro_local'}
+                                            title="Hacer PRO Local (sin cobrar)"
+                                            style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(94,234,212,0.4)', background: u.desktopProActive === true && u.desktopLicenseTier === 'pro_local' ? 'rgba(94,234,212,0.25)' : 'transparent', color: '#5eead4', cursor: u.desktopProActive === true && u.desktopLicenseTier === 'pro_local' ? 'default' : 'pointer', opacity: u.desktopProActive === true && u.desktopLicenseTier === 'pro_local' ? 0.7 : 1 }}
+                                        >
+                                            {u.desktopProActive === true && u.desktopLicenseTier === 'pro_local' ? '✓ PRO Local' : 'Hacer PRO Local'}
+                                        </button>
+                                        <button
+                                            onClick={() => setDesktopPlan(u.id, 'pro_online')}
+                                            disabled={u.desktopProActive === true && u.desktopLicenseTier === 'pro_online'}
+                                            title="Hacer PRO Online (sin cobrar)"
+                                            style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(196,181,253,0.4)', background: u.desktopProActive === true && u.desktopLicenseTier === 'pro_online' ? 'rgba(196,181,253,0.25)' : 'transparent', color: '#c4b5fd', cursor: u.desktopProActive === true && u.desktopLicenseTier === 'pro_online' ? 'default' : 'pointer', opacity: u.desktopProActive === true && u.desktopLicenseTier === 'pro_online' ? 0.7 : 1 }}
+                                        >
+                                            {u.desktopProActive === true && u.desktopLicenseTier === 'pro_online' ? '✓ PRO Online' : 'Hacer PRO Online'}
+                                        </button>
+                                        {(u.desktopProActive === true || u.desktopLicenseTier) && (
+                                            <button
+                                                onClick={() => {
+                                                    if (window.confirm('¿Quitar plan PRO escritorio a ' + (u.email || u.id) + '? La app pasará a modo demo.')) {
+                                                        void setDesktopPlan(u.id, 'revoke');
+                                                    }
+                                                }}
+                                                title="Quitar plan PRO"
+                                                style={{ padding: '6px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: '6px', border: '1px solid rgba(248,113,113,0.4)', background: 'transparent', color: '#fca5a5', cursor: 'pointer' }}
+                                            >
+                                                Quitar PRO
+                                            </button>
+                                        )}
                                     </div>
                                     <button 
                                         onClick={() => toggleManualSeller(u)} 

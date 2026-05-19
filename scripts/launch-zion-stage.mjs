@@ -1,7 +1,7 @@
 /**
  * Abre Zion Stage (app JUCE de escritorio) desde la raíz del repo.
  * Uso: npm run zion-stage
- * Antes suele hacer falta `npm start` en otra terminal (proxy :3001).
+ * Antes suele hacer falta `npm start` en otra terminal (proxy :3001; UI con Vite en :3000).
  */
 import { spawn } from 'child_process';
 import fs from 'fs';

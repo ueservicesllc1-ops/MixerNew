@@ -239,7 +239,6 @@ import { ScreenOrientation } from '@capacitor/screen-orientation';
 import {
     DndContext,
     closestCenter,
-    TouchSensor,
     PointerSensor,
     useSensor,
     useSensors,
@@ -257,41 +256,57 @@ const isAppNative = typeof window !== 'undefined' && (!!window.Capacitor?.isNati
 /** Electron con bridge Zion (sin Capacitor): más RAM para LRU de stems decodificados. */
 const isCapacitorNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 
-// Optimized Setlist Creator to fix lag
-const SetlistCreator = React.memo(({ onSave, onCancel }) => {
+// Optimized Setlist Creator — sin foco programático agresivo (Electron + overflow:hidden en ancestros).
+const SetlistCreator = React.memo(function SetlistCreator({ onSave, onCancel, saving }) {
     const [name, setName] = React.useState('');
-    const inputRef = React.useRef(null);
-    React.useEffect(() => {
-        let cancelled = false;
-        const raf = requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                if (cancelled) return;
-                try {
-                    inputRef.current?.focus({ preventScroll: true });
-                } catch {
-                    inputRef.current?.focus();
-                }
-            });
-        });
-        return () => {
-            cancelled = true;
-            cancelAnimationFrame(raf);
-        };
-    }, []);
+
+    const submit = React.useCallback(() => {
+        if (saving) return;
+        void onSave(name);
+    }, [name, onSave, saving]);
+
     return (
-        <div style={{ padding: '15px', background: '#f8fafc', borderRadius: '12px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+        <div
+            style={{
+                padding: '15px',
+                background: '#f8fafc',
+                borderRadius: '12px',
+                border: '1px solid #e2e8f0',
+                marginBottom: '12px',
+                position: 'relative',
+                zIndex: 2,
+                flexShrink: 0,
+            }}
+        >
             <h4 style={{ margin: '0 0 10px 0', color: '#1e293b' }}>Nuevo Setlist</h4>
-            <input 
-                ref={inputRef}
-                type="text" 
-                placeholder="Nombre del setlist..." 
-                value={name} 
+            <input
+                type="text"
+                autoComplete="off"
+                autoFocus
+                placeholder="Nombre del setlist..."
+                value={name}
                 onChange={e => setName(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        submit();
+                    }
+                }}
                 style={{ width: '100%', padding: '8px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ccc', boxSizing: 'border-box' }}
             />
             <div style={{ display: 'flex', gap: '5px' }}>
-                <button className="play-btn" style={{ flex: 1, background: '#2ecc71', padding: '8px' }} onClick={() => onSave(name)}>✔ Guardar</button>
-                <button className="transport-btn stop" style={{ width: 'auto', padding: '8px 15px' }} onClick={onCancel}>Cancelar</button>
+                <button
+                    type="button"
+                    className="play-btn"
+                    style={{ flex: 1, background: '#2ecc71', padding: '8px', opacity: saving ? 0.65 : 1 }}
+                    disabled={saving}
+                    onClick={submit}
+                >
+                    {saving ? 'Guardando…' : '✔ Guardar'}
+                </button>
+                <button type="button" className="transport-btn stop" style={{ width: 'auto', padding: '8px 15px' }} disabled={saving} onClick={onCancel}>
+                    Cancelar
+                </button>
             </div>
         </div>
     );
@@ -1135,6 +1150,11 @@ export default function Multitrack({ session }) {
     const [activeSetlist, setActiveSetlist] = useState(null);
     const [isCreatingSetlist, setIsCreatingSetlist] = useState(false);
     const [newSetlistName, setNewSetlistName] = useState('');
+    /** Evita doble clic / Enter+doble disparo y solapa con onSnapshot de Firestore. */
+    const createSetlistBusyRef = useRef(false);
+    const [setlistCreateBusy, setSetlistCreateBusy] = useState(false);
+    /** Fuerza remount del formulario «Nuevo setlist» (Electron a veces deja el input sin teclado tras guardar/borrar). */
+    const [setlistCreatorMountKey, setSetlistCreatorMountKey] = useState(0);
     const [localMarkerOverrides, setLocalMarkerOverrides] = useState({});
     const [librarySongs, setLibrarySongs] = useState([]);
     const [globalSongs, setGlobalSongs] = useState([]);
@@ -2019,12 +2039,16 @@ export default function Multitrack({ session }) {
 
                 const qSetlists = query(collection(db, "setlists"), where("userId", "==", user.uid));
                 const unsubSetlists = onSnapshot(qSetlists, (snapshot) => {
-                    const onlineList = snapshot.docs.map((d) => {
+                    const onlineList = [];
+                    const seenOnline = new Set();
+                    snapshot.docs.forEach((d) => {
+                        if (seenOnline.has(d.id)) return;
+                        seenOnline.add(d.id);
                         const data = d.data();
-                        return { id: d.id, ...data, songs: data.songs || [] };
+                        onlineList.push({ id: d.id, ...data, songs: data.songs || [] });
                     });
                     setSetlists((prev) => {
-                        const pending = prev.filter((sl) => Number(sl?.synced) === 0);
+                        const pending = (prev || []).filter((sl) => Number(sl?.synced) === 0);
                         const byId = new Map(pending.map((sl) => [sl.id, sl]));
                         for (const ol of onlineList) {
                             byId.set(ol.id, ol);
@@ -2066,6 +2090,15 @@ export default function Multitrack({ session }) {
 
     useEffect(() => {
         if (!currentUser?.uid || typeof window === 'undefined' || !window.zionNative) return;
+        
+        // Evitamos arrancar el listener si Firebase Auth aún no se ha inicializado.
+        // Si no está autenticado en la instancia SDK, Firestore daría PERMISSION_DENIED por las reglas de seguridad
+        // y el listener se cerraría de forma permanente.
+        if (!auth.currentUser) {
+            console.log('[desktop] Esperando inicialización de Firebase Auth para sincronizar licencia...');
+            return;
+        }
+
         const unsub = onSnapshot(
             doc(db, 'users', currentUser.uid),
             async (snap) => {
@@ -2092,10 +2125,10 @@ export default function Multitrack({ session }) {
                     setIsDemo(true);
                 }
             },
-            (err) => console.error('users profile', err)
+            (err) => console.error('users profile onSnapshot error:', err)
         );
         return () => unsub();
-    }, [currentUser?.uid]);
+    }, [currentUser, auth.currentUser]);
 
     // APK: catálogo Global solo al elegir la pestaña (getDocs + RAM). Escritorio (Electron): precarga al abrir "+ Canciones"
     // para que el contador Global y la lista estén listos sin pulsar la pestaña.
@@ -2154,31 +2187,39 @@ export default function Multitrack({ session }) {
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
-            activationConstraint: { distance: 8 }
+            activationConstraint: { distance: 8 },
         }),
-        useSensor(TouchSensor, {
-            activationConstraint: { delay: 300, tolerance: 8 }
-        })
     );
 
+    /** Abre el formulario de nuevo setlist con estado de bloqueo limpio (evita input «muerto» tras borrar/reabrir). */
+    const openSetlistCreatorForm = useCallback(() => {
+        createSetlistBusyRef.current = false;
+        setSetlistCreateBusy(false);
+        setSetlistCreatorMountKey((k) => k + 1);
+        setIsCreatingSetlist(true);
+    }, []);
+
     
-    const handleCreateSetlist = async (name) => {
-        if (!name.trim()) return;
+    const handleCreateSetlist = useCallback(async (name) => {
+        const trimmed = String(name || '').trim();
+        if (!trimmed) return;
+        if (createSetlistBusyRef.current) return;
+
         const demoSetlistCount = new Set((setlists || []).map((s) => s.id)).size;
         if (isDemo && demoSetlistCount >= 1) {
             alert('Zion Stage (plan gratis): solo puedes crear 1 setlist.');
             return;
         }
-        
 
-
+        createSetlistBusyRef.current = true;
+        setSetlistCreateBusy(true);
         try {
             const u = auth.currentUser;
             const newSl = {
-                id: 'sl_' + Date.now(),
-                name: name,
+                id: `sl_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+                name: trimmed,
                 songs: [],
-                synced: u && !u.isAnonymous ? 1 : 0
+                synced: u && !u.isAnonymous ? 1 : 0,
             };
 
             if (u && !u.isAnonymous) {
@@ -2186,25 +2227,36 @@ export default function Multitrack({ session }) {
                     name: newSl.name,
                     userId: u.uid,
                     songs: [],
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 });
             }
 
             if (window.zionNative) {
                 await window.zionNative.saveSetlist(newSl);
             }
-            setSetlists((prev) => [...prev, newSl]);
+            // Unificar por id: onSnapshot puede haber añadido ya el doc antes de este setState → evita duplicados.
+            setSetlists((prev) => {
+                const byId = new Map((prev || []).map((sl) => [sl.id, sl]));
+                byId.set(newSl.id, newSl);
+                return Array.from(byId.values());
+            });
 
             setNewSetlistName('');
             setIsCreatingSetlist(false);
         } catch (error) {
             console.error('Error creando setlist:', error);
+        } finally {
+            createSetlistBusyRef.current = false;
+            setSetlistCreateBusy(false);
         }
-    };
+    }, [setlists, isDemo]);
 
     const handleSelectSetlist = (list) => {
         setActiveSetlist(list);
         setIsSetlistMenuOpen(false);
+        setIsCreatingSetlist(false);
+        createSetlistBusyRef.current = false;
+        setSetlistCreateBusy(false);
         localStorage.setItem('mixer_lastSetlistId', list.id);
         const subset = (list.songs || []).slice(0, 2);
         preloadSetlistSongs(subset);
@@ -2271,6 +2323,8 @@ export default function Multitrack({ session }) {
                 if (activeSetlist && activeSetlist.id === id) {
                     setActiveSetlist(null);
                     clearMixerLastSetlistId();
+                    setPreloadStatus({});
+                    setShowPreloader(false);
                 }
             } catch (error) {
                 console.error("Error borrando setlist:", error);
@@ -3520,20 +3574,47 @@ export default function Multitrack({ session }) {
 
 
     useEffect(() => {
+        const anyDrawer =
+            isSetlistMenuOpen
+            || isCreatingSetlist
+            || isLibraryMenuOpen
+            || isCurrentListOpen
+            || isPadsOpen
+            || isSettingsOpen;
         const hasSongs = (activeSetlist?.songs || []).length > 0;
-        const hasAnythingLoading = Object.values(preloadStatus).some(s => s === "loading");
-        if (hasSongs && hasAnythingLoading) {
-            setShowPreloader(true); setCountdown(10);
-            clearInterval(countdownRef.current);
-            countdownRef.current = setInterval(() => {
-                setCountdown(prev => {
-                    if (prev <= 1) { clearInterval(countdownRef.current); setShowPreloader(false); return 0; }
-                    return prev - 1;
-                });
-            }, 1000);
+        const hasAnythingLoading = Object.values(preloadStatus).some((s) => s === 'loading');
+        clearInterval(countdownRef.current);
+        if (anyDrawer) {
+            setShowPreloader(false);
+            return () => clearInterval(countdownRef.current);
         }
+        if (!(hasSongs && hasAnythingLoading)) {
+            setShowPreloader(false);
+            return undefined;
+        }
+        setShowPreloader(true);
+        setCountdown(10);
+        countdownRef.current = setInterval(() => {
+            setCountdown((prev) => {
+                if (prev <= 1) {
+                    clearInterval(countdownRef.current);
+                    setShowPreloader(false);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
         return () => clearInterval(countdownRef.current);
-    }, [activeSetlist?.id]);
+    }, [
+        activeSetlist?.id,
+        preloadStatus,
+        isSetlistMenuOpen,
+        isCreatingSetlist,
+        isLibraryMenuOpen,
+        isCurrentListOpen,
+        isPadsOpen,
+        isSettingsOpen,
+    ]);
 
     useEffect(() => {
         const hasSongs = (activeSetlist?.songs || []).length > 0;
@@ -3587,7 +3668,7 @@ export default function Multitrack({ session }) {
                 </div>
             )}
             {/* ΓöÇΓöÇ PRELOADER OVERLAY ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
-            {showPreloader && (
+            {showPreloader && !isSetlistMenuOpen && !isCreatingSetlist && !isLibraryMenuOpen && !isCurrentListOpen && !isPadsOpen && !isSettingsOpen && (
                 <div style={{
                     position: 'fixed', inset: 0, zIndex: 99999,
                     background: 'linear-gradient(160deg, #0a0a12 0%, #0d1a2e 60%, #0a1520 100%)',
@@ -5163,7 +5244,16 @@ export default function Multitrack({ session }) {
             {/* SLIDE-OUT MENUS (Overlay + Drawers) */}
             <div
                 className={`drawer-overlay ${isSetlistMenuOpen || isLibraryMenuOpen || isSettingsOpen || isCurrentListOpen || isPadsOpen ? 'open' : ''}`}
-                onClick={() => { setIsSetlistMenuOpen(false); setIsLibraryMenuOpen(false); setIsSettingsOpen(false); setIsCurrentListOpen(false); setIsPadsOpen(false); }}
+                onClick={() => {
+                    setIsSetlistMenuOpen(false);
+                    setIsCreatingSetlist(false);
+                    createSetlistBusyRef.current = false;
+                    setSetlistCreateBusy(false);
+                    setIsLibraryMenuOpen(false);
+                    setIsSettingsOpen(false);
+                    setIsCurrentListOpen(false);
+                    setIsPadsOpen(false);
+                }}
             />
 
             {/* ── SETTINGS DRAWER ───────────────────────────────────────────────────────────── */}
@@ -5468,48 +5558,73 @@ export default function Multitrack({ session }) {
                 </div>
             </div>
 
-            {/* 1. SETLISTS DRAWER */}
-            <div className={`setlist-drawer ${isSetlistMenuOpen ? 'open' : ''}`}>
+            {/* 1. SETLISTS DRAWER — z-index alto al abrir: encima de otros .setlist-drawer (Pads 1005, Lista 1006) para foco/clics fiables en Electron */}
+            <div
+                className={`setlist-drawer ${isSetlistMenuOpen ? 'open' : ''}`}
+                style={{ zIndex: isSetlistMenuOpen ? 10100 : 1001 }}
+            >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h2>Mis Setlists</h2>
-                    <button onClick={() => setIsSetlistMenuOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setIsSetlistMenuOpen(false);
+                            setIsCreatingSetlist(false);
+                            createSetlistBusyRef.current = false;
+                            setSetlistCreateBusy(false);
+                        }}
+                        style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}
+                    >
+                        &times;
+                    </button>
                 </div>
 
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                    <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '20px' }}>
-                        Crea y organiza tus listas. Estas se guardan en vivo en Firestore.
-                    </p>
-
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
                     {isCreatingSetlist ? (
-                        <SetlistCreator 
-                            onSave={handleCreateSetlist} 
-                            onCancel={() => setIsCreatingSetlist(false)} 
+                        <SetlistCreator
+                            key={setlistCreatorMountKey}
+                            onSave={handleCreateSetlist}
+                            onCancel={() => {
+                                createSetlistBusyRef.current = false;
+                                setSetlistCreateBusy(false);
+                                setIsCreatingSetlist(false);
+                            }}
+                            saving={setlistCreateBusy}
                         />
                     ) : (
-                        <button className="play-btn" style={{ width: '100%', marginBottom: '20px', background: '#2ecc71' }} onClick={() => setIsCreatingSetlist(true)}>
+                        <button
+                            type="button"
+                            className="play-btn"
+                            style={{ width: '100%', marginBottom: '12px', background: '#2ecc71', flexShrink: 0 }}
+                            onClick={openSetlistCreatorForm}
+                        >
                             + Crear Nuevo Setlist
                         </button>
                     )}
-
-                    <div className="setlist-items">
-                        {setlists.length === 0 && !isCreatingSetlist && (
-                            <div style={{ color: '#aaa', textAlign: 'center', fontSize: '0.85rem' }}>No hay Setlists disponibles.</div>
-                        )}
-                        {setlists.map(list => (
-                            <div key={list.id} className="setlist-item-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: (activeSetlist && activeSetlist.id === list.id) ? '#e0f7fa' : '#fafafa', borderColor: (activeSetlist && activeSetlist.id === list.id) ? '#00bcd4' : '#eee' }} onClick={() => handleSelectSetlist(list)}>
-                                <div>
-                                    <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>{list.name}</h4>
-                                    <span style={{ fontSize: '0.8rem', color: '#999' }}>{list.songs ? list.songs.length : 0} Canciones</span>
+                    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+                        <p style={{ color: '#888', fontSize: '0.9rem', marginBottom: '20px' }}>
+                            Crea y organiza tus listas. Estas se guardan en vivo en Firestore.
+                        </p>
+                        <div className="setlist-items">
+                            {setlists.length === 0 && !isCreatingSetlist && (
+                                <div style={{ color: '#aaa', textAlign: 'center', fontSize: '0.85rem' }}>No hay Setlists disponibles.</div>
+                            )}
+                            {setlists.map(list => (
+                                <div key={list.id} className="setlist-item-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: (activeSetlist && activeSetlist.id === list.id) ? '#e0f7fa' : '#fafafa', borderColor: (activeSetlist && activeSetlist.id === list.id) ? '#00bcd4' : '#eee' }} onClick={() => handleSelectSetlist(list)}>
+                                    <div>
+                                        <h4 style={{ margin: '0 0 5px 0', color: '#333' }}>{list.name}</h4>
+                                        <span style={{ fontSize: '0.8rem', color: '#999' }}>{list.songs ? list.songs.length : 0} Canciones</span>
+                                    </div>
+                                    <button
+                                        onClick={(e) => handleDeleteSetlist(list.id, list.name, e)}
+                                        title="Eliminar Setlist"
+                                        style={{ background: 'transparent', border: 'none', color: '#ff5252', cursor: 'pointer', padding: '5px', display: 'flex' }}
+                                    >
+                                        <Trash2 size={18} />
+                                    </button>
                                 </div>
-                                <button
-                                    onClick={(e) => handleDeleteSetlist(list.id, list.name, e)}
-                                    title="Eliminar Setlist"
-                                    style={{ background: 'transparent', border: 'none', color: '#ff5252', cursor: 'pointer', padding: '5px', display: 'flex' }}
-                                >
-                                    <Trash2 size={18} />
-                                </button>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -9,7 +9,7 @@ function viteB2ProxyBase() {
 
 /**
  * Base URL del proxy/API (mismo criterio que `Dashboard.jsx` y el resto de la web).
- * - localhost / 127.0.0.1 → `b2-proxy` local (p. ej. puerto 3001)
+ * - localhost / 127.0.0.1 → `b2-proxy` local (puerto 3001; la UI en dev suele ser Vite :3000)
  * - producción: `VITE_B2_PROXY_URL` en el build si existe; si no, dominio Railway por defecto.
  */
 export function getMixerApiBase() {

@@ -6,9 +6,8 @@ MainComponent::MainComponent()
     desktopBridge.ensureAudio();
     addAndMakeVisible(*webView);
 
-    // Shell escritorio: misma URL que el stack local completo (b2-proxy + dist en :3001).
-    // No es la app "solo Vite" (:3000). Antes de abrir Zion Stage: `npm start` o `npm run build && npm run start-proxy`.
-    webView->goToURL("http://localhost:3001");
+    // Dev: interfaz en Vite http://localhost:3000; API en b2-proxy :3001 (`npm run dev` + `npm run start-proxy`).
+    webView->goToURL("http://localhost:3000");
     setSize(1280, 800);
 }
 
