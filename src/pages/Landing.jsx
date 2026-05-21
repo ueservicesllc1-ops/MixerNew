@@ -29,9 +29,9 @@ export default function Landing() {
         [t],
     );
     const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
-    /** Modal de entrada: descarga escritorio; 5 s y se cierra solo. */
+    /** Modal de entrada: descarga escritorio; 20 s y se cierra solo. */
     const [showDesktopDownloadPromo, setShowDesktopDownloadPromo] = useState(false);
-    const [desktopPromoSecondsLeft, setDesktopPromoSecondsLeft] = useState(5);
+    const [desktopPromoSecondsLeft, setDesktopPromoSecondsLeft] = useState(20);
     const [email, setEmail] = useState('');
 
     useEffect(() => {
@@ -41,8 +41,8 @@ export default function Landing() {
 
     useEffect(() => {
         if (!showDesktopDownloadPromo) return undefined;
-        setDesktopPromoSecondsLeft(5);
-        const hideId = setTimeout(() => setShowDesktopDownloadPromo(false), 5000);
+        setDesktopPromoSecondsLeft(20);
+        const hideId = setTimeout(() => setShowDesktopDownloadPromo(false), 20000);
         const tickId = setInterval(() => {
             setDesktopPromoSecondsLeft((n) => Math.max(0, n - 1));
         }, 1000);

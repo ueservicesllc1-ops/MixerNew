@@ -105,6 +105,32 @@ async function syncSubscriptionToFirestore(subscriptionRef) {
 
     const { FieldValue } = admin.firestore;
     const status = sub.status;
+
+    // ── Protección contra subs fantasma ──────────────────────────────────────
+    // Si el status es destructivo (no activo), verificamos que la sub del evento
+    // sea la misma que está registrada en Firestore para ese usuario.
+    // Si el usuario ya tiene otra sub activa distinta, ignoramos este evento
+    // para no borrarle el PRO/plan por error.
+    const DESTRUCTIVE_STATUSES = new Set(['incomplete_expired', 'canceled', 'unpaid', 'incomplete']);
+    if (DESTRUCTIVE_STATUSES.has(status)) {
+        try {
+            const userDoc = await dbAdmin.collection('users').doc(String(userId)).get();
+            if (userDoc.exists) {
+                const currentSubId = userDoc.data()?.stripeSubscriptionId;
+                if (currentSubId && currentSubId !== sub.id) {
+                    console.warn(
+                        '[stripe webhook] IGNORADO: sub %s (%s) no es la sub activa del usuario %s (tiene %s). No se modifica Firestore.',
+                        sub.id, status, userId, currentSubId
+                    );
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('[stripe webhook] No se pudo leer doc usuario para protección:', e?.message);
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const patch = {
         stripeSubscriptionId: sub.id,
         stripeCustomerId: customerId || null,
