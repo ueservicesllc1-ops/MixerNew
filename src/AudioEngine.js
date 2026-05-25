@@ -25,6 +25,11 @@ const IS_DESKTOP = typeof window !== 'undefined' && (
 class AudioEngine {
     constructor() {
         this.isPlaying = false;
+        // Loop State (Sample-accurate transport)
+        this.loopActive = false;
+        this.loopStart = null;
+        this.loopEnd = null;
+        this.loopExitPending = false;
         this.pausePosition = 0;
         this.tempoRatio = 1.0;
         this.pitchSemitones = 0;
@@ -966,6 +971,21 @@ class AudioEngine {
         return Math.max(0, this.lastFetchPos + delta * (this.tempoRatio || 1));
     }
 
+    setLoop(active, startSec, endSec) {
+        this.loopActive = !!active;
+        this.loopStart = startSec != null ? Number(startSec) : null;
+        this.loopEnd = endSec != null ? Number(endSec) : null;
+        this.loopExitPending = false;
+        console.log(`[AUDIO ENGINE] Loop set: active=${this.loopActive}, start=${this.loopStart}, end=${this.loopEnd}`);
+    }
+
+    exitLoop() {
+        if (this.loopActive) {
+            this.loopExitPending = true;
+            console.log('[AUDIO ENGINE] Loop exit pending');
+        }
+    }
+
     _startRAF(sessionId) {
         const update = async () => {
             if (!this.isPlaying || sessionId !== this._sessionId) return;
@@ -983,6 +1003,20 @@ class AudioEngine {
                 } else {
                     currentPos = this.pausePosition + ((this.ctx.currentTime - this._playStartTime) * this.tempoRatio);
                 }
+                
+                // Sample-Accurate Loop Check
+                if (this.loopActive && this.loopStart !== null && this.loopEnd !== null) {
+                    if (currentPos >= this.loopEnd) {
+                        if (this.loopExitPending) {
+                            this.loopActive = false;
+                            this.loopExitPending = false;
+                        } else {
+                            currentPos = this.loopStart;
+                            await this.seek(this.loopStart);
+                        }
+                    }
+                }
+
                 if (sessionId !== this._sessionId || !this.isPlaying) return;
                 this.lastFetchPos = currentPos;
                 this.lastFetchTime = performance.now();

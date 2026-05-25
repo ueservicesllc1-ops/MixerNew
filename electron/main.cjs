@@ -700,6 +700,55 @@ app.whenReady().then(() => {
         return null;
     }
 
+    let loadedTracks = [];
+    const busVolumes = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+    const busMutes = [false, false, false, false, false, false];
+    const busSolos = [false, false, false, false, false, false];
+
+    function resolveBusIndexForTrack(track) {
+        const name = String(track?.name || '').toLowerCase();
+        if (track?.isClick || name.includes('click') || name.includes('claqueta') || name.includes('metronome') || name.includes('guiaclick')) {
+            return 2; // Click
+        }
+        if (track?.isGuide || name.includes('guide') || name.includes('guia') || name.includes('cue') || name.includes('referencia')) {
+            return 1; // Guide
+        }
+        if (name.includes('drums') || name.includes('bateria') || name.includes('drum') || name.includes('perc') || name.includes('kick') || name.includes('snare')) {
+            return 4; // Drums
+        }
+        if (name.includes('vocals') || name.includes('voce') || name.includes('lead') || name.includes('coros') || name.includes('vox') || name.includes('voz')) {
+            return 3; // Vocals
+        }
+        if (name.includes('custom') || name.includes('aux')) {
+            return 5; // Custom
+        }
+        return 0; // Music
+    }
+
+    function applyBusVolumeMuteSolo() {
+        if (!engine || !loadedTracks.length) return;
+        for (const t of loadedTracks) {
+            const bi = resolveBusIndexForTrack(t);
+            const vol = busVolumes[bi];
+            const mute = busMutes[bi];
+            const solo = busSolos[bi];
+            
+            try {
+                if (typeof engine.setTrackVolume === 'function') {
+                    engine.setTrackVolume(t.id, vol);
+                }
+                if (typeof engine.setTrackMute === 'function') {
+                    engine.setTrackMute(t.id, mute);
+                }
+                if (typeof engine.setTrackSolo === 'function') {
+                    engine.setTrackSolo(t.id, solo);
+                }
+            } catch (err) {
+                console.warn('[Zion] Failed to apply bus state to track:', t.id, err);
+            }
+        }
+    }
+
     ipcMain.handle('audio:load', async (_e, tracks) => {
         if (!engine || !Array.isArray(tracks)) return false;
         const decryptedTracks = [];
@@ -713,7 +762,12 @@ app.whenReady().then(() => {
             return false;
         }
         try {
-            return engine.loadStemsFromPaths(decryptedTracks);
+            const ok = engine.loadStemsFromPaths(decryptedTracks);
+            if (ok) {
+                loadedTracks = decryptedTracks;
+                applyBusVolumeMuteSolo();
+            }
+            return ok;
         } catch (err) {
             console.error('[Zion] loadStemsFromPaths:', err);
             return false;
@@ -811,6 +865,114 @@ app.whenReady().then(() => {
             return db.getAudioRoutingPrefs(uid);
         } catch {
             return null;
+        }
+    });
+
+    ipcMain.handle('audio:preload-next-song', async (_e, payload) => {
+        try {
+            const { songId, tracks } = payload || {};
+            if (!Array.isArray(tracks) || !tracks.length) {
+                return { ready: false, error: 'No tracks provided' };
+            }
+            console.log(`[PRELOAD] Starting background decryption for songId=${songId}`);
+            const promises = tracks.map(async (t) => {
+                try {
+                    return await resolveEncryptedCacheKey(t);
+                } catch (e) {
+                    console.warn(`[PRELOAD] Failed to decrypt track: ${t.name}`, e);
+                    return null;
+                }
+            });
+            await Promise.all(promises);
+            console.log(`[PRELOAD] Background decryption complete for songId=${songId}`);
+            return { ready: true };
+        } catch (err) {
+            console.error('[PRELOAD] error', err);
+            return { ready: false, error: String(err) };
+        }
+    });
+
+    ipcMain.handle('audio:cancel-preload', async (_e, payload) => {
+        const { songId } = payload || {};
+        console.log(`[PRELOAD] Preload cancellation requested for songId=${songId}`);
+        return { ok: true };
+    });
+
+    ipcMain.handle('db:save-song-map', (_e, songId, mapJson) => {
+        try {
+            return db.saveSongMap(songId, mapJson);
+        } catch (err) {
+            console.error('[DB] save-song-map error', err);
+            return null;
+        }
+    });
+
+    ipcMain.handle('db:get-song-map', (_e, songId) => {
+        try {
+            return db.getSongMap(songId);
+        } catch (err) {
+            console.error('[DB] get-song-map error', err);
+            return null;
+        }
+    });
+
+    ipcMain.on('audio:set-bus-volume', (_e, busIdx, vol) => {
+        try {
+            const bi = parseInt(busIdx, 10);
+            if (!Number.isFinite(bi) || bi < 0 || bi >= 6) return;
+            const v = typeof vol === 'number' ? vol : parseFloat(String(vol));
+            busVolumes[bi] = Number.isFinite(v) ? v : 1.0;
+            
+            // Apply immediately to any matching loaded tracks
+            if (engine) {
+                for (const t of loadedTracks) {
+                    if (resolveBusIndexForTrack(t) === bi) {
+                        engine.setTrackVolume(t.id, busVolumes[bi]);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Zion] audio:set-bus-volume error', e);
+        }
+    });
+
+    ipcMain.on('audio:set-bus-mute', (_e, busIdx, muted) => {
+        try {
+            const bi = parseInt(busIdx, 10);
+            if (!Number.isFinite(bi) || bi < 0 || bi >= 6) return;
+            const m = muted === true || muted === 1 || muted === '1' || muted === 'true';
+            busMutes[bi] = m;
+            
+            // Apply immediately to any matching loaded tracks
+            if (engine) {
+                for (const t of loadedTracks) {
+                    if (resolveBusIndexForTrack(t) === bi) {
+                        engine.setTrackMute(t.id, busMutes[bi]);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Zion] audio:set-bus-mute error', e);
+        }
+    });
+
+    ipcMain.on('audio:set-bus-solo', (_e, busIdx, solo) => {
+        try {
+            const bi = parseInt(busIdx, 10);
+            if (!Number.isFinite(bi) || bi < 0 || bi >= 6) return;
+            const s = solo === true || solo === 1 || solo === '1' || solo === 'true';
+            busSolos[bi] = s;
+            
+            // Apply immediately to any matching loaded tracks
+            if (engine) {
+                for (const t of loadedTracks) {
+                    if (resolveBusIndexForTrack(t) === bi) {
+                        engine.setTrackSolo(t.id, busSolos[bi]);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[Zion] audio:set-bus-solo error', e);
         }
     });
 

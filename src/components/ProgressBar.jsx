@@ -20,6 +20,18 @@ import {
     NEXTGEN_UI_POLL_MS,
     fetchNextGenPlaybackSnapshot,
 } from '../nextGenPlaybackUi';
+import { songMapService, secondsToBarBeat, generateBeatGrid } from '../utils/SongMapService.js';
+
+// localStorage key for bar display preference
+const BAR_MODE_KEY = 'zion_bar_display_mode';
+
+function getInitialBarMode() {
+    try { return localStorage.getItem(BAR_MODE_KEY) === 'bars'; } catch { return false; }
+}
+function saveBarMode(isBars) {
+    try { localStorage.setItem(BAR_MODE_KEY, isBars ? 'bars' : 'time'); } catch {}
+}
+
 
 function formatTime(s) {
     if (!s || isNaN(s) || s < 0) return '0:00';
@@ -216,6 +228,8 @@ export const ProgressBar = React.memo(
     }) => {
         const fillRef = useRef(null);
         const timeRef = useRef(null);
+        const barRef = useRef(null);
+        const toggleRef = useRef(null);
         const trackRef = useRef(null);
         const canvasRef = useRef(null);
         const fakePeaksRef = useRef(null);
@@ -230,6 +244,9 @@ export const ProgressBar = React.memo(
         const lastPctRef = useRef(0);
         const seekMoveLogLastAtRef = useRef(0);
         const SEEK_MOVE_LOG_MIN_MS = 120;
+        const isBarsModeRef = useRef(getInitialBarMode());
+        const beatGridRef = useRef(null); // cached { bars: number[] } for current song
+
 
         const logNativeSeekUi = (message, detail) => {
             if (!nativeUi || typeof Capacitor === 'undefined' || !Capacitor.isNativePlatform()) return;
@@ -295,6 +312,25 @@ export const ProgressBar = React.memo(
             ctx.fill();
             ctx.restore();
 
+            // Draw bar grid lines if songMap is available (Req 9)
+            const grid = beatGridRef.current;
+            const snap = lastSnapshotRef.current;
+            const totalDur = effectiveTrackDur(snap.durationSec, durationProp);
+            if (grid && grid.bars && grid.bars.length > 0 && totalDur > 0) {
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+                ctx.lineWidth = 1;
+                for (const barSec of grid.bars) {
+                    const bx = Math.round((barSec / totalDur) * w);
+                    if (bx < 1 || bx > w - 1) continue;
+                    ctx.beginPath();
+                    ctx.moveTo(bx, 0);
+                    ctx.lineTo(bx, h);
+                    ctx.stroke();
+                }
+                ctx.restore();
+            }
+
             const px = Math.round(playheadX);
             ctx.shadowColor = 'rgba(0,0,0,0.6)';
             ctx.shadowBlur = 4;
@@ -304,6 +340,7 @@ export const ProgressBar = React.memo(
             ctx.fillStyle = '#fffef0';
             ctx.fillRect(px - 1, 0, 2, h);
         }, [nativeUi, durationProp]);
+
 
         // ── Native Android: Zion waveform (cache → deferred PreviewMix decode → synthetic placeholder) ──
         useEffect(() => {
@@ -503,6 +540,18 @@ export const ProgressBar = React.memo(
             return () => ro.disconnect();
         }, [nativeUi, disabled, redrawZion]);
 
+        // ── Preload beat grid when songId changes ──
+        useEffect(() => {
+            beatGridRef.current = null;
+            if (!songId) return;
+            songMapService.loadForSong(songId).then((sm) => {
+                if (!sm) return;
+                const snap = lastSnapshotRef.current;
+                const dur = effectiveTrackDur(snap.durationSec, durationProp);
+                beatGridRef.current = generateBeatGrid(sm, dur || 300);
+            }).catch(() => {});
+        }, [songId, durationProp]);
+
         // ── Native: controlled polling (no RAF for snapshot / scrub math) ──
         useEffect(() => {
             if (!nativeUi || disabled) return undefined;
@@ -519,9 +568,31 @@ export const ProgressBar = React.memo(
                     const pct01 = dur > 0 ? pos / dur : 0;
                     lastPctRef.current = pct01;
                     redrawZion();
+
+                    // Update beat grid if we now have duration but didn't before
+                    if (!beatGridRef.current && songId && s.durationSec > 1) {
+                        const sm = songMapService.get(songId);
+                        if (sm) beatGridRef.current = generateBeatGrid(sm, s.durationSec);
+                    }
+
                     if (timeRef.current) {
                         timeRef.current.textContent = `${formatTime(pos)} / ${formatTime(dur)}`;
                     }
+
+                    // Bar/beat display (Req 5)
+                    if (barRef.current) {
+                        const sm = songId ? songMapService.get(songId) : null;
+                        if (isBarsModeRef.current && sm) {
+                            const bb = secondsToBarBeat(pos, sm);
+                            barRef.current.textContent = `Compás ${bb.bar} · Beat ${bb.beat}`;
+                            console.log(`[BAR DISPLAY] current bar=${bb.bar} beat=${bb.beat}`);
+                        } else if (isBarsModeRef.current && !sm) {
+                            barRef.current.textContent = 'Compás no disponible';
+                        } else {
+                            barRef.current.textContent = '';
+                        }
+                    }
+
                     onSnapshot?.({ positionSec: pos, durationSec: s.durationSec });
 
                     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -548,7 +619,8 @@ export const ProgressBar = React.memo(
                 cancelled = true;
                 clearInterval(id);
             };
-        }, [nativeUi, disabled, onSnapshot, durationProp, redrawZion]);
+        }, [nativeUi, disabled, onSnapshot, durationProp, redrawZion, songId]);
+
 
         // ── Web: RAF only updates visuals from audioEngine (Web Audio path) ──
         useEffect(() => {
@@ -719,22 +791,77 @@ export const ProgressBar = React.memo(
                         flexShrink: 0,
                     }}
                 >
-                    <span
-                        ref={timeRef}
-                        style={{
-                            fontSize: '0.82rem',
-                            fontWeight: '900',
-                            color: '#fff',
-                            opacity: 0.95,
-                            fontVariantNumeric: 'tabular-nums',
-                            letterSpacing: '0.05em',
-                            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                            flexShrink: 0,
-                        }}
-                    >
-                        0:00 / {formatTime(durationProp)}
-                    </span>
+                    {/* Time / Bar toggle row */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                            ref={timeRef}
+                            style={{
+                                fontSize: '0.82rem',
+                                fontWeight: '900',
+                                color: '#fff',
+                                opacity: 0.95,
+                                fontVariantNumeric: 'tabular-nums',
+                                letterSpacing: '0.05em',
+                                textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                                flexShrink: 0,
+                            }}
+                        >
+                            0:00 / {formatTime(durationProp)}
+                        </span>
+
+                        {/* Bar/beat display */}
+                        <span
+                            ref={barRef}
+                            style={{
+                                fontSize: '0.78rem',
+                                fontWeight: '700',
+                                color: '#7dd3fc',
+                                fontVariantNumeric: 'tabular-nums',
+                                letterSpacing: '0.04em',
+                                opacity: isBarsModeRef.current ? 1 : 0,
+                                transition: 'opacity 0.2s',
+                                flexShrink: 0,
+                            }}
+                        />
+
+                        {/* Toggle button (Req 1) */}
+                        <button
+                            ref={toggleRef}
+                            onClick={() => {
+                                const next = !isBarsModeRef.current;
+                                isBarsModeRef.current = next;
+                                saveBarMode(next);
+                                // Update button label
+                                if (toggleRef.current) {
+                                    toggleRef.current.textContent = next ? '🎵 Compás' : '🕐 Tiempo';
+                                }
+                                // Show/hide barRef
+                                if (barRef.current) {
+                                    barRef.current.style.opacity = next ? '1' : '0';
+                                    if (!next) barRef.current.textContent = '';
+                                }
+                                console.log(next ? '[BAR DISPLAY] mode bars' : '[BAR DISPLAY] mode time');
+                            }}
+                            style={{
+                                marginLeft: 'auto',
+                                padding: '2px 10px',
+                                fontSize: '0.72rem',
+                                fontWeight: '700',
+                                borderRadius: 6,
+                                border: '1px solid rgba(125,211,252,0.4)',
+                                background: 'rgba(125,211,252,0.12)',
+                                color: '#7dd3fc',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                transition: 'background 0.15s',
+                                letterSpacing: '0.04em',
+                            }}
+                        >
+                            {isBarsModeRef.current ? '🎵 Compás' : '🕐 Tiempo'}
+                        </button>
+                    </div>
                 </div>
+
 
                 {nativeUi ? (
                     <div

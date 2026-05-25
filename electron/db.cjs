@@ -42,6 +42,12 @@ db.exec(`
         user_uid TEXT PRIMARY KEY,
         prefs_json TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS song_maps (
+        song_id TEXT PRIMARY KEY,
+        map_json TEXT NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 `);
 
 // MIGRACIONES DE ESQUEMA AUTOMÁTICAS
@@ -108,5 +114,16 @@ module.exports = {
         const uid = userUid || '__guest__';
         const stmt = db.prepare('INSERT OR REPLACE INTO audio_routing_prefs (user_uid, prefs_json) VALUES (?, ?)');
         return stmt.run(uid, typeof prefsJson === 'string' ? prefsJson : JSON.stringify(prefsJson));
+    },
+
+    getSongMap: (songId) => {
+        if (!songId) return null;
+        const row = db.prepare('SELECT map_json FROM song_maps WHERE song_id = ?').get(songId);
+        return row?.map_json ?? null;
+    },
+    saveSongMap: (songId, mapJson) => {
+        if (!songId || !mapJson) return null;
+        const stmt = db.prepare('INSERT OR REPLACE INTO song_maps (song_id, map_json) VALUES (?, ?)');
+        return stmt.run(songId, typeof mapJson === 'string' ? mapJson : JSON.stringify(mapJson));
     },
 };

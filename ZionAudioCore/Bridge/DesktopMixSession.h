@@ -39,6 +39,7 @@ private:
     void pullFromReader(int frames);
 
     std::unique_ptr<juce::AudioFormatReaderSource> reader;
+    std::unique_ptr<juce::ResamplingAudioSource>   resampler; // handles SR conversion (e.g. 44100 -> 48000)
     soundtouch::SoundTouch stretch;
     double tempoRatio = 1.0;
     double pitchSemitones = 0.0;
@@ -127,9 +128,15 @@ private:
         bool muted = false;
         bool solo = false;
         float pan = 0.0f; // debug only: guide=-1, music=+1
-        std::unique_ptr<juce::AudioFormatReaderSource> reader; // solo GuideBus
-        std::unique_ptr<PositionableSoundTouchBridge> musicBridge; // solo MusicBus
-        std::unique_ptr<juce::AudioTransportSource> transport;
+        double sourceSampleRate = 44100.0; // file's native SR
+        std::unique_ptr<juce::AudioFormatReaderSource> reader; // GuideBus
+        std::unique_ptr<PositionableSoundTouchBridge> musicBridge; // MusicBus
+
+        juce::PositionableAudioSource* getActiveSource() const {
+            if (isGuide && reader != nullptr) return reader.get();
+            if (!isGuide && musicBridge != nullptr) return musicBridge.get();
+            return nullptr;
+        }
     };
 
     void updateMusicSoundTouchParams();
@@ -171,6 +178,10 @@ private:
     double pitchSemitones = 0.0;
     double tempoRatio = 1.0;
     int debugBlockCounter = 0;
+
+    // Sample-accurate transport clock
+    juce::int64 globalSamplePosition = 0;
+    bool isPlaying = false;
 
     std::atomic<float> masterLinearGain { 1.0f };
 };

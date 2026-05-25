@@ -15,15 +15,17 @@ PositionableSoundTouchBridge::PositionableSoundTouchBridge(std::unique_ptr<juce:
                                                            double sourceRateIn)
     : reader(std::move(readerIn)),
       sourceSampleRate(sourceRateIn > 0 ? sourceRateIn : 44100.0),
-      numChannels(juce::jmax(1, numChannelsIn)) {}
+      numChannels(juce::jmax(1, numChannelsIn))
+{
+    // Wrap reader in a resampler so host SR (e.g. 48000) != source SR (e.g. 44100) is handled.
+    if (reader != nullptr)
+        resampler = std::make_unique<juce::ResamplingAudioSource>(reader.get(), false, numChannels);
+}
 
 void PositionableSoundTouchBridge::configureStretch() {
-    // La cadena JUCE entrega PCM a la tasa del dispositivo (`hostSampleRate`), no a la del archivo.
-    // Si SoundTouch usa `sourceSampleRate` con datos ya a host rate, el audio suena débil / desafinado / “mareado”.
     const double sr = (hostSampleRate > 0.0 ? hostSampleRate : sourceSampleRate);
     stretch.setSampleRate((uint) juce::jlimit(8000.0, 192000.0, sr));
     stretch.setChannels((uint) numChannels);
-    // virtualRate = 1: no control global "rate" (eso sería tempo+pitch a la vez).
     stretch.setRate(1.0);
     stretch.setTempo(juce::jlimit(0.5, 1.5, tempoRatio));
     stretch.setPitchSemiTones(pitchSemitones);
@@ -34,15 +36,23 @@ void PositionableSoundTouchBridge::prepareToPlay(int samplesPerBlockExpected, do
     blockSize = juce::jmax(256, samplesPerBlockExpected);
     readerPull.setSize(numChannels, blockSize);
     readerInterleaved.resize((size_t) blockSize * (size_t) numChannels);
-    if (reader != nullptr)
+    if (resampler != nullptr) {
+        const double ratio = (hostSampleRate > 0 && sourceSampleRate > 0)
+                              ? sourceSampleRate / hostSampleRate : 1.0;
+        resampler->setResamplingRatio(ratio);
+        resampler->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
+    } else if (reader != nullptr) {
         reader->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
+    }
     configureStretch();
     prepared = true;
 }
 
 void PositionableSoundTouchBridge::releaseResources() {
     prepared = false;
-    if (reader != nullptr)
+    if (resampler != nullptr)
+        resampler->releaseResources();
+    else if (reader != nullptr)
         reader->releaseResources();
     readerPull.setSize(0, 0);
     interleavedOut.clear();
@@ -69,18 +79,18 @@ void PositionableSoundTouchBridge::setPitchSemitones(double semitones) {
 }
 
 void PositionableSoundTouchBridge::pullFromReader(int frames) {
-    if (reader == nullptr || frames <= 0) return;
+    if (frames <= 0) return;
     readerPull.clear();
     juce::AudioSourceChannelInfo pull(&readerPull, 0, frames);
-    reader->getNextAudioBlock(pull);
+    if (resampler != nullptr)
+        resampler->getNextAudioBlock(pull);  // resampled to hostSampleRate
+    else if (reader != nullptr)
+        reader->getNextAudioBlock(pull);
 }
 
 void PositionableSoundTouchBridge::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill) {
     if (!prepared || bufferToFill.buffer == nullptr || reader == nullptr) return;
 
-    // Siempre pasar por SoundTouch para stems de música (incluso tono/tempo nominal).
-    // Un atajo "neutral" que leía directo del reader cambiaba la latencia y el consumo del
-    // buffer al volver de ±semitonos a 0 → click/guías (sin ST) y stems quedaban desfasados.
     const int ch = numChannels;
     const int framesOut = bufferToFill.numSamples;
     if (framesOut <= 0) return;
@@ -128,23 +138,34 @@ void PositionableSoundTouchBridge::getNextAudioBlock(const juce::AudioSourceChan
 
 void PositionableSoundTouchBridge::setNextReadPosition(juce::int64 newPosition) {
     if (reader == nullptr) return;
-    const double tr = juce::jmax(0.5, juce::jmin(1.5, tempoRatio));
-    const juce::int64 inPos = (juce::int64) std::llround((double) newPosition * tr);
-    reader->setNextReadPosition(juce::jlimit((juce::int64) 0, reader->getTotalLength(), inPos));
+    // newPosition is in host-rate samples; convert to source-rate for the underlying reader
+    const double srRatio = (hostSampleRate > 0 && sourceSampleRate > 0)
+                            ? sourceSampleRate / hostSampleRate : 1.0;
+    const juce::int64 srcPos = (juce::int64) std::llround((double) newPosition * srRatio);
+    reader->setNextReadPosition(juce::jlimit((juce::int64) 0, reader->getTotalLength(), srcPos));
+    // Reset resampler buffer so stale samples are discarded
+    if (resampler != nullptr && prepared) {
+        resampler->releaseResources();
+        resampler->setResamplingRatio(srRatio);
+        resampler->prepareToPlay(blockSize, hostSampleRate);
+    }
     stretch.clear();
     configureStretch();
 }
 
 juce::int64 PositionableSoundTouchBridge::getNextReadPosition() const {
     if (reader == nullptr) return 0;
-    const double tr = juce::jmax(0.5, juce::jmin(1.5, tempoRatio));
-    return (juce::int64) std::llround((double) reader->getNextReadPosition() / tr);
+    // Convert source-rate position back to host-rate for the session clock
+    const double srRatio = (hostSampleRate > 0 && sourceSampleRate > 0)
+                            ? sourceSampleRate / hostSampleRate : 1.0;
+    return (juce::int64) std::llround((double) reader->getNextReadPosition() / srRatio);
 }
 
 juce::int64 PositionableSoundTouchBridge::getTotalLength() const {
     if (reader == nullptr) return 0;
-    const double tr = juce::jmax(0.5, juce::jmin(1.5, tempoRatio));
-    return (juce::int64) std::llround((double) reader->getTotalLength() / tr);
+    const double srRatio = (hostSampleRate > 0 && sourceSampleRate > 0)
+                            ? sourceSampleRate / hostSampleRate : 1.0;
+    return (juce::int64) std::llround((double) reader->getTotalLength() / srRatio);
 }
 
 bool PositionableSoundTouchBridge::isLooping() const {
@@ -188,7 +209,6 @@ static DesktopStemBus classifyStemBus(const juce::String& stemLabel) {
     return DesktopStemBus::Music;
 }
 
-// Transparent desktop mix gains (no auto normalization/compression).
 constexpr float kMusicBusGain = 1.0f;
 constexpr float kGuideBusGain = 1.0f;
 constexpr float kClickBusGain = 0.90f;
@@ -202,17 +222,14 @@ DesktopMixSession::~DesktopMixSession() {
 
 void DesktopMixSession::clear() {
     for (auto& s : stemSlots) {
-        if (s.transport != nullptr) {
-            s.transport->stop();
-            s.transport->setSource(nullptr);
-        }
         s.musicBridge.reset();
         s.reader.reset();
-        s.transport.reset();
     }
     stemSlots.clear();
     lengthInSamples = 0;
     scratch.setSize(0, 0);
+    globalSamplePosition = 0;
+    isPlaying = false;
 }
 
 void DesktopMixSession::setMasterLinearGain(float linear) {
@@ -221,32 +238,10 @@ void DesktopMixSession::setMasterLinearGain(float linear) {
 }
 
 void DesktopMixSession::resyncTransportsToGuide() {
-    juce::AudioTransportSource* ref = nullptr;
-    for (auto& s : stemSlots) {
-        if (s.isGuide && s.transport != nullptr) {
-            ref = s.transport.get();
-            break;
-        }
-    }
-    if (ref == nullptr) {
-        for (auto& s : stemSlots) {
-            if (s.transport != nullptr) {
-                ref = s.transport.get();
-                break;
-            }
-        }
-    }
-    if (ref == nullptr) return;
-    const double t = ref->getCurrentPosition();
-    for (auto& s : stemSlots) {
-        if (s.transport == nullptr) continue;
-        if (s.transport.get() == ref) continue;
-        s.transport->setPosition(t);
-    }
+    // No-op: all sources share globalSamplePosition - no drift is possible
 }
 
 void DesktopMixSession::setPitchSemitones(float semitones) {
-    const double prevPitch = pitchSemitones;
     pitchSemitones = (double) juce::jlimit(-12.0f, 12.0f, semitones);
     const double pitchRatio = std::pow(2.0, pitchSemitones / 12.0);
     juce::Logger::writeToLog("[PITCH] requested semitones: " + juce::String(pitchSemitones, 2));
@@ -255,9 +250,6 @@ void DesktopMixSession::setPitchSemitones(float semitones) {
     juce::Logger::writeToLog("[PITCH] GuideBus bypassed");
     juce::Logger::writeToLog("[PITCH] Click/Guide remain original");
     updateMusicSoundTouchParams();
-    // SoundTouch deja cola desalineada vs. click (sin ST); al volver a 0 alineamos reloj de todos los transports.
-    if (std::abs(prevPitch) >= 1.0e-3 && std::abs(pitchSemitones) < 1.0e-3)
-        resyncTransportsToGuide();
 }
 
 void DesktopMixSession::setTempoRatio(float ratio) {
@@ -424,7 +416,6 @@ void DesktopMixSession::routeStereoSample(juce::AudioBuffer<float>* out,
         return;
 
     if (numOutCh <= 2) {
-        // Igual que antes del ruteo multi-out: estéreo real a L/R (no mono a un solo canal).
         const int idxL = 0;
         const int idxR = juce::jmin(1, numOutCh - 1);
         if (idxL == idxR)
@@ -496,7 +487,7 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
         juce::File file(juce::File::isAbsolutePath(p) ? juce::File(p) : stemsRoot.getChildFile(p));
 
         if (!file.existsAsFile()) {
-        NativeLog("DesktopMixSession: missing file " + file.getFullPathName());
+            NativeLog("DesktopMixSession: missing file " + file.getFullPathName());
             continue;
         }
 
@@ -505,7 +496,10 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
             NativeLog("DesktopMixSession: cannot read " + file.getFullPathName());
             continue;
         }
-        NativeLog("[JUCE] opened reader: " + file.getFullPathName());
+        NativeLog("[JUCE] opened reader: " + file.getFullPathName() +
+                  " SR=" + juce::String((int)raw->sampleRate) +
+                  " ch=" + juce::String((int)raw->numChannels));
+
 
         auto frs = std::make_unique<juce::AudioFormatReaderSource>(raw, true);
         const juce::int64 len = frs->getTotalLength();
@@ -523,21 +517,18 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
         slot.assignedBus = classifyStemBus(stemLabel);
         slot.logName = stemLabel;
         slot.clientTrackId = spec.clientTrackId;
+        slot.sourceSampleRate = readerSr;
         slot.lastMeterLevel = 0.f;
         slot.numChannels = nCh;
-        // Keep music centered by default to preserve clarity/stereo image.
         slot.pan = guide ? -1.0f : 0.0f;
         slot.reader = std::move(frs);
 
-        juce::AudioFormatReaderSource* readerPtr = slot.reader.get();
-        slot.transport = std::make_unique<juce::AudioTransportSource>();
-
         if (guide) {
-            slot.transport->setSource(readerPtr, 0, nullptr, readerSr);
+            // GuideBus: reader directo, sin SoundTouch
             NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> GuideBus LEFT DRY");
         } else {
+            // MusicBus: SoundTouch bridge (tempo y pitch)
             slot.musicBridge = std::make_unique<PositionableSoundTouchBridge>(std::move(slot.reader), nCh, readerSr);
-            slot.transport->setSource(slot.musicBridge.get(), 0, nullptr, readerSr);
             NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> MusicBus RIGHT (SoundTouch tempo)");
         }
 
@@ -551,13 +542,11 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
 }
 
 void DesktopMixSession::setStemsPlaying(bool shouldPlay) {
-    for (auto& s : stemSlots) {
-        if (s.transport == nullptr) continue;
-        if (shouldPlay)
-            s.transport->start();
-        else
-            s.transport->stop();
-    }
+    // Requirement 3 & 4: Play/Pause only change the transport state flag.
+    // No individual track start/stop. The processBlock clock drives everything.
+    isPlaying = shouldPlay;
+    NativeLog(juce::String("[TRANSPORT] ") + (isPlaying ? "play" : "pause") +
+              " samplePosition=" + juce::String(globalSamplePosition));
 }
 
 void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sampleRate) {
@@ -569,9 +558,12 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
         maxCh = juce::jmax(maxCh, s.numChannels);
     scratch.setSize(maxCh, samplesPerBlockExpected);
 
+    // Requirement: log sampleRate at initialization
+    NativeLog("[TRANSPORT] sampleRate=" + juce::String(hostSampleRate, 2));
+
     for (auto& s : stemSlots) {
-        if (s.transport != nullptr)
-            s.transport->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
+        if (auto* src = s.getActiveSource())
+            src->prepareToPlay(samplesPerBlockExpected, hostSampleRate);
     }
     updateMusicSoundTouchParams();
     NativeLog(
@@ -583,8 +575,8 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
 
 void DesktopMixSession::releaseResources() {
     for (auto& s : stemSlots) {
-        if (s.transport != nullptr)
-            s.transport->releaseResources();
+        if (auto* src = s.getActiveSource())
+            src->releaseResources();
     }
     scratch.setSize(0, 0);
 }
@@ -594,6 +586,10 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         return;
 
     bufferToFill.clearActiveBufferRegion();
+
+    // Requirement 7: If not playing, output silence - do NOT advance clock
+    if (!isPlaying)
+        return;
 
     const int nSamp = bufferToFill.numSamples;
     const int start = bufferToFill.startSample;
@@ -614,14 +610,28 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         }
     }
 
+    // Requirement 7: Read ALL tracks from the same globalSamplePosition
     for (auto& s : stemSlots) {
-        if (s.transport == nullptr)
+        auto* src = s.getActiveSource();
+        if (src == nullptr)
             continue;
+
+        // Sync check: verify reader is at expected position
+        if (emitDebug) {
+            const juce::int64 readerPos = src->getNextReadPosition();
+            const juce::int64 delta = readerPos - globalSamplePosition;
+            NativeLog("[SYNC] track=" + s.logName +
+                      " readerPos=" + juce::String(readerPos) +
+                      " globalPos=" + juce::String(globalSamplePosition) +
+                      " delta=" + juce::String(delta) + " samples");
+        }
+
 
         const int useCh = juce::jmax(1, juce::jmin(s.numChannels, scratch.getNumChannels()));
         scratch.clear();
         juce::AudioSourceChannelInfo info(&scratch, 0, nSamp);
-        s.transport->getNextAudioBlock(info);
+        src->getNextAudioBlock(info);
+
 
         const bool audible = !s.muted && (!anySolo || s.solo);
         float trackPeak = 0.0f;
@@ -719,21 +729,38 @@ void DesktopMixSession::getNextAudioBlock(const juce::AudioSourceChannelInfo& bu
         NativeLog(
             "[JUCE AUDIO] master peak=" + juce::String(masterPeak, 4) +
             " master RMS=" + juce::String(masterRms, 4) +
-            " outCh=" + juce::String(outChannels)
+            " outCh=" + juce::String(outChannels) +
+            " globalPos=" + juce::String(globalSamplePosition)
         );
     }
+
+    // Requirement 7: advance the single global clock AFTER processing all tracks
+    globalSamplePosition += nSamp;
 }
 
 void DesktopMixSession::setNextReadPosition(juce::int64 newPosition) {
-    const double sec = hostSampleRate > 0 ? (double) newPosition / hostSampleRate : 0.0;
-    for (auto& s : stemSlots)
-        if (s.transport != nullptr)
-            s.transport->setPosition(sec);
+    // newPosition is in host-rate samples
+    globalSamplePosition = newPosition;
+    const double seconds = hostSampleRate > 0 ? (double) newPosition / hostSampleRate : 0.0;
+    for (auto& s : stemSlots) {
+        if (s.isGuide && s.reader != nullptr) {
+            // Guide/Click: direct reader, position in SOURCE-rate samples
+            const double srRatio = (hostSampleRate > 0 && s.sourceSampleRate > 0)
+                                    ? s.sourceSampleRate / hostSampleRate : 1.0;
+            const juce::int64 srcPos = (juce::int64) std::llround((double) newPosition * srRatio);
+            s.reader->setNextReadPosition(juce::jlimit((juce::int64) 0, s.reader->getTotalLength(), srcPos));
+        } else if (s.musicBridge != nullptr) {
+            // MusicBus bridge handles SR conversion internally
+            s.musicBridge->setNextReadPosition(newPosition);
+        }
+    }
+    NativeLog("[TRANSPORT] seek seconds=" + juce::String(seconds, 3) +
+              " sample=" + juce::String(globalSamplePosition));
 }
 
 juce::int64 DesktopMixSession::getNextReadPosition() const {
-    if (stemSlots.empty() || hostSampleRate <= 0 || stemSlots[0].transport == nullptr) return 0;
-    return (juce::int64)(stemSlots[0].transport->getCurrentPosition() * hostSampleRate);
+    // Requirement 10: UI observes position; only read from single clock
+    return globalSamplePosition;
 }
 
 juce::int64 DesktopMixSession::getTotalLength() const {

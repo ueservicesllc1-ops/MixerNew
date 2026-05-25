@@ -222,6 +222,8 @@ import { getSongMusicalKey } from '../utils/transposer.js'
 import { trackUserUsage } from '../utils/usageMetrics'
 import { DesktopProSubscribeModal } from '../desktop/DesktopProSubscribeModal.jsx'
 import { LOGO_BLANCO_PNG } from '../utils/publicAssets.js'
+import { songMapService, secondsToBarBeat } from '../utils/SongMapService.js'
+
 
 /** updateDoc sin documento → code `not-found` (SDK puede decir que no existe el documento / fila). */
 function isFirestoreDocMissing(err) {
@@ -3268,24 +3270,39 @@ export default function Multitrack({ session }) {
 
     const nativeAutoStopFiredRef = useRef(false);
 
-    // Time display (transport): Web Audio only — native uses getSnapshot via ProgressBar + onNextGenPlaybackSnapshot.
+    // Time display + Bar/Beat toggle
     const timeDisplayRef = useRef(null);
+    const barDisplayRef = useRef(null);
+    const barToggleBtnRef = useRef(null);
+    const isBarsModeDesktopRef = useRef(false);
     useEffect(() => {
-        const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
-        if (isNative) return undefined;
+        const isCapMobile = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        if (isCapMobile) return undefined;
         let rafId;
         const tick = () => {
+            const t = audioEngine.getCurrentTime();
+            progressRef.current = t;
             if (timeDisplayRef.current) {
-                const t = audioEngine.getCurrentTime();
-                progressRef.current = t;
                 timeDisplayRef.current.textContent =
-                    `${formatTime(t)} / ${totalDuration ? formatTime(totalDuration) : '--:--'}`;
+                    formatTime(t) + ' / ' + (totalDuration ? formatTime(totalDuration) : '--:--');
+            }
+            if (barDisplayRef.current && isBarsModeDesktopRef.current) {
+                const sm = activeSongId ? songMapService.get(activeSongId) : null;
+                if (sm) {
+                    const bb = secondsToBarBeat(t, sm);
+                    barDisplayRef.current.textContent = 'Bar ' + bb.bar + '  Beat ' + bb.beat;
+                } else {
+                    barDisplayRef.current.textContent = '';
+                }
+            } else if (barDisplayRef.current) {
+                barDisplayRef.current.textContent = '';
             }
             rafId = requestAnimationFrame(tick);
         };
         rafId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafId);
-    }, [totalDuration]);
+    }, [totalDuration, activeSongId]);
+
     // AUTO-STOP when song finishes — interval-based so it doesn't depend on progress state (avoids 60fps re-renders)
     useEffect(() => {
         const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
@@ -4164,6 +4181,24 @@ export default function Multitrack({ session }) {
 
                 <div className="audio-info">
                     {!isAppNative ? <span ref={timeDisplayRef} /> : <span ref={timeDisplayRef} style={{ display: 'none' }} aria-hidden="true" />}
+
+                    <span ref={barDisplayRef} style={{ fontSize: '0.8rem', fontWeight: '700', color: '#7dd3fc', marginLeft: 6, minWidth: 100 }} />
+
+                    <button
+                        ref={barToggleBtnRef}
+                        onClick={() => {
+                            const next = !isBarsModeDesktopRef.current;
+                            isBarsModeDesktopRef.current = next;
+                            try { localStorage.setItem('zion_bar_display_mode', next ? 'bars' : 'time'); } catch {}
+                            if (barToggleBtnRef.current) barToggleBtnRef.current.textContent = next ? 'Compas' : 'Tiempo';
+                            if (!next && barDisplayRef.current) barDisplayRef.current.textContent = '';
+                            console.log(next ? '[BAR DISPLAY] mode bars' : '[BAR DISPLAY] mode time');
+                        }}
+                        style={{ marginLeft: 8, padding: '2px 10px', fontSize: '0.72rem', fontWeight: '700', borderRadius: 6, border: '1px solid rgba(125,211,252,0.4)', background: 'rgba(125,211,252,0.12)', color: '#7dd3fc', cursor: 'pointer' }}
+                    >
+                        Tiempo
+                    </button>
+
 
                     {/* TEMPO CONTROL — web y APK (NextGen setTempoRatio vía AudioEngine) */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>

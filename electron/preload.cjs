@@ -20,6 +20,17 @@ contextBridge.exposeInMainWorld('zionNative', {
     applyAudioRoutingJson: (jsonStr) => ipcRenderer.invoke('audio:apply-routing', jsonStr),
     getAudioRoutingPrefs: () => ipcRenderer.invoke('audio:get-routing-prefs'),
 
+    // Song Maps y Preload
+    preloadNextSong: (payload) => ipcRenderer.invoke('audio:preload-next-song', payload),
+    cancelPreload: (payload) => ipcRenderer.invoke('audio:cancel-preload', payload),
+    saveSongMap: (songId, mapJson) => ipcRenderer.invoke('db:save-song-map', songId, mapJson),
+    getSongMap: (songId) => ipcRenderer.invoke('db:get-song-map', songId),
+
+    // Bus Mixer
+    setBusVolume: (busIdx, vol) => ipcRenderer.send('audio:set-bus-volume', busIdx, vol),
+    setBusMute: (busIdx, muted) => ipcRenderer.send('audio:set-bus-mute', busIdx, muted),
+    setBusSolo: (busIdx, solo) => ipcRenderer.send('audio:set-bus-solo', busIdx, solo),
+
     // Base de Datos Local (OFFLINE)
     getSongs: () => ipcRenderer.invoke('db:get-songs'),
     getSong: (id) => ipcRenderer.invoke('db:get-song', id),
@@ -83,4 +94,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setMasterVolume: (vol) => ipcRenderer.send('audio:set-master-volume', vol),
     setTrackMute: (id, muted) => ipcRenderer.send('audio:set-mute', id, muted),
     setTrackSolo: (id, solo) => ipcRenderer.send('audio:set-solo', id, solo),
+
+    // Song Maps y Preload
+    preloadNextSong: (payload) => ipcRenderer.invoke('audio:preload-next-song', payload),
+    cancelPreload: (payload) => ipcRenderer.invoke('audio:cancel-preload', payload),
+    saveSongMap: (songId, mapJson) => ipcRenderer.invoke('db:save-song-map', songId, mapJson),
+    getSongMap: (songId) => ipcRenderer.invoke('db:get-song-map', songId),
+
+    // Bus Mixer
+    setBusVolume: (busIdx, vol) => ipcRenderer.send('audio:set-bus-volume', busIdx, vol),
+    setBusMute: (busIdx, muted) => ipcRenderer.send('audio:set-bus-mute', busIdx, muted),
+    setBusSolo: (busIdx, solo) => ipcRenderer.send('audio:set-bus-solo', busIdx, solo),
 });
