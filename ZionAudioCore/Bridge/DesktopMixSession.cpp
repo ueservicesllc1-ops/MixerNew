@@ -501,12 +501,14 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
                   " ch=" + juce::String((int)raw->numChannels));
 
 
-        auto frs = std::make_unique<juce::AudioFormatReaderSource>(raw, true);
-        const juce::int64 len = frs->getTotalLength();
-        maxLen = juce::jmax(maxLen, len);
-
         const int nCh = juce::jmax(1, (int) raw->numChannels);
         const double readerSr = raw->sampleRate;
+
+        auto frs = std::make_unique<juce::AudioFormatReaderSource>(raw, true);
+        const juce::int64 lenInSourceSamples = frs->getTotalLength();
+        // Store in source-rate for now; will be converted to host-rate in prepareToPlay
+        // once the real device sample rate is known.
+        maxLen = juce::jmax(maxLen, lenInSourceSamples);
 
         juce::String stemLabel = stemNameIn.isNotEmpty() ? stemNameIn : file.getFileNameWithoutExtension();
         const bool guide = classifyGuideStem(stemLabel);
@@ -536,7 +538,8 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
         any = true;
     }
 
-    lengthInSamples = maxLen;
+    lengthInSamples = maxLen; // source-rate placeholder; corrected to host-rate in prepareToPlay()
+    // NOTE: prepareToPlay() will recompute lengthInSamples in host-rate samples once the device SR is known.
     updateMusicSoundTouchParams();
     return any;
 }
@@ -553,10 +556,39 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
     hostSampleRate = sampleRate > 0 ? sampleRate : 44100.0;
     debugBlockCounter = 0;
 
+    // Recompute lengthInSamples now that we know the real host sample rate.
+    // loadStems() stores source-rate sample counts (files may be 44100 Hz while
+    // the device runs at 48000 Hz). Without this recalculation the reported
+    // duration would be ~8.16% shorter, causing songs to be cut off early.
+    {
+        juce::int64 maxLenHost = 0;
+        for (const auto& s : stemSlots) {
+            const double sr = s.sourceSampleRate > 0 ? s.sourceSampleRate : 44100.0;
+            const juce::PositionableAudioSource* src = s.getActiveSource();
+            if (src == nullptr) continue;
+            const juce::int64 srcLen = src->getTotalLength(); // in source-rate for guide, host-rate for bridge
+            juce::int64 hostLen;
+            if (s.isGuide) {
+                // Guide uses raw reader: getTotalLength() is in source-rate samples.
+                const double ratio = hostSampleRate / sr;
+                hostLen = (juce::int64) std::llround((double) srcLen * ratio);
+            } else {
+                // MusicBus bridge: getTotalLength() already converts to host-rate.
+                hostLen = srcLen;
+            }
+            maxLenHost = juce::jmax(maxLenHost, hostLen);
+        }
+        if (maxLenHost > 0)
+            lengthInSamples = maxLenHost;
+    }
+    NativeLog("[TRANSPORT] lengthInSamples=" + juce::String(lengthInSamples) +
+              " durationSec=" + juce::String(hostSampleRate > 0 ? (double)lengthInSamples / hostSampleRate : 0.0, 3));
+
     int maxCh = 2;
     for (auto& s : stemSlots)
         maxCh = juce::jmax(maxCh, s.numChannels);
     scratch.setSize(maxCh, samplesPerBlockExpected);
+
 
     // Requirement: log sampleRate at initialization
     NativeLog("[TRANSPORT] sampleRate=" + juce::String(hostSampleRate, 2));
