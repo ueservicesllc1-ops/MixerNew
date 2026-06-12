@@ -17,11 +17,14 @@ export const auth = getAuth(app);
 
 let db;
 try {
+    const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
     db = initializeFirestore(app, {
-        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+        localCache: persistentLocalCache(
+            isNative ? {} : { tabManager: persistentMultipleTabManager() }
+        )
     });
-} catch {
-    // Multiple tabs or persistence unavailable — fall back to in-memory (no offline cache)
+} catch (e) {
+    console.warn('[Firestore Cache] Failed to initialize persistent cache:', e);
     db = getFirestore(app);
 }
 export { db };

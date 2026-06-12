@@ -30,6 +30,7 @@ public class NextGenMixerPlugin extends Plugin {
     public native void nativeSetTrackVolume(String id, float volume);
     public native void nativeSetTrackMute(String id, boolean muted);
     public native void nativeSetTrackSolo(String id, boolean solo);
+    public native void nativeSetTrackPan(String id, float pan);
     public native void nativeSetPitchSemiTones(float semitones);
     public native void nativeSetTempoRatio(float ratio);
     public native void nativeSetMasterVolume(float volume);
@@ -152,6 +153,16 @@ public class NextGenMixerPlugin extends Plugin {
         Boolean solo = call.getBoolean("solo");
         if (id != null && solo != null && nativeLibLoaded) {
             nativeSetTrackSolo(id, solo);
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void setTrackPan(PluginCall call) {
+        String id = call.getString("id");
+        Float pan = call.getFloat("pan");
+        if (id != null && pan != null && nativeLibLoaded) {
+            nativeSetTrackPan(id, pan);
         }
         call.resolve();
     }

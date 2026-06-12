@@ -366,6 +366,14 @@ export const NativeEngine = {
             console.warn('solo error', err);
         }
     },
+    setTrackPan: async (id, pan) => {
+        try {
+            console.log('[NEXTGEN_UI] pan change', id, pan);
+            await NextGenMixerBridge.setTrackPan({ id, pan });
+        } catch (err) {
+            console.warn('setTrackPan error', err);
+        }
+    },
 
     setSpeed: async (ratio) => {
         try {

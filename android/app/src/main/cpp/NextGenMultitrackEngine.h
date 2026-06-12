@@ -44,6 +44,7 @@ public:
     void setTrackVolume(const std::string& id, float volume);
     void setTrackMute(const std::string& id, bool muted);
     void setTrackSolo(const std::string& id, bool solo);
+    void setTrackPan(const std::string& id, float pan);
 
     /** Global pitch shift in semitones [-3, +3], independent of tempo (SoundTouch post-mix). */
     void setPitchSemiTones(float semitones);

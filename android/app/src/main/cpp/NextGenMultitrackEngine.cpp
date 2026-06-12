@@ -114,6 +114,7 @@ struct StemChannel {
     std::atomic<float> volume{1.f};
     std::atomic<bool> muted{false};
     std::atomic<bool> solo{false};
+    std::atomic<float> pan{0.f};
     std::atomic<bool> ended{false};
     ma_uint64 lengthFrames = 0;
     /// Set at load: click/guía/guide → split side; other stems → opposite (see onAudio routing).
@@ -423,6 +424,14 @@ struct NextGenMultitrackEngine::Impl {
             const ma_uint32 nFrames = (ma_uint32)framesRead;
             float blockPeak = 0.f;
             const float gAbs = std::fabs(g);
+            const float panVal = stem->pan.load(std::memory_order_relaxed);
+            float panL = 1.0f;
+            float panR = 1.0f;
+            if (panVal < 0.f) {
+                panR = 1.f + panVal;
+            } else if (panVal > 0.f) {
+                panL = 1.f - panVal;
+            }
             for (ma_uint32 f = 0; f < nFrames; ++f) {
                 const float L = mix_temp_[(size_t)f * 2];
                 const float R = mix_temp_[(size_t)f * 2 + 1];
@@ -430,13 +439,8 @@ struct NextGenMultitrackEngine::Impl {
                 const float pk = std::max(std::fabs(L), std::fabs(R)) * gAbs;
                 if (pk > blockPeak) blockPeak = pk;
                 const size_t base = (size_t)f * 2;
-                if (stem->routeClickGuide) {
-                    if (clickGuideOnLeft) preMix_[base + 0] += m * g;
-                    else                 preMix_[base + 1] += m * g;
-                } else {
-                    if (clickGuideOnLeft) preMix_[base + 1] += m * g;
-                    else                 preMix_[base + 0] += m * g;
-                }
+                preMix_[base + 0] += m * g * panL;
+                preMix_[base + 1] += m * g * panR;
             }
             {
                 const float prev = stem->vuPeak.load(std::memory_order_relaxed);
@@ -497,6 +501,7 @@ struct NextGenMultitrackEngine::Impl {
                 ch->solo.store(false);
                 ch->ended.store(false);
                 ch->routeClickGuide = classifyStemClickOrGuide(ch->id, ch->path);
+                ch->pan.store(ch->routeClickGuide ? -1.f : 1.f);
 
                 ma_decoder_config decCfg = ma_decoder_config_init(ma_format_f32, kChannels, kSampleRate);
                 NGD("decoder init: id=%s path=%s", ch->id.c_str(), ch->path.c_str());
@@ -725,6 +730,18 @@ struct NextGenMultitrackEngine::Impl {
         }
     }
 
+    void setTrackPan(const std::string& id, float pan) {
+        if (pan < -1.f) pan = -1.f;
+        if (pan > 1.f) pan = 1.f;
+        for (auto& up : stems_) {
+            if (up && up->id == id) {
+                up->pan.store(pan);
+                NGD("setTrackPan %s -> %.3f", id.c_str(), pan);
+                return;
+            }
+        }
+    }
+
     void setPitchSemiTones(float semitones) {
         if (semitones < -3.f) semitones = -3.f;
         if (semitones > 3.f) semitones = 3.f;
@@ -838,6 +855,8 @@ void NextGenMultitrackEngine::setTrackMute(const std::string& id, bool muted) { 
 
 void NextGenMultitrackEngine::setTrackSolo(const std::string& id, bool solo) { impl_->setTrackSolo(id, solo); }
 
+void NextGenMultitrackEngine::setTrackPan(const std::string& id, float pan) { impl_->setTrackPan(id, pan); }
+
 void NextGenMultitrackEngine::setPitchSemiTones(float semitones) { impl_->setPitchSemiTones(semitones); }
 
 void NextGenMultitrackEngine::setTempoRatio(float ratio) { impl_->setTempoRatio(ratio); }
@@ -940,6 +959,14 @@ JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTr
     if (!gNextGen || !jid) return;
     const char* id = env->GetStringUTFChars(jid, nullptr);
     gNextGen->setTrackSolo(id ? id : "", solo == JNI_TRUE);
+    env->ReleaseStringUTFChars(jid, id);
+}
+
+JNIEXPORT void JNICALL Java_com_zionstagelive_app_NextGenMixerPlugin_nativeSetTrackPan(JNIEnv* env, jobject, jstring jid,
+                                                                              jfloat pan) {
+    if (!gNextGen || !jid) return;
+    const char* id = env->GetStringUTFChars(jid, nullptr);
+    gNextGen->setTrackPan(id ? id : "", pan);
     env->ReleaseStringUTFChars(jid, id);
 }
 
