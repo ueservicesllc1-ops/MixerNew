@@ -1329,6 +1329,53 @@ export default function Admin() {
         }
     };
 
+    const updateUserPlan = async (uid, newPlanId) => {
+        if (!uid || !newPlanId) return;
+        try {
+            const ref = doc(db, 'users', uid);
+            const updates = {
+                planId: newPlanId,
+                updatedAt: serverTimestamp(),
+            };
+            
+            // Sincronizar estado de escritorio/vendedor según plan
+            if (newPlanId === 'zion_desktop_pro_local') {
+                updates.desktopLicenseTier = 'pro_local';
+                updates.desktopProActive = true;
+                updates.stripeSubscriptionStatus = 'active';
+            } else if (newPlanId === 'zion_desktop_pro_online') {
+                updates.desktopLicenseTier = 'pro_online';
+                updates.desktopProActive = true;
+                updates.stripeSubscriptionStatus = 'active';
+            } else if (newPlanId === 'seller') {
+                updates.isSeller = true;
+                updates.desktopLicenseTier = null;
+                updates.desktopProActive = false;
+            } else {
+                updates.desktopLicenseTier = null;
+                updates.desktopProActive = false;
+                if (newPlanId === 'free') {
+                    updates.stripeSubscriptionStatus = null;
+                } else {
+                    updates.stripeSubscriptionStatus = 'active';
+                }
+            }
+
+            await updateDoc(ref, updates);
+            
+            setUsers((prev) => prev.map((u) => u.id === uid ? { 
+                ...u, 
+                ...updates,
+                updatedAt: undefined 
+            } : u));
+            
+            alert('Plan de usuario actualizado correctamente.');
+        } catch (e) {
+            console.error('[admin set plan]', e);
+            alert('No se pudo aplicar el cambio: ' + (e.message || e));
+        }
+    };
+
     return (
         <div style={{ backgroundColor: '#0f172a', minHeight: '100vh', color: 'white', padding: '40px', fontFamily: '"Outfit", sans-serif' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '30px', justifyContent: 'space-between' }}>
@@ -2280,6 +2327,25 @@ export default function Admin() {
                                     <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email}</div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>PLAN:</span>
+                                        <select 
+                                            value={u.planId || 'free'} 
+                                            onChange={(e) => updateUserPlan(u.id, e.target.value)} 
+                                            style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
+                                        >
+                                            <option value="free">Gratis (Free)</option>
+                                            <option value="std1">Básico (10 GB)</option>
+                                            <option value="std2">Estándar (20 GB)</option>
+                                            <option value="std3">Plus (50 GB)</option>
+                                            <option value="vip1">Básico VIP (10 GB)</option>
+                                            <option value="vip2">Estándar VIP (20 GB)</option>
+                                            <option value="vip3">Plus VIP (50 GB)</option>
+                                            <option value="zion_desktop_pro_local">PRO (PC - Local)</option>
+                                            <option value="zion_desktop_pro_online">PRO Online (PC)</option>
+                                            <option value="seller">Vendedor</option>
+                                        </select>
+                                    </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         <span style={{ fontSize: '0.7rem', color: '#64748b' }}>ESPACIO GB:</span>
                                         <input type="number" value={u.customStorageGB || ''} onChange={(e) => updateCustomStorage(u.id, e.target.value)} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', textAlign: 'center', fontSize: '0.8rem' }} />

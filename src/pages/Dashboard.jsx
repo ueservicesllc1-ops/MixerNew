@@ -64,9 +64,9 @@ const STORAGE_PLANS = [
     { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true },
     { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 20, storageMB: 20000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
     { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 50, storageMB: 50000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true },
-    { id: 'zion_desktop_pro_local', name: 'Zion Stage PRO (PC)', type: 'PRO PC', storageGB: 1, storageMB: 1000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isDesktop: true },
-    { id: 'zion_desktop_pro_online', name: 'Zion Stage PRO Online', type: 'PRO Online', storageGB: 1, storageMB: 1000, price: 5.99, annualPrice: 59.90, originalAnnualPrice: 59.90, isVIP: true, isDesktop: true },
-    { id: 'seller', name: 'Vendedor MixCommunity', type: 'Vendedor', storageGB: 1, storageMB: 1000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isSeller: true },
+    { id: 'zion_desktop_pro_local', name: 'Zion Stage PRO (PC)', type: 'PRO PC', storageGB: 10, storageMB: 10000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isDesktop: true },
+    { id: 'zion_desktop_pro_online', name: 'Zion Stage PRO Online', type: 'PRO Online', storageGB: 20, storageMB: 20000, price: 5.99, annualPrice: 59.90, originalAnnualPrice: 59.90, isVIP: true, isDesktop: true },
+    { id: 'seller', name: 'Vendedor MixCommunity', type: 'Vendedor', storageGB: 20, storageMB: 20000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isSeller: true },
 ];
 
 // ── Audio Multi-Track Mixing System for Waveforms ───────────────
