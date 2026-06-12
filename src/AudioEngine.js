@@ -936,6 +936,9 @@ class AudioEngine {
         }
         this.resetTiming();
         if (this._updater) cancelAnimationFrame(this._updater);
+        
+        // Wait briefly to allow anti-pop fades to complete and native threads to settle
+        await new Promise(r => setTimeout(r, 60));
     }
 
     resetTiming() {
