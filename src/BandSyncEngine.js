@@ -20,20 +20,30 @@ const BandSyncBridge = registerPlugin('BandSyncBridge', {
     web: () => import('./BandSyncPluginWeb.js').then((m) => new m.BandSyncPluginWeb()),
 });
 
-/**
- * ¿Puede esta instancia alojar el servidor Band Sync (QR para músicos)?
- * - Escritorio Electron: sí (HTTP + SSE en main).
- * - Android/iOS Capacitor: sí si existe plugin nativo `BandSyncBridge` (si no, `ensureServer` fallará).
- * - Navegador puro: no.
- */
 export function isBandSyncHostSupported() {
     if (typeof window === 'undefined') return false;
-    if (hasElectronBandSync()) return true;
-    return IS_NATIVE;
+    return true;
 }
 
 let serverInfoCache = null;
 let lastPushAt = 0;
+
+function getProxyUrl() {
+    if (typeof window === 'undefined') return 'http://localhost:3001';
+    const saved = localStorage.getItem('mixer_proxyUrl');
+    const isLocal = window.location.hostname === 'localhost' || 
+                    window.location.hostname === '127.0.0.1' || 
+                    window.location.hostname.startsWith('192.168.') || 
+                    window.location.hostname.startsWith('10.') || 
+                    window.location.hostname.startsWith('172.');
+    
+    if (isLocal) {
+        if (!saved || saved.includes('railway.app')) {
+            return `http://${window.location.hostname}:3001`;
+        }
+    }
+    return saved || `http://${window.location.hostname}:3001`;
+}
 
 export const BandSyncEngine = {
     async ensureServer(port = 8080) {
@@ -47,15 +57,29 @@ export const BandSyncEngine = {
                 return emptyInfo();
             }
         }
-        if (!IS_NATIVE) return emptyInfo();
-        try {
-            const info = await BandSyncBridge.startServer({ port });
-            serverInfoCache = info;
-            return info;
-        } catch (e) {
-            console.warn('[BandSync] startServer failed', e);
-            return emptyInfo();
+        if (IS_NATIVE) {
+            try {
+                const info = await BandSyncBridge.startServer({ port });
+                serverInfoCache = info;
+                return info;
+            } catch (e) {
+                console.warn('[BandSync] startServer failed', e);
+                return emptyInfo();
+            }
         }
+        // Web fallback:
+        try {
+            const proxyUrl = getProxyUrl();
+            const res = await fetch(`${proxyUrl}/api/band-sync/info`);
+            if (res.ok) {
+                const info = await res.json();
+                serverInfoCache = info;
+                return info;
+            }
+        } catch (e) {
+            console.warn('[BandSync] web ensureServer failed', e);
+        }
+        return emptyInfo();
     },
 
     async stopServer() {
@@ -69,15 +93,19 @@ export const BandSyncEngine = {
                 return emptyInfo();
             }
         }
-        if (!IS_NATIVE) return emptyInfo();
-        try {
-            const info = await BandSyncBridge.stopServer();
-            serverInfoCache = info;
-            return info;
-        } catch (e) {
-            console.warn('[BandSync] stopServer failed', e);
-            return emptyInfo();
+        if (IS_NATIVE) {
+            try {
+                const info = await BandSyncBridge.stopServer();
+                serverInfoCache = info;
+                return info;
+            } catch (e) {
+                console.warn('[BandSync] stopServer failed', e);
+                return emptyInfo();
+            }
         }
+        // Web fallback:
+        serverInfoCache = null;
+        return emptyInfo();
     },
 
     async getInfo() {
@@ -91,15 +119,29 @@ export const BandSyncEngine = {
                 return serverInfoCache || emptyInfo();
             }
         }
-        if (!IS_NATIVE) return serverInfoCache || emptyInfo();
-        try {
-            const info = await BandSyncBridge.getServerInfo();
-            serverInfoCache = info;
-            return info;
-        } catch (e) {
-            console.warn('[BandSync] getServerInfo failed', e);
-            return serverInfoCache || emptyInfo();
+        if (IS_NATIVE) {
+            try {
+                const info = await BandSyncBridge.getServerInfo();
+                serverInfoCache = info;
+                return info;
+            } catch (e) {
+                console.warn('[BandSync] getServerInfo failed', e);
+                return serverInfoCache || emptyInfo();
+            }
         }
+        // Web fallback:
+        try {
+            const proxyUrl = getProxyUrl();
+            const res = await fetch(`${proxyUrl}/api/band-sync/info`);
+            if (res.ok) {
+                const info = await res.json();
+                serverInfoCache = info;
+                return info;
+            }
+        } catch (e) {
+            console.warn('[BandSync] web getInfo failed', e);
+        }
+        return serverInfoCache || emptyInfo();
     },
 
     async pushState(state, minIntervalMs = 150) {
@@ -115,11 +157,26 @@ export const BandSyncEngine = {
             }
             return;
         }
-        if (!IS_NATIVE) return;
+        if (IS_NATIVE) {
+            try {
+                await BandSyncBridge.broadcastState({ state });
+            } catch (e) {
+                console.warn('[BandSync] broadcastState failed', e);
+            }
+            return;
+        }
+        // Web fallback:
         try {
-            await BandSyncBridge.broadcastState({ state });
+            const proxyUrl = getProxyUrl();
+            await fetch(`${proxyUrl}/api/band-sync/broadcast`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(state),
+            });
         } catch (e) {
-            console.warn('[BandSync] broadcastState failed', e);
+            console.warn('[BandSync] web pushState failed', e);
         }
     },
 };

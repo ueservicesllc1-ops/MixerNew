@@ -497,7 +497,6 @@ export default function Multitrack() {
     }, [activeSongId]);
 
     const handleToggleBandSyncQr = useCallback(async () => {
-        if (!isAppNative) return;
         if (showBandSyncQr) {
             setShowBandSyncQr(false);
             return;
@@ -2151,7 +2150,7 @@ export default function Multitrack() {
     }, [activeSongId]);
 
     useEffect(() => {
-        if (!isAppNative || !isBandSyncHostSupported()) return undefined;
+        if (!isBandSyncHostSupported()) return undefined;
         if (!bandSyncInfo?.running) return undefined;
         const fullTeleprompterText = (text) => {
             if (typeof text !== 'string') return '';
@@ -2215,7 +2214,7 @@ export default function Multitrack() {
     }, [activeSong, activeSetlist, activePartituras, activeTab, activeLyrics, activeChords, activeMarkers, isPlaying, selectedPartitura, bandSyncInfo?.running]);
 
     useEffect(() => {
-        if (!isAppNative || !isBandSyncHostSupported() || !bandSyncInfo?.running) return undefined;
+        if (!isBandSyncHostSupported() || !bandSyncInfo?.running) return undefined;
         const poll = async () => {
             const info = await BandSyncEngine.getInfo();
             setBandSyncInfo(info);
@@ -2875,7 +2874,7 @@ export default function Multitrack() {
                             <button onClick={handleLogout} className="transport-btn" title={t('multitrack.logoutTitle')}><LogOut size={18} /></button>
                         </div>
                     )}
-                    {isAppNative && isBandSyncHostSupported() && (
+                    {isBandSyncHostSupported() && (
                         <button
                             className={`transport-btn ${showBandSyncQr ? 'active' : ''}`}
                             title={t('multitrack.bandSyncTitle')}
@@ -2901,7 +2900,7 @@ export default function Multitrack() {
                 </div>
             </div>
 
-            {isAppNative && isBandSyncHostSupported() && showBandSyncQr && bandSyncInfo?.url && (
+            {isBandSyncHostSupported() && showBandSyncQr && bandSyncInfo?.url && (
                 <div
                     style={{
                         position: 'fixed',
