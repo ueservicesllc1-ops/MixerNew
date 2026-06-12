@@ -3257,13 +3257,22 @@ export default function Multitrack({ session }) {
             return best || 0;
         }
 
-        // Web path unchanged
-        if (!audioEngine.tracks || audioEngine.tracks.size === 0) {
-            return activeSong?.duration || 180;
+        // Web path - check both WebAudio tracks and WASM _trackMeta
+        let maxWebDur = 0;
+        if (audioEngine.tracks && audioEngine.tracks.size > 0) {
+            for (const [, track] of audioEngine.tracks.entries()) {
+                if (validDur(track?.buffer?.duration)) maxWebDur = Math.max(maxWebDur, track.buffer.duration);
+            }
         }
-        for (const [, track] of audioEngine.tracks.entries()) {
-            if (track.buffer) return track.buffer.duration;
+        if (audioEngine._trackMeta && audioEngine._trackMeta.size > 0) {
+            for (const [, meta] of audioEngine._trackMeta.entries()) {
+                if (validDur(meta?.buffer?.duration)) maxWebDur = Math.max(maxWebDur, meta.buffer.duration);
+            }
         }
+        if (validDur(audioEngine._durationHint)) {
+            maxWebDur = Math.max(maxWebDur, audioEngine._durationHint);
+        }
+        if (maxWebDur > 1) return maxWebDur;
         return activeSong?.duration || 180;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tracks, activeSong, audioReady, snapshotDurationSec]); // snapshotDurationSec = NextGen getSnapshot durationSec
