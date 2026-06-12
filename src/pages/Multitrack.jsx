@@ -9,7 +9,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode, Save } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -341,6 +341,7 @@ export default function Multitrack() {
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const progressRef = useRef(0); // Replaces progress state — avoids 60fps re-renders of the full component
+    const currentMixState = useRef({}); // Stores the active song's fader/mute/solo states without re-rendering
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [proxyUrl, setProxyUrl] = useState(() => {
@@ -1422,6 +1423,37 @@ export default function Multitrack() {
             alert("Hubo un error descargando la canci├│n. Verifica la consola.");
         } finally {
             setDownloadProgress({ songId: null, text: '' });
+        }
+    };
+
+    const handleSaveMix = async () => {
+        if (!activeSetlist || !activeSongId || !currentUser) {
+            alert('Debes tener un setlist abierto, una canción activa y haber iniciado sesión para guardar tu mezcla.');
+            return;
+        }
+
+        try {
+            const listRef = doc(db, 'setlists', activeSetlist.id);
+            const currentSettings = activeSetlist.mixSettings || {};
+            const newSettings = {
+                ...currentSettings,
+                [activeSongId]: currentMixState.current
+            };
+
+            await updateDoc(listRef, {
+                mixSettings: newSettings
+            });
+
+            // Optimistic update
+            setActiveSetlist(prev => ({
+                ...prev,
+                mixSettings: newSettings
+            }));
+
+            alert('¡Mezcla guardada exitosamente en el setlist!');
+        } catch (err) {
+            console.error('Error saving mix:', err);
+            alert('Error al guardar la mezcla: ' + err.message);
         }
     };
 
@@ -3379,7 +3411,13 @@ export default function Multitrack() {
                                 </div>
                             ) : (
                                 <div className="mixer-wrapper">
-                                    <Mixer tracks={tracks} />
+                                    <Mixer 
+                                        tracks={tracks} 
+                                        mixSettings={activeSetlist?.mixSettings?.[activeSongId] || {}}
+                                        onStateChange={(id, state) => {
+                                            currentMixState.current[id] = state;
+                                        }}
+                                    />
                                 </div>
                             )}
                         </>
@@ -3405,6 +3443,15 @@ export default function Multitrack() {
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800' }}>{activeSetlist?.name || 'Lista de Canciones'}</h3>
                             </div>
                             <div style={{ display: 'flex', gap: '6px' }}>
+                                {activeSongId && currentUser && (
+                                    <button
+                                        onClick={handleSaveMix}
+                                        style={{ background: 'transparent', border: '1px solid #00bcd4', color: '#00bcd4', padding: '6px 12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}
+                                        title="Guardar Mezcla de Canción Actual"
+                                    >
+                                        <Save size={16} /> Guardar Mix
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setIsLibraryMenuOpen(true)}
                                     style={{
@@ -3711,7 +3758,18 @@ export default function Multitrack() {
                         <ListMusic size={22} color="#00bcd4" />
                         <h2 style={{ margin: 0 }}>{activeSetlist?.name || 'Lista de Canciones'}</h2>
                     </div>
-                    <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {activeSongId && currentUser && (
+                            <button
+                                onClick={handleSaveMix}
+                                style={{ background: '#00bcd4', border: 'none', color: '#fff', padding: '8px 14px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 'bold' }}
+                                title="Guardar Mezcla de Canción Actual"
+                            >
+                                <Save size={18} /> Guardar Mix
+                            </button>
+                        )}
+                        <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+                    </div>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>

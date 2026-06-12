@@ -47,7 +47,7 @@ function sortMixerTracksStable(tracks) {
     return out;
 }
 
-export const Mixer = ({ tracks }) => {
+export const Mixer = ({ tracks, mixSettings = {}, onStateChange }) => {
     const sortedTracks = useMemo(() => sortMixerTracksStable(tracks || []), [tracks]);
 
     return (
@@ -58,6 +58,8 @@ export const Mixer = ({ tracks }) => {
                     id={track.id}
                     name={track.name}
                     isPlaceholder={track.isPlaceholder}
+                    initialSettings={mixSettings[track.id] || {}}
+                    onStateChange={onStateChange}
                 />
             ))}
         </div>
@@ -146,10 +148,10 @@ function VUMeter({ trackId, muted }) {
 }
 
 // ─── Channel Strip ────────────────────────────────────────────────
-const ChannelStrip = ({ id, name, isPlaceholder }) => {
-    const [volume, setVolume] = useState(0.8);
-    const [muted, setMuted] = useState(false);
-    const [solo, setSolo] = useState(false);
+const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange }) => {
+    const [volume, setVolume] = useState(initialSettings.volume ?? 0.8);
+    const [muted, setMuted] = useState(initialSettings.muted ?? false);
+    const [solo, setSolo] = useState(initialSettings.solo ?? false);
     const [faderH, setFaderH] = useState(150);
     const stackRef = useRef(null);
 
@@ -164,6 +166,46 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
         return () => ro.disconnect();
     }, []);
 
+    // Sync state changes back up to parent
+    useEffect(() => {
+        if (onStateChange) {
+            onStateChange(id, { volume, muted, solo });
+        }
+    }, [id, volume, muted, solo, onStateChange]);
+
+    // Apply initial settings to audio engine when it stops being a placeholder
+    useEffect(() => {
+        if (!isPlaceholder) {
+            const gain = Math.pow(10, dbFromVolume(volume) / 20);
+            audioEngine.setTrackVolume(id, gain);
+            audioEngine.setTrackMute(id, muted);
+            audioEngine.setTrackSolo(id, solo);
+        }
+    }, [id, isPlaceholder]); // Re-run if it becomes a real track
+
+    const dbFromVolume = (val) => {
+        const points = [
+            { v: 0.0, db: -100 },
+            { v: 0.1, db: -40 },
+            { v: 0.3, db: -20 },
+            { v: 0.5, db: -10 },
+            { v: 0.65, db: -5 },
+            { v: 0.8, db: 0 },
+            { v: 1.0, db: +6 },
+        ];
+        if (val <= 0) return -100;
+        if (val >= 1.0) return 6;
+        for (let i = 0; i < points.length - 1; i++) {
+            if (val >= points[i].v && val <= points[i + 1].v) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const t = (val - p1.v) / (p2.v - p1.v);
+                return p1.db + t * (p2.db - p1.db);
+            }
+        }
+        return 0;
+    };
+
     const getTrackColor = (stemName) => {
         const n = (stemName || '').toLowerCase();
         if (n.includes('bat') || n.includes('drum') || n.includes('perc')) return '#00bcd4';
@@ -176,32 +218,7 @@ const ChannelStrip = ({ id, name, isPlaceholder }) => {
     const handleVolume = (e) => {
         const val = parseFloat(e.target.value);
         setVolume(val);
-
-        const points = [
-            { v: 0.0, db: -100 },
-            { v: 0.1, db: -40 },
-            { v: 0.3, db: -20 },
-            { v: 0.5, db: -10 },
-            { v: 0.65, db: -5 },
-            { v: 0.8, db: 0 },
-            { v: 1.0, db: +6 },
-        ];
-
-        let db;
-        if (val <= 0) db = -100;
-        else if (val >= 1.0) db = 6;
-        else {
-            for (let i = 0; i < points.length - 1; i++) {
-                if (val >= points[i].v && val <= points[i + 1].v) {
-                    const p1 = points[i];
-                    const p2 = points[i + 1];
-                    const t = (val - p1.v) / (p2.v - p1.v);
-                    db = p1.db + t * (p2.db - p1.db);
-                    break;
-                }
-            }
-        }
-
+        const db = dbFromVolume(val);
         const gain = Math.pow(10, db / 20);
         audioEngine.setTrackVolume(id, gain);
     };
