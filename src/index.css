@@ -1173,18 +1173,30 @@ body.dark-mode .channel-btn.s.active {
   color: black;
 }
 
+body.dark-mode .channel-btn.l-btn.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+
+body.dark-mode .channel-btn.r-btn.active {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: white;
+}
+
 /* MUTE SOLO BUTTONS */
 .btn-group {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   width: 100%;
   justify-content: center;
 }
 
 .channel-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
+  width: 22px;
+  height: 28px;
+  border-radius: 6px;
   border: 1px solid var(--border-subtle);
   background: #ffffff;
   color: #888;
@@ -1209,6 +1221,18 @@ body.dark-mode .channel-btn.s.active {
   color: black;
   border-color: #ffc107;
   box-shadow: 0 0 10px rgba(255, 193, 7, 0.3);
+}
+
+.channel-btn.l-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.channel-btn.r-btn.active {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
 }
 
 /* SIDEBAR RIGHT - Base width for Tablets */

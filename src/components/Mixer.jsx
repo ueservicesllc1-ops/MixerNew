@@ -149,9 +149,12 @@ function VUMeter({ trackId, muted }) {
 
 // ─── Channel Strip ────────────────────────────────────────────────
 const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange }) => {
+    const isClickGuideStem = isMixerClickStem(name) || isMixerGuideStem(name);
     const [volume, setVolume] = useState(initialSettings.volume ?? 0.8);
     const [muted, setMuted] = useState(initialSettings.muted ?? false);
     const [solo, setSolo] = useState(initialSettings.solo ?? false);
+    const [routeL, setRouteL] = useState(initialSettings.routeL ?? isClickGuideStem);
+    const [routeR, setRouteR] = useState(initialSettings.routeR ?? !isClickGuideStem);
     const [faderH, setFaderH] = useState(150);
     const stackRef = useRef(null);
 
@@ -169,9 +172,9 @@ const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange 
     // Sync state changes back up to parent
     useEffect(() => {
         if (onStateChange) {
-            onStateChange(id, { volume, muted, solo });
+            onStateChange(id, { volume, muted, solo, routeL, routeR });
         }
-    }, [id, volume, muted, solo, onStateChange]);
+    }, [id, volume, muted, solo, routeL, routeR, onStateChange]);
 
     // Apply initial settings to audio engine when it stops being a placeholder
     useEffect(() => {
@@ -180,6 +183,11 @@ const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange 
             audioEngine.setTrackVolume(id, gain);
             audioEngine.setTrackMute(id, muted);
             audioEngine.setTrackSolo(id, solo);
+
+            let pan = 0;
+            if (routeL && !routeR) pan = -1;
+            else if (routeR && !routeL) pan = 1;
+            audioEngine.setTrackPan(id, pan);
         }
     }, [id, isPlaceholder]); // Re-run if it becomes a real track
 
@@ -235,8 +243,25 @@ const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange 
         audioEngine.setTrackSolo(id, next);
     };
 
+    const toggleL = () => {
+        const next = !routeL;
+        setRouteL(next);
+        let pan = 0;
+        if (next && !routeR) pan = -1;
+        else if (routeR && !next) pan = 1;
+        audioEngine.setTrackPan(id, pan);
+    };
+
+    const toggleR = () => {
+        const next = !routeR;
+        setRouteR(next);
+        let pan = 0;
+        if (routeL && !next) pan = -1;
+        else if (next && !routeL) pan = 1;
+        audioEngine.setTrackPan(id, pan);
+    };
+
     const [customColor, setCustomColor] = useState(null);
-    const isClickGuideStem = isMixerClickStem(name) || isMixerGuideStem(name);
     /** Click / guía: rojo en pastilla, medidor y fader (como Bass tiene su morado). */
     const trackColor = customColor || (isClickGuideStem ? LOCKED_STRIP_RED : getTrackColor(name));
 
@@ -343,6 +368,14 @@ const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange 
             <div className="btn-group">
                 <button
                     type="button"
+                    className={`channel-btn l-btn ${routeL ? 'active' : ''}`}
+                    onClick={toggleL}
+                    title="Route to Left"
+                >
+                    L
+                </button>
+                <button
+                    type="button"
                     className={`channel-btn m ${muted ? 'active' : ''}`}
                     onClick={toggleMute}
                     title="Mute"
@@ -356,6 +389,14 @@ const ChannelStrip = ({ id, name, isPlaceholder, initialSettings, onStateChange 
                     title="Solo"
                 >
                     S
+                </button>
+                <button
+                    type="button"
+                    className={`channel-btn r-btn ${routeR ? 'active' : ''}`}
+                    onClick={toggleR}
+                    title="Route to Right"
+                >
+                    R
                 </button>
             </div>
         </div>
