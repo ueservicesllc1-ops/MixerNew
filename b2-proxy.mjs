@@ -429,6 +429,31 @@ function fileStartsWithPE_MZ(filePath) {
     }
 }
 
+/**
+ * Returns true ONLY if the file on disk is a real MP3 (starts with ID3 tag or MPEG sync word).
+ * A file named ".mp3" that contains WAV/FLAC/OGG data will return false → forced transcoding.
+ */
+function fileIsRealMp3(filePath) {
+    try {
+        if (!filePath || !fs.existsSync(filePath)) return false;
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buf = Buffer.alloc(4);
+            const n = fs.readSync(fd, buf, 0, 4, 0);
+            if (n < 3) return false;
+            // ID3 tag header ("ID3")
+            if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return true;
+            // MPEG frame sync word (0xFF 0xE0–0xFF)
+            if (buf[0] === 0xFF && (buf[1] & 0xE0) === 0xE0) return true;
+            return false;
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch {
+        return false;
+    }
+}
+
 async function getUploadNode() {
     const { apiUrl, token } = await getB2Auth();
     if (!B2_BUCKET_ID) {
@@ -751,9 +776,21 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
         const origLower = (file.originalname || '').toLowerCase();
         const b2Lower = (b2Filename || '').toLowerCase();
 
-        const isMp3 = file.mimetype === 'audio/mpeg' ||
+        const isMp3ByName = file.mimetype === 'audio/mpeg' ||
             file.mimetype === 'audio/mp3' ||
             origLower.endsWith('.mp3');
+
+        // Sniff actual file bytes: a file named .mp3 that contains WAV/FLAC/OGG data
+        // must be transcoded regardless of its name or MIME type.
+        // This is the root cause of scratchy audio on mobile: WAV stems uploaded with .mp3 extension.
+        const sniffedRealMp3 = multerLocalPath ? fileIsRealMp3(multerLocalPath) : false;
+        const isMp3 = isMp3ByName && sniffedRealMp3;
+        if (isMp3ByName && !sniffedRealMp3 && multerLocalPath && fs.existsSync(multerLocalPath)) {
+            const header = Buffer.alloc(4);
+            const fd2 = fs.openSync(multerLocalPath, 'r');
+            try { fs.readSync(fd2, header, 0, 4, 0); } finally { fs.closeSync(fd2); }
+            console.warn(`[UPLOAD] '${file.originalname}' is named .mp3 but has wrong magic bytes: ${header.toString('hex')} — will transcode to real MP3.`);
+        }
 
         const isImage = file.mimetype?.startsWith('image/') ||
             /\.(png|jpe?g|gif|webp)$/i.test(file.originalname);

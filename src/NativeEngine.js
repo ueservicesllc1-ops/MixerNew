@@ -94,6 +94,9 @@ async function getFilePath(filename) {
 const fileCache = new Set();
 let cacheInitialized = false;
 
+// Minimum file size in bytes to consider a track valid (avoids partial/corrupt downloads).
+const MIN_VALID_TRACK_BYTES = 1024; // 1 KB
+
 /**
  * UTILITY: Check if file exists
  */
@@ -107,14 +110,39 @@ function isStatMissingFileError(err) {
     );
 }
 
+/**
+ * Returns true only if the file exists AND has at least MIN_VALID_TRACK_BYTES bytes.
+ * This prevents a partial/truncated download from blocking a fresh re-download.
+ */
 async function fileExists(filename) {
-    if (fileCache.has(filename)) return true;
+    if (fileCache.has(filename)) {
+        // Even if cached, verify it is still valid on disk (size check).
+        try {
+            const info = await Filesystem.stat({ path: filename, directory: Directory.Data });
+            const size = info?.size ?? 0;
+            if (size < MIN_VALID_TRACK_BYTES) {
+                // Corrupted / partial download — evict from cache so it gets re-downloaded.
+                fileCache.delete(filename);
+                console.warn(`[NativeEngine] fileExists: '${filename}' too small (${size}B), evicting cache.`);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            fileCache.delete(filename);
+            return false;
+        }
+    }
 
     try {
-        await Filesystem.stat({
+        const info = await Filesystem.stat({
             path: filename,
             directory: Directory.Data,
         });
+        const size = info?.size ?? 0;
+        if (size < MIN_VALID_TRACK_BYTES) {
+            console.warn(`[NativeEngine] fileExists: '${filename}' exists but too small (${size}B), skipping.`);
+            return false;
+        }
         fileCache.add(filename);
         return true;
     } catch (err) {
@@ -172,8 +200,12 @@ export const NativeEngine = {
         const len = u8.length;
         if (len === 0) throw new Error('[NativeEngine] saveTrackBlob: empty blob');
 
-        // ~192 KiB raw → base64 ~256 KiB por round-trip (antes: pistas enteras de varios MB en un solo writeFile).
-        const CHUNK = 192 * 1024;
+        // Each chunk must be an exact multiple of 3 bytes so that btoa() never emits
+        // intermediate padding ('=' chars). Capacitor's appendFile decodes each base64
+        // segment independently before appending raw bytes; a padded segment boundary
+        // causes byte misalignment in the reconstructed file → scratchy/corrupt audio.
+        // 192 * 1024 = 196608, and 196608 % 3 === 0, so this is already safe.
+        const CHUNK = 192 * 1024; // must remain a multiple of 3
 
         const toB64 = (bytes) => {
             let binary = '';
@@ -183,6 +215,12 @@ export const NativeEngine = {
             }
             return btoa(binary);
         };
+
+        // Remove any pre-existing (possibly corrupted) file before writing.
+        fileCache.delete(filename);
+        try {
+            await Filesystem.deleteFile({ path: filename, directory: Directory.Data });
+        } catch { /* file may not exist yet — that is fine */ }
 
         let offset = 0;
         let first = true;
@@ -206,6 +244,19 @@ export const NativeEngine = {
             }
             offset = end;
             await new Promise((r) => setTimeout(r, 0));
+        }
+
+        // Validate that the written file is at least as large as our minimum threshold.
+        // This catches partial writes caused by low-storage or OS interruption.
+        try {
+            const info = await Filesystem.stat({ path: filename, directory: Directory.Data });
+            if ((info?.size ?? 0) < MIN_VALID_TRACK_BYTES) {
+                throw new Error(`[NativeEngine] saveTrackBlob: written file too small (${info?.size}B) for '${filename}'`);
+            }
+        } catch (statErr) {
+            if (String(statErr?.message || '').includes('saveTrackBlob')) throw statErr;
+            // stat itself failed — tolerate and continue; the read will fail later if corrupt
+            console.warn('[NativeEngine] saveTrackBlob: post-write stat failed:', statErr);
         }
 
         fileCache.add(filename);
