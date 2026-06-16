@@ -103,6 +103,34 @@ class EncryptedCacheService {
             return null;
         }
     }
+
+    /**
+     * Elimina todos los archivos cifrados de una canción del cache.
+     * @param {string} songId - ID de la canción
+     */
+    deleteTrackFiles(songId) {
+        try {
+            let deleted = 0;
+            if (fs.existsSync(this.cacheDir)) {
+                for (const f of fs.readdirSync(this.cacheDir)) {
+                    if (f.startsWith(songId + '_') && f.endsWith('.zionpack')) {
+                        try { fs.unlinkSync(path.join(this.cacheDir, f)); deleted++; } catch {}
+                    }
+                }
+            }
+            if (fs.existsSync(this.tempDir)) {
+                for (const f of fs.readdirSync(this.tempDir)) {
+                    if (f.startsWith(songId + '_')) {
+                        try { fs.unlinkSync(path.join(this.tempDir, f)); } catch {}
+                    }
+                }
+            }
+            return deleted;
+        } catch (e) {
+            console.error('Error en deleteTrackFiles:', e);
+            return 0;
+        }
+    }
 }
 
 module.exports = new EncryptedCacheService();

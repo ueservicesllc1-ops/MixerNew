@@ -59,6 +59,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
     const [clientSecret, setClientSecret] = useState('');
     const [subscriptionId, setSubscriptionId] = useState('');
     const [preparing, setPreparing] = useState(false);
+    const [promoApplied, setPromoApplied] = useState(false);
 
     if (!open) return null;
 
@@ -68,6 +69,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
         setClientSecret('');
         setSubscriptionId('');
         setPreparing(false);
+        setPromoApplied(false);
     };
 
     const handleClose = () => {
@@ -109,6 +111,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
             }
             setClientSecret(data.clientSecret);
             setSubscriptionId(data.subscriptionId || '');
+            setPromoApplied(data.promoApplied === true);
             setStep('pay');
         } catch (err) {
             alert(err.message || String(err));
@@ -195,6 +198,22 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                             <p style={{ margin: '10px 0 0', color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>
                                 Elige tu plan mensual. Tras el pago verificamos con Stripe y activamos tu licencia en esta app.
                             </p>
+                            {/* Banner promoción */}
+                            <div style={{
+                                marginTop: '14px',
+                                background: 'linear-gradient(135deg, rgba(250,204,21,0.15), rgba(251,146,60,0.15))',
+                                border: '1px solid rgba(250,204,21,0.35)',
+                                borderRadius: '10px',
+                                padding: '10px 14px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px',
+                            }}>
+                                <span style={{ fontSize: '1.1rem' }}>🎉</span>
+                                <span style={{ fontSize: '0.88rem', color: '#fde68a', fontWeight: 700, lineHeight: 1.4 }}>
+                                    ¡Oferta de lanzamiento! <span style={{ color: '#fff' }}>Primer mes a solo <span style={{ color: '#fbbf24' }}>$0.99</span></span> en cualquier plan PRO. Solo la primera vez, válida por tiempo limitado.
+                                </span>
+                            </div>
                         </div>
                         <div
                             style={{
@@ -221,8 +240,17 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                                         {plan.title}
                                     </div>
                                     <div>
-                                        <span style={{ fontSize: '1.75rem', fontWeight: 900 }}>{plan.priceLabel}</span>
-                                        <span style={{ color: '#64748b', fontSize: '0.95rem' }}>{plan.period}</span>
+                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                                            <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#64748b', textDecoration: 'line-through' }}>
+                                                {plan.priceLabel}
+                                            </span>
+                                            <span style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fbbf24' }}>
+                                                $0.99
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '0.78rem', color: '#fde68a', marginTop: '2px', fontWeight: 600 }}>
+                                            🎁 Primer mes · luego {plan.priceLabel}{plan.period}
+                                        </div>
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.55, color: '#cbd5e1', flex: 1 }}>{plan.blurb}</p>
                                     <button
@@ -273,7 +301,18 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                             <ArrowLeft size={18} /> Volver
                         </button>
                         <h3 style={{ margin: '0 0 8px', fontSize: '1.15rem' }}>Pago: {selected.title}</h3>
-                        <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>{selected.priceLabel}{selected.period}</p>
+                        {promoApplied ? (
+                            <div>
+                                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>
+                                    <s>{selected.priceLabel}{selected.period}</s>
+                                </p>
+                                <p style={{ margin: '4px 0 0', color: '#fbbf24', fontWeight: 800, fontSize: '1rem' }}>
+                                    🎁 Hoy pagas solo $0.99 (primer mes)
+                                </p>
+                            </div>
+                        ) : (
+                            <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>{selected.priceLabel}{selected.period}</p>
+                        )}
                         <Elements stripe={stripePromise} options={{ clientSecret }}>
                             <CheckoutForm onPaid={finalize} />
                         </Elements>

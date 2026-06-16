@@ -21,6 +21,7 @@ db.exec(`
         id TEXT PRIMARY KEY,
         name TEXT,
         songs_json TEXT,
+        mix_settings_json TEXT,
         synced INTEGER DEFAULT 1,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -57,6 +58,9 @@ try {
     // Si la columna ya existe, SQLite lanzará un error que ignoramos.
 }
 try {
+    db.exec(`ALTER TABLE setlists ADD COLUMN mix_settings_json TEXT;`);
+} catch (e) {}
+try {
     db.exec(`ALTER TABLE users ADD COLUMN password_hash TEXT;`);
 } catch (e) {}
 
@@ -85,8 +89,8 @@ module.exports = {
             return db.prepare('DELETE FROM setlists WHERE id = ?').run(sl.id);
         }
         const synced = sl.synced !== undefined ? (sl.synced ? 1 : 0) : 1;
-        const stmt = db.prepare('INSERT OR REPLACE INTO setlists (id, name, songs_json, synced) VALUES (?, ?, ?, ?)');
-        return stmt.run(sl.id, sl.name, JSON.stringify(sl.songs), synced);
+        const stmt = db.prepare('INSERT OR REPLACE INTO setlists (id, name, songs_json, mix_settings_json, synced) VALUES (?, ?, ?, ?, ?)');
+        return stmt.run(sl.id, sl.name, JSON.stringify(sl.songs), JSON.stringify(sl.mixSettings || {}), synced);
     },
     getSetlists: () => db.prepare('SELECT * FROM setlists').all(),
 

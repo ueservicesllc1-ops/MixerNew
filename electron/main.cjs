@@ -251,6 +251,7 @@ app.whenReady().then(() => {
     ipcMain.handle('db:get-song', (e, id) => db.getSong(id));
     ipcMain.handle('db:save-song', (e, song) => db.saveSong(song));
     ipcMain.handle('db:delete-song', (e, id) => db.deleteSong(id));
+    ipcMain.handle('db:delete-song-files', (e, songId) => encCache.deleteTrackFiles(songId));
     ipcMain.handle('db:get-setlists', () => db.getSetlists());
     ipcMain.handle('db:save-setlist', (e, sl) => db.saveSetlist(sl));
     ipcMain.handle('db:get-license', () => db.getLicense());

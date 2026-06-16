@@ -215,7 +215,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Search, ArrowRight, QrCode, Languages } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Trash2, LogIn, LogOut, Moon, Sun, Network, Type, Drum, X, Check, Power, GripVertical, ListMusic, Search, ArrowRight, QrCode, Languages, Save } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, setDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -232,6 +232,26 @@ function isFirestoreDocMissing(err) {
 
 function clearMixerLastSetlistId() {
     try { localStorage.removeItem('mixer_lastSetlistId'); } catch { /* ignore */ }
+}
+
+function cleanUndefinedForFirestore(obj) {
+    if (obj === undefined) return null;
+    if (obj === null) return null;
+    if (Array.isArray(obj)) {
+        return obj.map(cleanUndefinedForFirestore);
+    }
+    if (typeof obj === 'object') {
+        // Skip specialized types like Dates if any, though not expected here
+        const res = {};
+        for (const key of Object.keys(obj)) {
+            const val = obj[key];
+            if (val !== undefined) {
+                res[key] = cleanUndefinedForFirestore(val);
+            }
+        }
+        return res;
+    }
+    return obj;
 }
 import { LocalFileManager } from '../LocalFileManager'
 import { NativeEngine } from '../NativeEngine'
@@ -732,6 +752,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     globalOnlineLocked,
     canPcImport = false,
     onPcImportOpen,
+    onDeleteSong,
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -907,6 +928,28 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                         >
                                             {isDownloading ? '⏳ Bajando...' : (isLocal ? '➕ Añadir' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir'))}
                                         </button>
+                                        {libraryTab === 'mine' && typeof onDeleteSong === 'function' && (
+                                            <button
+                                                title="Eliminar de mi biblioteca"
+                                                onClick={() => {
+                                                    if (window.confirm(`¿Eliminar "${song.name}" de tu biblioteca? Se borrarán los archivos descargados.`)) {
+                                                        onDeleteSong(song);
+                                                    }
+                                                }}
+                                                style={{
+                                                    background: 'transparent',
+                                                    border: '1px solid #e74c3c',
+                                                    color: '#e74c3c',
+                                                    borderRadius: '4px',
+                                                    padding: '8px 8px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '1rem',
+                                                    lineHeight: 1,
+                                                    marginLeft: '4px',
+                                                    flexShrink: 0,
+                                                }}
+                                            >🗑️</button>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -931,6 +974,7 @@ export default function Multitrack({ session }) {
     const [loading, setLoading] = useState(true);
     const [tracks, setTracks] = useState([]);
     const progressRef = useRef(0); // Replaces progress state — avoids 60fps re-renders of the full component
+    const currentMixState = useRef({}); // Stores the active song's fader/mute/solo states without re-rendering
     /** Throttle pings visibles → Firestore (desktop_clients) para no saturar escrituras. */
     const desktopPingLastVisibleAtRef = useRef(0);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -978,8 +1022,15 @@ export default function Multitrack({ session }) {
                     }
                     setLibrarySongs(mapSqliteLibraryRowsToSongs(localSongs));
                     
-                    const localSetlists = await window.zionNative.getSetlists();
-                    setSetlists(localSetlists.map(s => ({ ...s, songs: s.songs_json ? JSON.parse(s.songs_json) : [] })));
+                    let localSetlists = [];
+                    if (window.zionNative.getSetlists) {
+                        localSetlists = await window.zionNative.getSetlists();
+                    }
+                    setSetlists(localSetlists.map(s => ({
+                        ...s,
+                        songs: s.songs_json ? JSON.parse(s.songs_json) : [],
+                        mixSettings: s.mix_settings_json ? JSON.parse(s.mix_settings_json) : {}
+                    })));
                 } catch (e) {
                     console.error('Error cargando BD local', e);
                 }
@@ -1020,14 +1071,16 @@ export default function Multitrack({ session }) {
                     for (const sl of unsynced) {
                         try {
                             const songs = sl.songs_json ? JSON.parse(sl.songs_json) : [];
-                            await setDoc(doc(db, 'setlists', sl.id), {
+                            const mixSettings = sl.mix_settings_json ? JSON.parse(sl.mix_settings_json) : {};
+                            await setDoc(doc(db, 'setlists', sl.id), cleanUndefinedForFirestore({
                                 name: sl.name,
                                 userId: auth.currentUser.uid,
                                 songs: songs,
+                                mixSettings: mixSettings,
                                 updatedAt: new Date().toISOString()
-                            });
+                            }));
                             // Marcar como sincronizado en SQLite
-                            await window.zionNative.saveSetlist({ ...sl, songs, synced: 1 });
+                            await window.zionNative.saveSetlist({ ...sl, songs, mixSettings, synced: 1 });
                             console.log(`[FIRESTORE] Setlist ${sl.name} sincronizado.`);
                         } catch (e) {
                             console.error("[SYNC] Error sincronizando setlist:", sl.name, e);
@@ -1068,6 +1121,22 @@ export default function Multitrack({ session }) {
         if (!r2.ok) return null;
         return await r2.blob();
     }, [proxyUrl]);
+
+    const handleDeleteLibrarySong = useCallback(async (song) => {
+        if (!song?.id) return;
+        try {
+            if (window.zionNative?.deleteSong) {
+                await window.zionNative.deleteSong(song.id);
+            }
+            if (window.zionNative?.deleteSongFiles) {
+                await window.zionNative.deleteSongFiles(song.id);
+            }
+            setLibrarySongs(prev => prev.filter(s => s.id !== song.id));
+        } catch (e) {
+            console.error('[LIB] Error eliminando canción:', e);
+            alert('Error al eliminar: ' + e.message);
+        }
+    }, []);
 
     /** No bloquea la sesión NextGen: guarda __PreviewMix en disco para waveform/otros usos. */
     /** No bloquea play: preview / overview en segundo plano. */
@@ -2463,12 +2532,12 @@ export default function Multitrack({ session }) {
                             if (isOnline && auth.currentUser && !auth.currentUser.isAnonymous) {
                                 try {
                                     console.log("[FIRESTORE] Syncing updated setlist...");
-                                    await setDoc(doc(db, "setlists", updatedSetlist.id), {
+                                    await setDoc(doc(db, "setlists", updatedSetlist.id), cleanUndefinedForFirestore({
                                         name: updatedSetlist.name,
                                         userId: auth.currentUser.uid,
                                         songs: updatedSongs,
                                         updatedAt: new Date().toISOString()
-                                    });
+                                    }));
                                     updatedSetlist.synced = 1;
                                     await window.zionNative.saveSetlist(updatedSetlist);
                                 } catch(e) { console.warn("[FIRESTORE] Sync falló", e); }
@@ -2488,6 +2557,58 @@ export default function Multitrack({ session }) {
         } finally {
             console.log("[DOWNLOAD LOCK] released");
             setDownloadProgress({ songId: null, text: "" });
+        }
+    };
+
+    const handleSaveMix = async () => {
+        if (!activeSetlist || !activeSongId) {
+            alert('Debes tener un setlist abierto y una canción activa para guardar tu mezcla.');
+            return;
+        }
+
+        try {
+            const currentSettings = activeSetlist.mixSettings || {};
+            const newSettings = {
+                ...currentSettings,
+                [activeSongId]: currentMixState.current
+            };
+
+            const updatedSetlist = {
+                ...activeSetlist,
+                mixSettings: newSettings,
+                synced: 0
+            };
+
+            // 1. Guardar localmente en SQLite
+            if (window.zionNative?.saveSetlist) {
+                await window.zionNative.saveSetlist(updatedSetlist);
+            }
+
+            // 2. Sincronizar con Firestore (si está online y logueado)
+            if (isOnline && auth.currentUser && !auth.currentUser.isAnonymous) {
+                try {
+                    const listRef = doc(db, 'setlists', activeSetlist.id);
+                    await updateDoc(listRef, cleanUndefinedForFirestore({
+                        mixSettings: newSettings,
+                        updatedAt: new Date().toISOString()
+                    }));
+                    updatedSetlist.synced = 1;
+                    if (window.zionNative?.saveSetlist) {
+                        await window.zionNative.saveSetlist(updatedSetlist);
+                    }
+                } catch (fe) {
+                    console.warn('[FIRESTORE] Syncing mixSettings failed:', fe);
+                }
+            }
+
+            // 3. Actualizar estado de React
+            setActiveSetlist(updatedSetlist);
+            setSetlists(prev => (prev || []).map(sl => sl.id === updatedSetlist.id ? updatedSetlist : sl));
+
+            alert('¡Mezcla guardada exitosamente en el setlist!');
+        } catch (err) {
+            console.error('Error saving mix:', err);
+            alert('Error al guardar la mezcla: ' + err.message);
         }
     };
 
@@ -2807,7 +2928,8 @@ export default function Multitrack({ session }) {
                             if (alreadyCached) {
                                 finalPath = await LocalLibraryService.getTrackPath(song.id, tr.name, useFlacStem);
                             } else {
-                                const urlToFetch = useFlacStem ? tr.normalizedUrl : tr.url;
+                                const rawUrlToFetch = useFlacStem ? tr.normalizedUrl : tr.url;
+                                const urlToFetch = rawUrlToFetch;
                                 const dl = await fetchBlobNative(urlToFetch);
                                 if (dl) {
                                     finalPath = await LocalLibraryService.saveTrack(song.id, tr.name, dl, useFlacStem);
@@ -2851,8 +2973,9 @@ export default function Multitrack({ session }) {
 
                             if (!rawBuf) {
                                 try {
-                                    const downloadUrl = useFlacWeb ? tr.normalizedUrl
-                                        : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                                    const rawUrl = useFlacWeb ? tr.normalizedUrl : tr.url;
+                                    const alreadyProxied2854 = rawUrl.includes('/api/download?url=');
+                                    const downloadUrl = alreadyProxied2854 ? rawUrl : `${proxyUrl}/api/download?url=${encodeURIComponent(rawUrl)}`;
                                     const res = await fetch(downloadUrl);
                                     if (res.ok) rawBuf = await res.blob();
                                 } catch { /* ignore */ }
@@ -5155,7 +5278,13 @@ export default function Multitrack({ session }) {
                                 </div>
                             ) : (
                                 <div className="mixer-wrapper desktop-mixer-scroll-host">
-                                    <Mixer tracks={tracks} />
+                                    <Mixer 
+                                        tracks={tracks} 
+                                        mixSettings={activeSetlist?.mixSettings?.[activeSongId] || {}}
+                                        onStateChange={(id, state) => {
+                                            currentMixState.current[id] = state;
+                                        }}
+                                    />
                                 </div>
                             )}
                         </>
@@ -5171,6 +5300,30 @@ export default function Multitrack({ session }) {
                                 <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800' }}>{activeSetlist?.name || 'Lista de Canciones'}</h3>
                             </div>
                             <div style={{ display: 'flex', gap: '6px' }}>
+                                {activeSongId && (
+                                    <button
+                                        onClick={handleSaveMix}
+                                        style={{
+                                            background: 'rgba(46, 204, 113, 0.1)',
+                                            color: '#2ecc71',
+                                            border: '1px solid rgba(46, 204, 113, 0.3)',
+                                            borderRadius: '6px',
+                                            padding: '4px 10px',
+                                            fontSize: '0.72rem',
+                                            fontWeight: '800',
+                                            cursor: 'pointer',
+                                            transition: '0.2s',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
+                                        }}
+                                        onMouseEnter={e => { e.currentTarget.style.background = '#2ecc71'; e.currentTarget.style.color = 'white'; }}
+                                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(46, 204, 113, 0.1)'; e.currentTarget.style.color = '#2ecc71'; }}
+                                        title="Guardar Mezcla de Canción Actual en el Setlist"
+                                    >
+                                        <Save size={12} /> Guardar Mix
+                                    </button>
+                                )}
                                 <button
                                     onClick={() => setIsLibraryMenuOpen(true)}
                                     style={{
@@ -5548,7 +5701,32 @@ export default function Multitrack({ session }) {
                         <ListMusic size={22} color="#00bcd4" />
                         <h2 style={{ margin: 0 }}>{activeSetlist?.name || 'Lista de Canciones'}</h2>
                     </div>
-                    <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {activeSongId && (
+                            <button
+                                onClick={handleSaveMix}
+                                style={{
+                                    background: 'rgba(46, 204, 113, 0.1)',
+                                    color: '#2ecc71',
+                                    border: '1px solid rgba(46, 204, 113, 0.3)',
+                                    borderRadius: '6px',
+                                    padding: '8px 14px',
+                                    fontSize: '0.9rem',
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#2ecc71'; e.currentTarget.style.color = 'white'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(46, 204, 113, 0.1)'; e.currentTarget.style.color = '#2ecc71'; }}
+                                title="Guardar Mezcla de Canción Actual"
+                            >
+                                <Save size={18} /> Guardar Mix
+                            </button>
+                        )}
+                        <button onClick={() => setIsCurrentListOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
+                    </div>
                 </div>
 
                 <div style={{ flex: 1, overflowY: 'auto', marginBottom: '10px' }}>
@@ -5691,6 +5869,7 @@ export default function Multitrack({ session }) {
                 globalOnlineLocked={typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local'}
                 canPcImport={isElectronDesktopMixer() && (!!window.zionNative?.pickPcAudioFolder || !!window.zionNative?.pickPcAudioFiles)}
                 onPcImportOpen={handlePcImportModalOpen}
+                onDeleteSong={handleDeleteLibrarySong}
             />
             {pcImportOpen && (
                 <div

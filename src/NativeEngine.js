@@ -172,22 +172,102 @@ async function initFileCache() {
 }
 initFileCache();
 
+async function detectAudioExtension(blob, defaultExt = '.mp3') {
+    if (!blob || !(blob instanceof Blob) || blob.size < 12) {
+        return defaultExt;
+    }
+    try {
+        const slice = blob.slice(0, 16);
+        const buf = await slice.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        
+        // 1. WAV (RIFF ... WAVE)
+        if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+            if (bytes[8] === 0x57 && bytes[9] === 0x41 && bytes[10] === 0x56 && bytes[11] === 0x45) {
+                return '.wav';
+            }
+        }
+        // 2. FLAC (fLaC)
+        if (bytes[0] === 0x66 && bytes[1] === 0x4C && bytes[2] === 0x61 && bytes[3] === 0x43) {
+            return '.flac';
+        }
+        // 3. MP3 (ID3v2 or MPEG sync frame)
+        if (bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+            return '.mp3';
+        }
+        if (bytes[0] === 0xFF && (bytes[1] === 0xFB || bytes[1] === 0xFA || bytes[1] === 0xF3 || bytes[1] === 0xF2)) {
+            return '.mp3';
+        }
+    } catch (e) {
+        console.warn('[NativeEngine] detectAudioExtension failed:', e);
+    }
+    return defaultExt;
+}
+
+async function autoFixFileExtension(songId, trackName) {
+    const baseFilename = `${songId}_${trackName}`;
+    const mp3Filename = `${baseFilename}.mp3`;
+    
+    if (!(await fileExists(mp3Filename))) {
+        return;
+    }
+    
+    try {
+        const { uri } = await Filesystem.getUri({
+            path: mp3Filename,
+            directory: Directory.Data,
+        });
+        const url = Capacitor.convertFileSrc(uri);
+        const res = await fetch(url);
+        if (!res.ok) return;
+        
+        const blob = await res.blob();
+        const ext = await detectAudioExtension(blob, '.mp3');
+        if (ext !== '.mp3') {
+            const newFilename = `${baseFilename}${ext}`;
+            try {
+                await Filesystem.deleteFile({ path: newFilename, directory: Directory.Data });
+                fileCache.delete(newFilename);
+            } catch {}
+            
+            await Filesystem.rename({
+                from: mp3Filename,
+                to: newFilename,
+                directory: Directory.Data,
+            });
+            fileCache.delete(mp3Filename);
+            fileCache.add(newFilename);
+            console.log(`[NativeEngine] autoFixFileExtension: Corrected mismatched extension for ${mp3Filename} -> ${newFilename}`);
+        }
+    } catch (err) {
+        console.warn('[NativeEngine] autoFixFileExtension failed:', err);
+    }
+}
+
 export const NativeEngine = {
     /**
      * Checks if a track is already in the phone storage.
      * Use this to avoid downloading again.
      */
     isTrackDownloaded: async (songId, trackName) => {
-        const filename = `${songId}_${trackName}.mp3`;
-        return await fileExists(filename);
+        await autoFixFileExtension(songId, trackName);
+        if (await fileExists(`${songId}_${trackName}.mp3`)) return true;
+        if (await fileExists(`${songId}_${trackName}.wav`)) return true;
+        if (await fileExists(`${songId}_${trackName}.flac`)) return true;
+        return false;
     },
 
     /**
      * Gets the direct path to a track for the C++ engine.
      */
     getTrackPath: async (songId, trackName) => {
-        const filename = `${songId}_${trackName}.mp3`;
-        return await getFilePath(filename);
+        await autoFixFileExtension(songId, trackName);
+        const wavFilename = `${songId}_${trackName}.wav`;
+        if (await fileExists(wavFilename)) return await getFilePath(wavFilename);
+        const flacFilename = `${songId}_${trackName}.flac`;
+        if (await fileExists(flacFilename)) return await getFilePath(flacFilename);
+        const mp3Filename = `${songId}_${trackName}.mp3`;
+        return await getFilePath(mp3Filename);
     },
 
     /**
@@ -195,6 +275,15 @@ export const NativeEngine = {
      * Escribe en trozos con writeFile + appendFile y cede el hilo entre trozos.
      */
     saveTrackBlob: async (blob, filename) => {
+        let finalFilename = filename;
+        if (filename.endsWith('.mp3')) {
+            const ext = await detectAudioExtension(blob, '.mp3');
+            if (ext !== '.mp3') {
+                finalFilename = filename.slice(0, -4) + ext;
+                console.log(`[NativeEngine] saveTrackBlob: Auto-detected ${ext} format for ${filename} -> saving as ${finalFilename}`);
+            }
+        }
+
         const buf = await blob.arrayBuffer();
         const u8 = new Uint8Array(buf);
         const len = u8.length;
@@ -217,9 +306,9 @@ export const NativeEngine = {
         };
 
         // Remove any pre-existing (possibly corrupted) file before writing.
-        fileCache.delete(filename);
+        fileCache.delete(finalFilename);
         try {
-            await Filesystem.deleteFile({ path: filename, directory: Directory.Data });
+            await Filesystem.deleteFile({ path: finalFilename, directory: Directory.Data });
         } catch { /* file may not exist yet — that is fine */ }
 
         let offset = 0;
@@ -230,14 +319,14 @@ export const NativeEngine = {
             const b64 = toB64(piece);
             if (first) {
                 await Filesystem.writeFile({
-                    path: filename,
+                    path: finalFilename,
                     data: b64,
                     directory: Directory.Data,
                 });
                 first = false;
             } else {
                 await Filesystem.appendFile({
-                    path: filename,
+                    path: finalFilename,
                     data: b64,
                     directory: Directory.Data,
                 });
@@ -249,9 +338,9 @@ export const NativeEngine = {
         // Validate that the written file is at least as large as our minimum threshold.
         // This catches partial writes caused by low-storage or OS interruption.
         try {
-            const info = await Filesystem.stat({ path: filename, directory: Directory.Data });
+            const info = await Filesystem.stat({ path: finalFilename, directory: Directory.Data });
             if ((info?.size ?? 0) < MIN_VALID_TRACK_BYTES) {
-                throw new Error(`[NativeEngine] saveTrackBlob: written file too small (${info?.size}B) for '${filename}'`);
+                throw new Error(`[NativeEngine] saveTrackBlob: written file too small (${info?.size}B) for '${finalFilename}'`);
             }
         } catch (statErr) {
             if (String(statErr?.message || '').includes('saveTrackBlob')) throw statErr;
@@ -259,8 +348,8 @@ export const NativeEngine = {
             console.warn('[NativeEngine] saveTrackBlob: post-write stat failed:', statErr);
         }
 
-        fileCache.add(filename);
-        return await getFilePath(filename);
+        fileCache.add(finalFilename);
+        return await getFilePath(finalFilename);
     },
 
     /**
@@ -268,12 +357,19 @@ export const NativeEngine = {
      * Útil para recuperar el blob de __PreviewMix cuando localforage fue limpiado.
      */
     readTrackBlob: async (songId, trackName) => {
-        const filename = `${songId}_${trackName}.mp3`;
+        await autoFixFileExtension(songId, trackName);
+        let filename = `${songId}_${trackName}.mp3`;
+        if (await fileExists(`${songId}_${trackName}.wav`)) {
+            filename = `${songId}_${trackName}.wav`;
+        } else if (await fileExists(`${songId}_${trackName}.flac`)) {
+            filename = `${songId}_${trackName}.flac`;
+        }
+
         const blobFromBase64 = (data) => {
             const binaryString = atob(data);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-            return new Blob([bytes.buffer], { type: 'audio/mpeg' });
+            return new Blob([bytes.buffer], { type: filename.endsWith('.wav') ? 'audio/wav' : (filename.endsWith('.flac') ? 'audio/flac' : 'audio/mpeg') });
         };
         try {
             const { uri } = await Filesystem.getUri({
@@ -496,15 +592,23 @@ export const NativeEngine = {
     },
 
     /**
-     * Deletes the legacy v1 MP3 cache file for a track (if it exists).
-     * Called after a FLAC download so old MP3 storage is freed.
+     * Deletes the legacy v1 MP3 or WAV cache file for a track (if it exists).
+     * Called after a FLAC download so old MP3/WAV storage is freed.
      */
     invalidateLegacyCache: async (songId, trackName) => {
-        const filename = `${songId}_${trackName}.mp3`;
+        const mp3Filename = `${songId}_${trackName}.mp3`;
+        const wavFilename = `${songId}_${trackName}.wav`;
         try {
-            await Filesystem.deleteFile({ path: filename, directory: Directory.Data });
-            fileCache.delete(filename);
-            console.log('[NativeEngine] Legacy MP3 deleted:', filename);
+            await Filesystem.deleteFile({ path: mp3Filename, directory: Directory.Data });
+            fileCache.delete(mp3Filename);
+            console.log('[NativeEngine] Legacy MP3 deleted:', mp3Filename);
+        } catch {
+            // File didn't exist — nothing to do.
+        }
+        try {
+            await Filesystem.deleteFile({ path: wavFilename, directory: Directory.Data });
+            fileCache.delete(wavFilename);
+            console.log('[NativeEngine] Legacy WAV deleted:', wavFilename);
         } catch {
             // File didn't exist — nothing to do.
         }

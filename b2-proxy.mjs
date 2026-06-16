@@ -74,6 +74,96 @@ const STRIPE_PLANS_CONFIG = {
 const DESKTOP_STRIPE_PLAN_IDS = new Set(['zion_desktop_pro_local', 'zion_desktop_pro_online']);
 const PAID_STORAGE_PLAN_IDS = new Set(['std1', 'std2', 'std3', 'vip1', 'vip2', 'vip3']);
 
+// ── Promoción: primer mes a 0.99 ¢ ───────────────────────────────────────────
+// Válida 60 días a partir del deploy. Se aplica automáticamente la primera vez por usuario.
+const FIRST_MONTH_COUPON_ID = process.env.STRIPE_FIRST_MONTH_COUPON || 'zion_first_month_99c';
+// Fecha límite: 60 días a partir de ahora (epoch UNIX). Fija en arranque del servidor para
+// que todos los arranques durante el periodo apunten al mismo cupón sin recrearlo.
+const PROMO_REDEEM_BY = Math.floor(Date.now() / 1000) + 60 * 24 * 60 * 60; // now + 60 días
+
+/** Crea el cupón en Stripe si no existe. Idempotente. */
+async function ensureFirstMonthCoupon() {
+    if (!stripe) return;
+    try {
+        await stripe.coupons.retrieve(FIRST_MONTH_COUPON_ID);
+        // Ya existe → nada que hacer
+    } catch (err) {
+        if (err?.statusCode === 404 || err?.raw?.code === 'resource_missing') {
+            try {
+                await stripe.coupons.create({
+                    id: FIRST_MONTH_COUPON_ID,
+                    name: 'Primer mes Zion PRO',
+                    amount_off: 99,   // 0.99 USD en centavos
+                    currency: 'usd',
+                    duration: 'once', // solo aplica al primer periodo de facturación
+                    redeem_by: PROMO_REDEEM_BY,
+                });
+                console.log(`✅ Cupón de promoción creado: ${FIRST_MONTH_COUPON_ID}`);
+            } catch (createErr) {
+                // Si dos instancias crean el cupón al mismo tiempo, ignorar el error de duplicado
+                if (createErr?.raw?.code !== 'resource_already_exists') {
+                    console.warn('⚠️ No se pudo crear el cupón de promoción:', createErr?.message);
+                }
+            }
+        } else {
+            console.warn('⚠️ Error verificando cupón de promoción:', err?.message);
+        }
+    }
+}
+// Crear el cupón en el arranque (best-effort)
+ensureFirstMonthCoupon().catch(() => {});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CRON: Expirar planes promo_free_1m vencidos (> 30 días)
+// ─────────────────────────────────────────────────────────────────────────────
+async function expirePromoFree1mPlans() {
+    if (!dbAdmin) return { expired: 0, errors: 0 };
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let expired = 0;
+    let errors = 0;
+
+    try {
+        const snap = await dbAdmin.collection('users')
+            .where('planId', '==', 'promo_free_1m')
+            .get();
+
+        const batch = dbAdmin.batch();
+        snap.forEach((docSnap) => {
+            const data = docSnap.data();
+            const activatedAt = data.promoFreeActivatedAt;
+            if (!activatedAt) return; // sin fecha, ignorar
+
+            const activatedMs = activatedAt.toMillis
+                ? activatedAt.toMillis()
+                : activatedAt.seconds * 1000;
+
+            if (now - activatedMs >= THIRTY_DAYS_MS) {
+                batch.update(docSnap.ref, {
+                    planId: 'free',
+                    stripeSubscriptionStatus: null,
+                    promoFreeExpiredAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                expired++;
+                console.log(`[promo-expire] Usuario ${docSnap.id} revertido a free.`);
+            }
+        });
+
+        if (expired > 0) await batch.commit();
+        console.log(`[promo-expire] Revisión completa: ${expired} expirados, ${snap.size} revisados.`);
+    } catch (e) {
+        errors++;
+        console.error('[promo-expire] Error al revisar promos:', e.message);
+    }
+
+    return { expired, errors };
+}
+
+// Ejecutar en arranque y cada 6 horas
+expirePromoFree1mPlans().catch(() => {});
+setInterval(() => expirePromoFree1mPlans().catch(() => {}), 6 * 60 * 60 * 1000);
+// ─────────────────────────────────────────────────────────────────────────────
+
 function desktopTierFromStripePlanId(planId) {
     if (planId === 'zion_desktop_pro_online') return 'pro_online';
     if (planId === 'zion_desktop_pro_local') return 'pro_local';
@@ -639,6 +729,77 @@ const handleDownload = async (req, res) => {
 app.get('/api/download', handleDownload);
 app.get('/download', handleDownload);
 
+// ── B2 Presigned Download URL (mobile fast path) ────────────────────────────
+// Generates a direct B2 download token valid for 1 hour so mobile clients
+// can bypass the Railway proxy and download stems directly from B2 CDN.
+// Query: ?fileUrl=https://f4.bcg.cloud/...  (the full B2 public URL of the file)
+let _b2AuthToken = null;
+let _b2AuthExpires = 0;
+
+async function getB2AuthToken() {
+    if (_b2AuthToken && Date.now() < _b2AuthExpires) return _b2AuthToken;
+    const keyId = process.env.B2_KEY_ID;
+    const appKey = process.env.B2_APPLICATION_KEY;
+    if (!keyId || !appKey) throw new Error('B2 credentials not configured');
+    const creds = Buffer.from(`${keyId}:${appKey}`).toString('base64');
+    const r = await fetch('https://api.backblazeb2.com/b2api/v3/b2_authorize_account', {
+        headers: { Authorization: `Basic ${creds}` },
+    });
+    if (!r.ok) throw new Error(`B2 auth failed: ${r.status}`);
+    const j = await r.json();
+    _b2AuthToken = j.authorizationToken;
+    // Cache for 23 hours (B2 tokens last 24h)
+    _b2AuthExpires = Date.now() + 23 * 60 * 60 * 1000;
+    return _b2AuthToken;
+}
+
+app.get('/api/b2-signed-url', async (req, res) => {
+    try {
+        const { fileUrl } = req.query;
+        if (!fileUrl || fileUrl === 'undefined') {
+            return res.status(400).json({ error: 'fileUrl requerida' });
+        }
+        const bucketId = process.env.B2_BUCKET_ID;
+        if (!bucketId) return res.status(500).json({ error: 'B2_BUCKET_ID no configurado' });
+
+        const authToken = await getB2AuthToken();
+
+        // Request a 1-hour download token scoped to the specific file path.
+        // Extract the file path from the URL (everything after the bucket hostname/name).
+        const urlObj = new URL(String(fileUrl).trim());
+        const filePath = urlObj.pathname.replace(/^\/file\/[^/]+\//, ''); // strip /file/<bucket>/
+
+        const tokenRes = await fetch(
+            `https://api.backblazeb2.com/b2api/v3/b2_get_download_authorization`,
+            {
+                method: 'POST',
+                headers: {
+                    Authorization: authToken,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    bucketId,
+                    fileNamePrefix: filePath,
+                    validDurationInSeconds: 3600,
+                }),
+            }
+        );
+        if (!tokenRes.ok) {
+            const err = await tokenRes.text();
+            console.error('[b2-signed-url] token error:', err);
+            return res.status(502).json({ error: 'No se pudo generar token B2', detail: err });
+        }
+        const tj = await tokenRes.json();
+        // Build signed URL: original URL + authorizationToken param
+        const signedUrl = `${String(fileUrl).trim()}?Authorization=${encodeURIComponent(tj.authorizationToken)}`;
+        res.json({ signedUrl, expiresIn: 3600 });
+    } catch (e) {
+        console.error('[b2-signed-url]', e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/api/stripe/create-single-payment', async (req, res) => {
     console.log("💳 Recibida solicitud de pago único:", req.body);
     try {
@@ -1144,15 +1305,45 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
             }
         }
 
-        // 3. Crear Suscripción (metadata para webhooks: sin cambiar el flujo confirmPayment del cliente)
-        const subscription = await stripe.subscriptions.create({
+        // 3. Verificar si el usuario califica para la promo de primer mes (0.99 ¢)
+        let applyPromo = false;
+        if (dbAdmin) {
+            try {
+                const userDoc = await dbAdmin.collection('users').doc(String(userId)).get();
+                const alreadyUsed = userDoc.exists && userDoc.data()?.firstMonthPromoUsed === true;
+                if (!alreadyUsed) {
+                    await ensureFirstMonthCoupon();
+                    applyPromo = true;
+                    console.log(`🎁 Aplicando promoción primer mes 0.99¢ al usuario ${userId}`);
+                }
+            } catch (promoErr) {
+                // No bloquear el checkout si falla la verificación de la promo
+                console.warn('⚠️ No se pudo verificar promo del usuario:', promoErr?.message);
+            }
+        }
+
+        // 4. Crear Suscripción (metadata para webhooks: sin cambiar el flujo confirmPayment del cliente)
+        const subscriptionPayload = {
             customer: customer.id,
             items: [{ price: priceId }],
             metadata: { userId: String(userId), planId: String(planId) },
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.payment_intent'],
-        });
+        };
+        if (applyPromo) {
+            subscriptionPayload.coupon = FIRST_MONTH_COUPON_ID;
+        }
+
+        const subscription = await stripe.subscriptions.create(subscriptionPayload);
+
+        // 5. Marcar promo como usada en Firestore (best-effort, no bloquea el flujo de pago)
+        if (applyPromo && dbAdmin) {
+            dbAdmin.collection('users').doc(String(userId)).set(
+                { firstMonthPromoUsed: true },
+                { merge: true }
+            ).catch(e => console.warn('⚠️ No se pudo marcar firstMonthPromoUsed:', e?.message));
+        }
 
         const inv = subscription.latest_invoice;
         const pi = inv && typeof inv === 'object' ? inv.payment_intent : null;
@@ -1167,6 +1358,7 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         res.json({
             subscriptionId: subscription.id,
             clientSecret,
+            promoApplied: applyPromo,
         });
     } catch (error) {
         console.error("Stripe Error:", error);
@@ -1739,6 +1931,23 @@ if (fs.existsSync(distPath)) {
 } else {
     console.warn("⚠️ Carpeta 'dist' NO encontrada.");
 }
+
+// ── Endpoint manual: expirar promos vencidas ─────────────────────────────────
+// Requiere header x-admin-secret igual al env ADMIN_SECRET (o STRIPE_SECRET_KEY como fallback).
+app.post('/api/admin/expire-promos', async (req, res) => {
+    const secret = process.env.ADMIN_SECRET || process.env.STRIPE_SECRET_KEY;
+    const provided = req.headers['x-admin-secret'];
+    if (!secret || provided !== secret) {
+        return res.status(401).json({ error: 'No autorizado.' });
+    }
+    try {
+        const result = await expirePromoFree1mPlans();
+        return res.json({ ok: true, ...result });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Solución definitiva para SPA: Middleware al final de la cadena
 app.use((req, res, next) => {

@@ -1,7 +1,7 @@
 {
   "name": "mixer",
   "private": true,
-  "version": "1.8.58",
+  "version": "1.8.63",
   "desktopVersion": "1.2.1",
   "description": "Zion Stage — mixer multitrack. `version` = app móvil/web; `desktopVersion` = instalador Windows (.exe) y comprobación de actualizaciones en PC.",
   "type": "module",

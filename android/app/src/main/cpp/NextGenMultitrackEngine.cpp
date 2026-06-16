@@ -516,6 +516,28 @@ struct NextGenMultitrackEngine::Impl {
                     ch->lengthFrames = len;
                     if (len > duration_frames) duration_frames = len;
                 }
+
+                // ── MP3 encoder-delay trim ────────────────────────────────────────────
+                // LAME and most MP3 encoders prepend 576–1152 garbage/silence frames
+                // (encoder delay).  Web browsers trim these automatically via iTunSMPB
+                // ID3 tags; miniaudio does not.  Seek past them so every stem on
+                // Android starts at the same true position 0 as on the web app.
+                // 1152 frames @ 44100 Hz = ~26 ms — inaudible and safe for all encoders.
+                static constexpr ma_uint64 kEncoderDelayFrames = 1152;
+                if (ch->lengthFrames > kEncoderDelayFrames * 2) {
+                    ma_result sr = ma_decoder_seek_to_pcm_frame(&ch->decoder, kEncoderDelayFrames);
+                    if (sr != MA_SUCCESS) {
+                        // Non-fatal: fallback to frame 0 (old behavior)
+                        NGD("encoder-delay seek failed (%d) for %s — playing from frame 0",
+                            (int)sr, ch->id.c_str());
+                        ma_decoder_seek_to_pcm_frame(&ch->decoder, 0);
+                    } else {
+                        NGD("encoder-delay trim: skipped %llu frames for %s",
+                            (unsigned long long)kEncoderDelayFrames, ch->id.c_str());
+                    }
+                }
+                // ─────────────────────────────────────────────────────────────────────
+
                 NGD("decoder OK: id=%s lenFrames=%llu", ch->id.c_str(), (unsigned long long)ch->lengthFrames);
                 if (ch->routeClickGuide) {
                     NGR("[NEXTGEN_ROUTE] click/guide stem -> %s", clickGuideOnLeft ? "LEFT" : "RIGHT");
@@ -574,7 +596,11 @@ struct NextGenMultitrackEngine::Impl {
         transport.store(0);
         for (auto& up : stems_) {
             if (!up || !up->decoderOk) continue;
-            ma_decoder_seek_to_pcm_frame(&up->decoder, 0);
+            // Seek to encoder-delay-trimmed start (same as initial load).
+            static constexpr ma_uint64 kEncoderDelayFrames = 1152;
+            const ma_uint64 startFrame = (up->lengthFrames > kEncoderDelayFrames * 2)
+                                         ? kEncoderDelayFrames : 0;
+            ma_decoder_seek_to_pcm_frame(&up->decoder, startFrame);
             up->ended.store(false);
         }
         playhead_frames.store(0);
@@ -613,11 +639,14 @@ struct NextGenMultitrackEngine::Impl {
             if (up) up->loggedPartialAfterSeek = false;
         }
 
-        double durationSec = duration_frames / (double)kSampleRate;
+        const double durationSec = duration_frames / (double)kSampleRate;
         if (seconds < 0.0) seconds = 0.0;
         if (duration_frames > 0 && seconds > durationSec) seconds = durationSec;
 
-        const ma_uint64 frame = (ma_uint64)(seconds * (double)kSampleRate + 0.5);
+        // Add encoder delay offset so seek position 0 still skips predelay garbage.
+        static constexpr ma_uint64 kEncoderDelayFrames = 1152;
+        const ma_uint64 delayOffset = kEncoderDelayFrames; // always offset (stems too short = no seek on load)
+        const ma_uint64 seekFrame = (ma_uint64)(seconds * (double)kSampleRate + 0.5) + delayOffset;
 
         // Reposition each stem decoder. Independent decoders → parallel seeks reduce wall time vs
         // sequential (common delay source: MP3/FLAC internal seek + disk).
@@ -626,8 +655,8 @@ struct NextGenMultitrackEngine::Impl {
         for (auto& up : stems_) {
             if (!up || !up->decoderOk) continue;
             StemChannel* stem = up.get();
-            seekTasks.push_back(std::async(std::launch::async, [stem, frame]() {
-                ma_result sr = ma_decoder_seek_to_pcm_frame(&stem->decoder, frame);
+            seekTasks.push_back(std::async(std::launch::async, [stem, seekFrame]() {
+                ma_result sr = ma_decoder_seek_to_pcm_frame(&stem->decoder, seekFrame);
                 if (sr != MA_SUCCESS) {
                     NGE("seek decoder failed id=%s res=%d", stem->id.c_str(), (int)sr);
                 }
@@ -638,7 +667,7 @@ struct NextGenMultitrackEngine::Impl {
             f.get();
         }
 
-        playhead_frames.store(frame);
+        playhead_frames.store(seekFrame - delayOffset); // report UI position without offset
         pitch_st_.clear();
         st_pending_.clear(); // flush drain buffer after seek to avoid pre-seek audio leaking
         pitch_applied_st_.store(1e6f);
@@ -647,7 +676,7 @@ struct NextGenMultitrackEngine::Impl {
         const auto msAfterDecoders =
             std::chrono::duration_cast<std::chrono::milliseconds>(clock::now() - tSeekWallStart).count();
         logNextGenInfoMsgMs("seek decoders repositioned", (int64_t)msAfterDecoders);
-        NGD("seek: %.3fs -> frame %llu", seconds, (unsigned long long)frame);
+        NGD("seek: %.3fs -> frame %llu", seconds, (unsigned long long)seekFrame);
 
         if (prevTransport == 1 && deviceInitialized) {
             const auto msAboutResume =

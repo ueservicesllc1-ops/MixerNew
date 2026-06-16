@@ -344,6 +344,7 @@ export default function Multitrack() {
     const currentMixState = useRef({}); // Stores the active song's fader/mute/solo states without re-rendering
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    const [userPlanId, setUserPlanId] = useState(null);
     const [proxyUrl, setProxyUrl] = useState(() => {
         const saved = localStorage.getItem('mixer_proxyUrl');
         if (saved) return saved;
@@ -353,10 +354,37 @@ export default function Multitrack() {
         return 'https://mixernew-production.up.railway.app';
     });
 
-    /** Descarga binaria vía proxy. Si `url` ya es `/api/download?url=...` (p. ej. normalizedUrl), no la envuelve otra vez. */
+    /** Descarga binaria vía proxy. Si `url` ya es `/api/download?url=...` (p. ej. normalizedUrl), no la envuelve otra vez.
+     *  En nativo: intenta primero una URL prefirmada directa a B2 (más rápido, sin relay Railway).
+     */
     const fetchBlobNative = useCallback(async (url) => {
         if (!url) return null;
         const u = String(url).trim();
+
+        // ── Nativo: fast path con URL prefirmada B2 (descarga directa, sin proxy) ──
+        if (isAppNative) {
+            try {
+                // Solo para URLs de B2 (no para URLs ya proxiadas)
+                const isB2Url = u.includes('backblazeb2.com') || u.includes('bcg.cloud') || u.includes('b-cdn.net');
+                if (isB2Url && !u.includes('/api/download?')) {
+                    const signedRes = await fetch(
+                        `${proxyUrl}/api/b2-signed-url?fileUrl=${encodeURIComponent(u)}`,
+                        { signal: AbortSignal.timeout(8000) }
+                    );
+                    if (signedRes.ok) {
+                        const { signedUrl } = await signedRes.json();
+                        if (signedUrl) {
+                            console.log('[fetchBlobNative] B2 fast path:', u.split('/').pop());
+                            const directRes = await fetch(signedUrl);
+                            if (directRes.ok) return await directRes.blob();
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('[fetchBlobNative] B2 fast path falló, usando proxy:', e.message);
+            }
+        }
+        // ── Fallback: proxy Railway (web + nativo cuando fast path falla) ──────────
         const alreadyProxied = u.includes('/api/download?url=');
         const reqUrl = alreadyProxied ? u : `${proxyUrl}/api/download?url=${encodeURIComponent(u)}`;
         const r2 = await fetch(reqUrl);
@@ -1057,7 +1085,14 @@ export default function Multitrack() {
                     console.error('Error cargando setlists:', error);
                 });
 
-                return () => { unsubSongs(); unsubGlobal(); unsubSetlists(); };
+                // ── Listen to user's plan from Firestore ──────────────────
+                const unsubUserPlan = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+                    if (snap.exists()) {
+                        setUserPlanId(snap.data().planId || 'free');
+                    }
+                }, () => setUserPlanId('free'));
+
+                return () => { unsubSongs(); unsubGlobal(); unsubSetlists(); unsubUserPlan(); };
             } else {
                 // Usuario sin sesi├│n ΓåÆ limpiar todo
                 setLibrarySongs([]);
@@ -2684,38 +2719,58 @@ export default function Multitrack() {
                 <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>
                     V{CURRENT_VERSION} - ZION STAGE ({isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
                 </div>
-                <button className="transport-btn" onClick={() => navigate('/dashboard')} title={t('multitrack.menuTitle')}>
-                    <Menu size={20} />
-                </button>
-                {!isAppNative && (
-                    <button
-                        onClick={() => navigate('/dashboard')}
-                        title={t('multitrack.backDashTitle')}
-                        style={{
-                            height: '34px',
-                            minWidth: '92px',
-                            padding: '0 14px',
-                            borderRadius: '999px',
-                            border: '1px solid rgba(148, 163, 184, 0.45)',
-                            background: 'rgba(15, 23, 42, 0.9)',
-                            color: '#e2e8f0',
-                            fontSize: '0.82rem',
-                            fontWeight: 700,
-                            letterSpacing: '0.2px',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            whiteSpace: 'nowrap',
-                            lineHeight: 1
-                        }}
-                    >
-                        {t('multitrack.dashboard')}
-                    </button>
-                )}
+                {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
+                {(() => {
+                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online'];
+                    const isVip = VIP_IDS.includes(userPlanId);
+                    const planLabels = {
+                        'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP ⭐',
+                        'zion_desktop_pro_online': 'PRO ⭐',
+                        'free': 'FREE', 'std1': 'BÁSICO', 'std2': 'ESTÁNDAR',
+                        'std3': 'PLUS', 'zion_desktop_pro_local': 'PRO PC',
+                        'seller': 'VENDEDOR',
+                    };
+                    const label = planLabels[userPlanId] || (userPlanId ? userPlanId.toUpperCase() : 'FREE');
+                    return (
+                        <div
+                            onClick={() => navigate('/dashboard')}
+                            title="Ver mi plan"
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                height: '34px',
+                                padding: '0 12px',
+                                borderRadius: '999px',
+                                border: isVip
+                                    ? '1px solid rgba(241,196,15,0.6)'
+                                    : '1px solid rgba(100,116,139,0.45)',
+                                background: isVip
+                                    ? 'linear-gradient(135deg, rgba(241,196,15,0.18), rgba(230,126,34,0.14))'
+                                    : 'rgba(15,23,42,0.85)',
+                                cursor: 'pointer',
+                                flexShrink: 0,
+                                transition: 'all 0.2s',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.opacity = '0.8'}
+                            onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                        >
+                            <span style={{
+                                fontSize: '0.72rem',
+                                fontWeight: 900,
+                                letterSpacing: '0.06em',
+                                color: isVip ? '#f1c40f' : '#94a3b8',
+                                lineHeight: 1,
+                                whiteSpace: 'nowrap',
+                            }}>
+                                {label}
+                            </span>
+                        </div>
+                    );
+                })()}
 
                 {/* MOBILE DRAWER BUTTONS */}
-                <div className="mobile-only-flex" style={{ display: 'flex', gap: '4px' }}>
+                <div className="mobile-only-flex" style={{ display: 'none', gap: '4px' }}>
                     <button className="transport-btn-mini" onClick={() => setIsSetlistMenuOpen(true)} title={t('multitrack.setlistsTitle')}>
                         <ListMusic size={18} />
                     </button>

@@ -1351,6 +1351,12 @@ export default function Admin() {
                 updates.isSeller = true;
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
+            } else if (newPlanId === 'promo_free_1m') {
+                // Plan gratis 1 mes — se marca la fecha de activación ahora
+                updates.promoFreeActivatedAt = serverTimestamp();
+                updates.desktopLicenseTier = null;
+                updates.desktopProActive = false;
+                updates.stripeSubscriptionStatus = 'active';
             } else {
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
@@ -1373,6 +1379,29 @@ export default function Admin() {
         } catch (e) {
             console.error('[admin set plan]', e);
             alert('No se pudo aplicar el cambio: ' + (e.message || e));
+        }
+    };
+    const updateUserEmail = async (uid, newEmail) => {
+        if (!uid) return;
+        try {
+            await updateDoc(doc(db, 'users', uid), { email: newEmail.trim() });
+            setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, email: newEmail.trim() } : u));
+            alert('Email actualizado correctamente.');
+        } catch (e) {
+            console.error(e);
+            alert('Error al actualizar email: ' + e.message);
+        }
+    };
+
+    const updateUserDisplayName = async (uid, newName) => {
+        if (!uid) return;
+        try {
+            await updateDoc(doc(db, 'users', uid), { displayName: newName.trim() });
+            setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, displayName: newName.trim() } : u));
+            alert('Nombre de usuario actualizado correctamente.');
+        } catch (e) {
+            console.error(e);
+            alert('Error al actualizar nombre: ' + e.message);
         }
     };
 
@@ -1465,6 +1494,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('pending')} style={{ background: activeTab === 'pending' ? '#f1c40f' : 'rgba(255,255,255,0.05)', color: activeTab === 'pending' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Marketplace ({adminDataLoaded ? forSaleSongs.length : '—'})</button>
                 <button onClick={() => setActiveTab('sellers')} style={{ background: activeTab === 'sellers' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'sellers' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Vendedores ({adminDataLoaded ? users.filter(u => u.isSeller).length : '—'})</button>
                 <button onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? '#00d2d3' : 'rgba(255,255,255,0.05)', color: activeTab === 'users' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Usuarios ({adminDataLoaded ? users.length : '—'})</button>
+                <button onClick={() => setActiveTab('android')} style={{ background: activeTab === 'android' ? '#a3e635' : 'rgba(255,255,255,0.05)', color: activeTab === 'android' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Android ({adminDataLoaded ? users.filter(u => toMillisSafe(u?.usageMetrics?.platforms?.native?.lastSeenAt) > 0 || toMillisSafe(u?.usageMetrics?.platforms?.native?.firstSeenAt) > 0 || u?.usageMetrics?.lastPlatform === 'native').length : '—'})</button>
                 <button onClick={() => setActiveTab('reports')} style={{ background: activeTab === 'reports' ? '#22c55e' : 'rgba(255,255,255,0.05)', color: activeTab === 'reports' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Reportes</button>
                 <button onClick={() => setActiveTab('desktop')} style={{ background: activeTab === 'desktop' ? '#38bdf8' : 'rgba(255,255,255,0.05)', color: activeTab === 'desktop' ? '#0f172a' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Escritorio</button>
                 <button onClick={() => setActiveTab('coupons')} style={{ background: activeTab === 'coupons' ? '#f59e0b' : 'rgba(255,255,255,0.05)', color: activeTab === 'coupons' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Cupones ({adminDataLoaded ? coupons.length : '—'})</button>
@@ -2297,10 +2327,12 @@ export default function Admin() {
                     <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px' }}>
                         {users
                             .map(u => ({ ...u, songsCount: songs.filter(s => s.userId === u.id).length }))
-                            .filter(u =>
-                                u.email?.toLowerCase().includes(searchUser.toLowerCase()) ||
-                                u.displayName?.toLowerCase().includes(searchUser.toLowerCase())
-                            )
+                            .filter(u => {
+                                const email = (u.email || '').toLowerCase();
+                                const displayName = (u.displayName || '').toLowerCase();
+                                const search = (searchUser || '').toLowerCase();
+                                return email.includes(search) || displayName.includes(search);
+                            })
                             .sort((a, b) => {
                                 let valA, valB;
                                 if (userSortField === 'createdAt') {
@@ -2316,15 +2348,58 @@ export default function Admin() {
                             <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        <div style={{ fontWeight: '800' }}>{u.displayName || u.email}</div>
+                                        <div style={{ fontWeight: '800' }}>{u.displayName || u.email || '(sin nombre/email)'}</div>
+                                        <button
+                                            onClick={() => {
+                                                const newName = window.prompt("Ingrese el nombre para este usuario:", u.displayName || "");
+                                                if (newName !== null) {
+                                                    updateUserDisplayName(u.id, newName);
+                                                }
+                                            }}
+                                            style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.7rem', textDecoration: 'underline', padding: 0 }}
+                                        >
+                                            [Editar Nombre]
+                                        </button>
                                         {u.isSeller && <span style={{ background: '#10b981', color: 'black', fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px' }}>SELLER</span>}
                                     </div>
                                     <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
-                                        Plan: <span style={{ color: '#00d2d3', fontWeight: '700' }}>{u.planId || 'free'}</span> | 
+                                        Plan: <span style={{ color: '#00d2d3', fontWeight: '700' }}>{u.planId || 'free'}</span>{' '}
+                                        {u.planId === 'promo_free_1m' && (() => {
+                                            const activatedMs = u.promoFreeActivatedAt?.toMillis?.() ||
+                                                (u.promoFreeActivatedAt?.seconds ? u.promoFreeActivatedAt.seconds * 1000 : null);
+                                            if (!activatedMs) return <span style={{ color: '#f59e0b', fontSize: '0.7rem', fontWeight: '700' }}>[sin fecha activación]</span>;
+                                            const expiresMs = activatedMs + 30 * 24 * 60 * 60 * 1000;
+                                            const daysLeft = Math.ceil((expiresMs - Date.now()) / (24 * 60 * 60 * 1000));
+                                            const expired = daysLeft <= 0;
+                                            return (
+                                                <span style={{
+                                                    fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px',
+                                                    borderRadius: '6px', marginLeft: '4px',
+                                                    background: expired ? 'rgba(239,68,68,0.15)' : 'rgba(251,191,36,0.15)',
+                                                    color: expired ? '#ef4444' : '#fbbf24',
+                                                    border: `1px solid ${expired ? 'rgba(239,68,68,0.3)' : 'rgba(251,191,36,0.3)'}`,
+                                                }}>
+                                                    {expired ? '⚠ EXPIRADO' : `🎁 ${daysLeft}d restantes`}
+                                                </span>
+                                            );
+                                        })()}{' '}|
                                         MTs: <span style={{ color: '#f1c40f', fontWeight: '800' }}>{u.songsCount}</span> |
                                         Registro: <span style={{ color: '#94a3b8' }}>{u.createdAt ? u.createdAt.toDate().toLocaleDateString() : '—'}</span>
                                     </div>
-                                    <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email}</div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                        <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email || '(sin email)'}</div>
+                                        <button
+                                            onClick={() => {
+                                                const newEmail = window.prompt("Ingrese el email para este usuario:", u.email || "");
+                                                if (newEmail !== null) {
+                                                    updateUserEmail(u.id, newEmail);
+                                                }
+                                            }}
+                                            style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.7rem', textDecoration: 'underline', padding: 0 }}
+                                        >
+                                            [Editar Email]
+                                        </button>
+                                    </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2335,6 +2410,7 @@ export default function Admin() {
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
                                             <option value="free">Gratis (Free)</option>
+                                            <option value="promo_free_1m">🎁 Gratis 1 Mes (Promo)</option>
                                             <option value="std1">Básico (10 GB)</option>
                                             <option value="std2">Estándar (20 GB)</option>
                                             <option value="std3">Plus (50 GB)</option>
@@ -2380,6 +2456,143 @@ export default function Admin() {
                                                 Quitar PRO
                                             </button>
                                         )}
+                                    </div>
+                                    <button 
+                                        onClick={() => toggleManualSeller(u)} 
+                                        style={{ 
+                                            background: u.isSeller ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)', 
+                                            color: u.isSeller ? '#ef4444' : '#10b981', 
+                                            border: `1px solid ${u.isSeller ? '#ef4444' : '#10b981'}`,
+                                            padding: '8px 12px', 
+                                            borderRadius: '8px', 
+                                            fontSize: '0.75rem', 
+                                            fontWeight: '800', 
+                                            cursor: 'pointer',
+                                            minWidth: '130px'
+                                        }}
+                                    >
+                                        {u.isSeller ? 'QUITAR VENDEDOR' : 'HACER VENDEDOR'}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'android' && (
+                <div className="fade-in">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+                        <h2>Usuarios Android / Mobile ({
+                            users.filter(u => toMillisSafe(u?.usageMetrics?.platforms?.native?.lastSeenAt) > 0 || toMillisSafe(u?.usageMetrics?.platforms?.native?.firstSeenAt) > 0 || u?.usageMetrics?.lastPlatform === 'native').length
+                        })</h2>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <select 
+                                value={userSortField} 
+                                onChange={(e) => setUserSortField(e.target.value)}
+                                style={{ padding: '10px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black' }}
+                            >
+                                <option value="createdAt">Ordenar por Fecha Registro</option>
+                                <option value="songsCount">Ordenar por MTs Subidos</option>
+                            </select>
+                            <button 
+                                onClick={() => setUserSortOrder(userSortOrder === 'asc' ? 'desc' : 'asc')}
+                                style={{ padding: '10px', borderRadius: '10px', background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer' }}
+                            >
+                                {userSortOrder === 'asc' ? '⬆️ ASC' : '⬇️ DESC'}
+                            </button>
+                            <input
+                                type="text"
+                                placeholder="Buscar por email o nombre..."
+                                value={searchUser}
+                                onChange={e => setSearchUser(e.target.value)}
+                                style={{ padding: '10px 15px', borderRadius: '10px', background: 'white', border: '1px solid #cbd5e1', color: 'black', width: '250px' }}
+                            />
+                        </div>
+                    </div>
+                    <div style={{ background: '#1e293b', borderRadius: '12px', padding: '20px' }}>
+                        {users
+                            .filter(u => toMillisSafe(u?.usageMetrics?.platforms?.native?.lastSeenAt) > 0 || toMillisSafe(u?.usageMetrics?.platforms?.native?.firstSeenAt) > 0 || u?.usageMetrics?.lastPlatform === 'native')
+                            .map(u => ({ ...u, songsCount: songs.filter(s => s.userId === u.id).length }))
+                            .filter(u => {
+                                const email = (u.email || '').toLowerCase();
+                                const displayName = (u.displayName || '').toLowerCase();
+                                const search = (searchUser || '').toLowerCase();
+                                return email.includes(search) || displayName.includes(search);
+                            })
+                            .sort((a, b) => {
+                                let valA, valB;
+                                if (userSortField === 'createdAt') {
+                                    valA = a.createdAt?.toMillis() || 0;
+                                    valB = b.createdAt?.toMillis() || 0;
+                                } else {
+                                    valA = a.songsCount;
+                                    valB = b.songsCount;
+                                }
+                                return userSortOrder === 'asc' ? valA - valB : valB - valA;
+                            })
+                            .map(u => (
+                            <div key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '15px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        <div style={{ fontWeight: '800' }}>{u.displayName || u.email || '(sin nombre/email)'}</div>
+                                        <button
+                                            onClick={() => {
+                                                const newName = window.prompt("Ingrese el nombre para este usuario:", u.displayName || "");
+                                                if (newName !== null) {
+                                                    updateUserDisplayName(u.id, newName);
+                                                }
+                                            }}
+                                            style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.7rem', textDecoration: 'underline', padding: 0 }}
+                                        >
+                                            [Editar Nombre]
+                                        </button>
+                                        {u.isSeller && <span style={{ background: '#10b981', color: 'black', fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px' }}>SELLER</span>}
+                                        <span style={{ background: '#a3e635', color: 'black', fontSize: '0.6rem', fontWeight: '900', padding: '2px 6px', borderRadius: '4px' }}>ANDROID</span>
+                                    </div>
+                                    <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
+                                        Plan: <span style={{ color: '#00d2d3', fontWeight: '700' }}>{u.planId || 'free'}</span> | 
+                                        MTs: <span style={{ color: '#f1c40f', fontWeight: '800' }}>{u.songsCount}</span> |
+                                        Visto en app: <span style={{ color: '#94a3b8' }}>{u.usageMetrics?.platforms?.native?.lastSeenAt ? new Date(toMillisSafe(u.usageMetrics.platforms.native.lastSeenAt)).toLocaleString() : '—'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                                        <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email || u.id}</div>
+                                        <button
+                                            onClick={() => {
+                                                const newEmail = window.prompt("Ingrese el email para este usuario:", u.email || "");
+                                                if (newEmail !== null) {
+                                                    updateUserEmail(u.id, newEmail);
+                                                }
+                                            }}
+                                            style={{ background: 'transparent', border: 'none', color: '#38bdf8', cursor: 'pointer', fontSize: '0.7rem', textDecoration: 'underline', padding: 0 }}
+                                        >
+                                            [Editar Email]
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>PLAN:</span>
+                                        <select 
+                                            value={u.planId || 'free'} 
+                                            onChange={(e) => updateUserPlan(u.id, e.target.value)} 
+                                            style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
+                                        >
+                                            <option value="free">Gratis (Free)</option>
+                                            <option value="std1">Básico (10 GB)</option>
+                                            <option value="std2">Estándar (20 GB)</option>
+                                            <option value="std3">Plus (50 GB)</option>
+                                            <option value="vip1">Básico VIP (10 GB)</option>
+                                            <option value="vip2">Estándar VIP (20 GB)</option>
+                                            <option value="vip3">Plus VIP (50 GB)</option>
+                                            <option value="zion_desktop_pro_local">PRO (PC - Local)</option>
+                                            <option value="zion_desktop_pro_online">PRO Online (PC)</option>
+                                            <option value="seller">Vendedor</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ fontSize: '0.7rem', color: '#64748b' }}>ESPACIO GB:</span>
+                                        <input type="number" value={u.customStorageGB || ''} onChange={(e) => updateCustomStorage(u.id, e.target.value)} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', textAlign: 'center', fontSize: '0.8rem' }} />
                                     </div>
                                     <button 
                                         onClick={() => toggleManualSeller(u)} 

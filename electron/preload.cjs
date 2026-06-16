@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('zionNative', {
     getSong: (id) => ipcRenderer.invoke('db:get-song', id),
     saveSong: (song) => ipcRenderer.invoke('db:save-song', song),
     deleteSong: (id) => ipcRenderer.invoke('db:delete-song', id),
+    deleteSongFiles: (songId) => ipcRenderer.invoke('db:delete-song-files', songId),
     getSetlists: () => ipcRenderer.invoke('db:get-setlists'),
     saveSetlist: (sl) => ipcRenderer.invoke('db:save-setlist', sl),
     

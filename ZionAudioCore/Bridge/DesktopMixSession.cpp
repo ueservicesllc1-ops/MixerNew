@@ -223,7 +223,6 @@ DesktopMixSession::~DesktopMixSession() {
 void DesktopMixSession::clear() {
     for (auto& s : stemSlots) {
         s.musicBridge.reset();
-        s.reader.reset();
     }
     stemSlots.clear();
     lengthInSamples = 0;
@@ -263,9 +262,13 @@ void DesktopMixSession::setTempoRatio(float ratio) {
 
 void DesktopMixSession::updateMusicSoundTouchParams() {
     for (auto& s : stemSlots) {
-        if (!s.isGuide && s.musicBridge != nullptr) {
+        if (s.musicBridge != nullptr) {
             s.musicBridge->setTempoRatio(tempoRatio);
-            s.musicBridge->setPitchSemitones(pitchSemitones);
+            if (s.isGuide) {
+                s.musicBridge->setPitchSemitones(0.0);
+            } else {
+                s.musicBridge->setPitchSemitones(pitchSemitones);
+            }
         }
     }
 }
@@ -493,6 +496,19 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
 
         juce::AudioFormatReader* raw = fm.createReaderFor(file);
         if (raw == nullptr) {
+            // fallback: try all registered formats directly on the stream in case of wrong extension (e.g. WAV named .mp3)
+            for (int i = 0; i < fm.getNumKnownFormats(); ++i) {
+                if (auto* format = fm.getKnownFormat(i)) {
+                    if (auto stream = file.createInputStream()) {
+                        raw = format->createReaderFor(stream.release(), true);
+                        if (raw != nullptr) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (raw == nullptr) {
             NativeLog("DesktopMixSession: cannot read " + file.getFullPathName());
             continue;
         }
@@ -523,15 +539,12 @@ bool DesktopMixSession::loadStems(juce::AudioFormatManager& fm,
         slot.lastMeterLevel = 0.f;
         slot.numChannels = nCh;
         slot.pan = guide ? -1.0f : 0.0f;
-        slot.reader = std::move(frs);
+        slot.musicBridge = std::make_unique<PositionableSoundTouchBridge>(std::move(frs), nCh, readerSr);
 
         if (guide) {
-            // GuideBus: reader directo, sin SoundTouch
-            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> GuideBus LEFT DRY");
+            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> GuideBus LEFT DRY (with tempo stretch resampler)");
         } else {
-            // MusicBus: SoundTouch bridge (tempo y pitch)
-            slot.musicBridge = std::make_unique<PositionableSoundTouchBridge>(std::move(slot.reader), nCh, readerSr);
-            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> MusicBus RIGHT (SoundTouch tempo)");
+            NativeLog("[AUDIO ROUTING] track " + stemLabel + " -> MusicBus RIGHT (SoundTouch tempo & pitch)");
         }
 
         stemSlots.push_back(std::move(slot));
@@ -566,16 +579,7 @@ void DesktopMixSession::prepareToPlay(int samplesPerBlockExpected, double sample
             const double sr = s.sourceSampleRate > 0 ? s.sourceSampleRate : 44100.0;
             const juce::PositionableAudioSource* src = s.getActiveSource();
             if (src == nullptr) continue;
-            const juce::int64 srcLen = src->getTotalLength(); // in source-rate for guide, host-rate for bridge
-            juce::int64 hostLen;
-            if (s.isGuide) {
-                // Guide uses raw reader: getTotalLength() is in source-rate samples.
-                const double ratio = hostSampleRate / sr;
-                hostLen = (juce::int64) std::llround((double) srcLen * ratio);
-            } else {
-                // MusicBus bridge: getTotalLength() already converts to host-rate.
-                hostLen = srcLen;
-            }
+            const juce::int64 hostLen = src->getTotalLength();
             maxLenHost = juce::jmax(maxLenHost, hostLen);
         }
         if (maxLenHost > 0)
@@ -775,14 +779,7 @@ void DesktopMixSession::setNextReadPosition(juce::int64 newPosition) {
     globalSamplePosition = newPosition;
     const double seconds = hostSampleRate > 0 ? (double) newPosition / hostSampleRate : 0.0;
     for (auto& s : stemSlots) {
-        if (s.isGuide && s.reader != nullptr) {
-            // Guide/Click: direct reader, position in SOURCE-rate samples
-            const double srRatio = (hostSampleRate > 0 && s.sourceSampleRate > 0)
-                                    ? s.sourceSampleRate / hostSampleRate : 1.0;
-            const juce::int64 srcPos = (juce::int64) std::llround((double) newPosition * srRatio);
-            s.reader->setNextReadPosition(juce::jlimit((juce::int64) 0, s.reader->getTotalLength(), srcPos));
-        } else if (s.musicBridge != nullptr) {
-            // MusicBus bridge handles SR conversion internally
+        if (s.musicBridge != nullptr) {
             s.musicBridge->setNextReadPosition(newPosition);
         }
     }

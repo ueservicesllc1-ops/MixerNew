@@ -129,12 +129,10 @@ private:
         bool solo = false;
         float pan = 0.0f; // debug only: guide=-1, music=+1
         double sourceSampleRate = 44100.0; // file's native SR
-        std::unique_ptr<juce::AudioFormatReaderSource> reader; // GuideBus
-        std::unique_ptr<PositionableSoundTouchBridge> musicBridge; // MusicBus
+        std::unique_ptr<PositionableSoundTouchBridge> musicBridge; // For all tracks (handles SR and stretch)
 
         juce::PositionableAudioSource* getActiveSource() const {
-            if (isGuide && reader != nullptr) return reader.get();
-            if (!isGuide && musicBridge != nullptr) return musicBridge.get();
+            if (musicBridge != nullptr) return musicBridge.get();
             return nullptr;
         }
     };

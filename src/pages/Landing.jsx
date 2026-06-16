@@ -18,7 +18,7 @@ import { DESKTOP_PRO_PLANS } from '../desktop/desktopProPlans';
 const HARDCODED_DESKTOP_INSTALLER_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe';
 const HARDCODED_DESKTOP_VERSION_NAME = '1.1.9';
 const HARDCODED_ANDROID_APK_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-v1.8.58-1776137302918.apk';
-const HARDCODED_ANDROID_VERSION_NAME = '1.8.58';
+const HARDCODED_ANDROID_VERSION_NAME = '1.8.62';
 
 export default function Landing() {
     const navigate = useNavigate();
