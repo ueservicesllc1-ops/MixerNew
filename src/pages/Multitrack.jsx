@@ -2721,11 +2721,12 @@ export default function Multitrack() {
                 </div>
                 {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
                 {(() => {
-                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online'];
+                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online','promo_free_1m'];
                     const isVip = VIP_IDS.includes(userPlanId);
                     const planLabels = {
                         'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP ⭐',
                         'zion_desktop_pro_online': 'PRO ⭐',
+                        'promo_free_1m': 'VIP PROMO ⭐',
                         'free': 'FREE', 'std1': 'BÁSICO', 'std2': 'ESTÁNDAR',
                         'std3': 'PLUS', 'zion_desktop_pro_local': 'PRO PC',
                         'seller': 'VENDEDOR',

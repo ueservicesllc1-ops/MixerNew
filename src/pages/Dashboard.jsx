@@ -58,6 +58,7 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
 
 const STORAGE_PLANS = [
     { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 1, storageMB: 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
+    { id: 'promo_free_1m', name: 'Plus VIP (Promo)', type: 'VIP', storageGB: 50, storageMB: 50000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: true },
     { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
     { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 20, storageMB: 20000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
     { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
@@ -284,10 +285,12 @@ function Dashboard() {
     };
 
     const [customStorageGB, setCustomStorageGB] = useState(0);
+    const [isPromoClaimedModalOpen, setIsPromoClaimedModalOpen] = useState(false);
 
     const usedMB = userSongs.reduce((acc, s) =>
         acc + (s.tracks || []).reduce((a, t) => a + parseFloat(t.sizeMB || 0), 0), 0);
-    const storageLimit = customStorageGB > 0 ? (customStorageGB * 1024) : (userPlan?.storageMB || 1000);
+    const storageLimitGB = Math.max(customStorageGB || 0, userPlan?.storageGB || 1);
+    const storageLimit = storageLimitGB * 1024;
     const usedPercent = Math.min(100, (usedMB / storageLimit) * 100);
 
     useEffect(() => {
@@ -374,6 +377,26 @@ function Dashboard() {
         });
         return () => { unsubAuth(); unsubSongs(); unsubSetlists(); unsubUser(); };
     }, [navigate, userPlan?.isVIP]); // Re-run if VIP status changes
+
+    useEffect(() => {
+        if (isNativeApp() && currentUser && userProfile) {
+            const hasHadPromo = userProfile.promoFreeActivatedAt || userProfile.promoFreeExpiredAt;
+            if ((!userProfile.planId || userProfile.planId === 'free') && !hasHadPromo) {
+                const userRef = doc(db, 'users', currentUser.uid);
+                const updates = {
+                    planId: 'promo_free_1m',
+                    promoFreeActivatedAt: serverTimestamp(),
+                    stripeSubscriptionStatus: 'active',
+                    updatedAt: serverTimestamp()
+                };
+                updateDoc(userRef, updates)
+                    .then(() => {
+                        setIsPromoClaimedModalOpen(true);
+                    })
+                    .catch(err => console.error("Error activating Google Play promo:", err));
+            }
+        }
+    }, [currentUser, userProfile]);
 
     const handleZipUpload = async (e) => {
         const file = e.target.files[0];
@@ -1118,7 +1141,7 @@ function Dashboard() {
                                         <div style={{ width: `${usedPercent}%`, height: '100%', background: '#00d2d3', borderRadius: '4px' }}></div>
                                     </div>
                                     <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                                        {usedMB.toFixed(0)} MB de {customStorageGB > 0 ? (customStorageGB + ' GB') : (storageLimit + ' MB')} usado
+                                        {usedMB.toFixed(0)} MB de {storageLimitGB} GB usado
                                     </div>
                                 </div>
                                 <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
@@ -1605,7 +1628,7 @@ function Dashboard() {
                                         <div>
                                             <h3 style={{ marginBottom: '20px', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><Globe size={20} /> Planes Estándar</h3>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                {STORAGE_PLANS.filter(p => !p.isVIP && !p.isDesktop && !p.isSeller).map(p => (
+                                                {STORAGE_PLANS.filter(p => !p.isVIP && !p.isDesktop && !p.isSeller && p.id !== 'promo_free_1m').map(p => (
                                                     <div key={p.id} style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div>
                                                             <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{p.id === 'free' ? 'Plan Gratis' : `Plan ${p.name}`}</div>
@@ -1639,7 +1662,7 @@ function Dashboard() {
                                         <div>
                                             <h3 style={{ marginBottom: '20px', color: '#f1c40f', display: 'flex', alignItems: 'center', gap: '10px' }}><CreditCard size={20} /> Planes Premium VIP</h3>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                {STORAGE_PLANS.filter(p => p.isVIP && !p.isDesktop && !p.isSeller).map(p => (
+                                                {STORAGE_PLANS.filter(p => p.isVIP && !p.isDesktop && !p.isSeller && p.id !== 'promo_free_1m').map(p => (
                                                     <div key={p.id} style={{ padding: '20px', background: 'rgba(241,196,15,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#f1c40f' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div>
                                                             <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>Plan {p.name}</div>
@@ -1963,6 +1986,51 @@ function Dashboard() {
                         >
                             ENTENDIDO
                         </button>
+                    </div>
+                </div>
+            )}
+
+            {/* MODAL DE BIENVENIDA / REGALO DE GOOGLE PLAY */}
+            {isPromoClaimedModalOpen && (
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,6,23,0.95)', backdropFilter: 'blur(15px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div className="card-premium" style={{ width: '100%', maxWidth: '500px', backgroundColor: '#0f172a', border: '1px solid #f1c40f', textAlign: 'center', padding: '40px', position: 'relative', overflow: 'hidden', boxShadow: '0 20px 50px rgba(241,196,15,0.15)' }}>
+                        <div style={{ position: 'absolute', top: '-20px', right: '-20px', color: 'rgba(241,196,15,0.03)' }}><Star size={200} /></div>
+
+                        <div style={{ position: 'relative', zIndex: 1 }}>
+                            <div style={{ width: '90px', height: '90px', background: 'linear-gradient(135deg, #f1c40f, #e67e22)', borderRadius: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 25px', boxShadow: '0 15px 30px rgba(241,196,15,0.35)' }}>
+                                <Star size={45} color="white" />
+                            </div>
+
+                            <h2 style={{ fontSize: '2.2rem', fontWeight: '900', marginBottom: '15px', background: 'linear-gradient(to right, #fff, #f1c40f)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>¡Regalo de Google Play!</h2>
+                            <p style={{ fontSize: '1.1rem', color: '#e2e8f0', lineHeight: '1.6', marginBottom: '25px' }}>
+                                ¡Gracias por descargar nuestra app! Hemos activado tu mes de <span style={{ color: '#f1c40f', fontWeight: '800' }}>Plus VIP completamente gratis</span>.
+                            </p>
+
+                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '30px', textAlign: 'left' }}>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+                                    <div style={{ color: '#f1c40f' }}><CheckIcon size={18} /></div>
+                                    <div style={{ fontSize: '0.95rem', color: '#cbd5e1' }}><strong style={{ color: 'white' }}>Acceso Total VIP:</strong> Explora y descarga toda la biblioteca global de canciones.</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '12px' }}>
+                                    <div style={{ color: '#f1c40f' }}><CheckIcon size={18} /></div>
+                                    <div style={{ fontSize: '0.95rem', color: '#cbd5e1' }}><strong style={{ color: 'white' }}>Almacenamiento de 50 GB:</strong> Espacio para tus multitracks y mezclas.</div>
+                                </div>
+                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <div style={{ color: '#f1c40f' }}><CheckIcon size={18} /></div>
+                                    <div style={{ fontSize: '0.95rem', color: '#cbd5e1' }}><strong style={{ color: 'white' }}>Vence en 30 días:</strong> Revertirá al plan FREE de forma automática sin cargos.</div>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => { setIsPromoClaimedModalOpen(false); window.location.reload(); }}
+                                className="btn-teal"
+                                style={{ width: '100%', padding: '18px', fontSize: '1.1rem', fontWeight: '800', background: 'linear-gradient(135deg, #f1c40f, #e67e22)', color: 'black', border: 'none', boxShadow: '0 10px 20px rgba(241,196,15,0.2)' }}
+                                onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
+                                onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                            >
+                                ¡Comenzar mi Prueba VIP!
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

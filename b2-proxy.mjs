@@ -142,6 +142,7 @@ async function expirePromoFree1mPlans() {
                 batch.update(docSnap.ref, {
                     planId: 'free',
                     stripeSubscriptionStatus: null,
+                    customStorageGB: 1,
                     promoFreeExpiredAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
                 expired++;
