@@ -24,4 +24,14 @@ export const DESKTOP_PRO_PLANS = [
         title: 'PRO Online',
         blurb: 'Incluye acceso al catálogo multitrack en línea de nuestra base de datos.',
     },
+    {
+        id: 'universal_pro',
+        tier: 'pro_online',
+        monthlyUsd: 14.99,
+        annualUsd: 134.90,
+        priceLabel: 'US$14.99',
+        period: '/mes',
+        title: 'Universal PRO',
+        blurb: 'Acceso total en Web, Android y Desktop + Catálogo en línea + 100 GB Cloud Storage.',
+    },
 ];

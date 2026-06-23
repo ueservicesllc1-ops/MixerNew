@@ -65,6 +65,7 @@ const STORAGE_PLANS = [
     { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true },
     { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 20, storageMB: 20000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
     { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 50, storageMB: 50000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true },
+    { id: 'universal_pro', name: 'Universal PRO', type: 'Universal PRO', storageGB: 100, storageMB: 100000, price: 14.99, annualPrice: 134.90, originalAnnualPrice: 179.88, isVIP: true, isUniversal: true },
     { id: 'zion_desktop_pro_local', name: 'Zion Stage PRO (PC)', type: 'PRO PC', storageGB: 10, storageMB: 10000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isDesktop: true },
     { id: 'zion_desktop_pro_online', name: 'Zion Stage PRO Online', type: 'PRO Online', storageGB: 20, storageMB: 20000, price: 5.99, annualPrice: 59.90, originalAnnualPrice: 59.90, isVIP: true, isDesktop: true },
     { id: 'seller', name: 'Vendedor MixCommunity', type: 'Vendedor', storageGB: 20, storageMB: 20000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isSeller: true },
@@ -743,24 +744,19 @@ function Dashboard() {
 
     const handleConfirmStripeUpgrade = async () => {
         if (!currentUser || !pendingPaymentPlan) return;
+        // ✅ SEGURIDAD: No escribimos el plan desde el cliente.
+        // El webhook de Stripe (b2-proxy.mjs) actualizará Firestore automáticamente.
+        // El onSnapshot en users/{uid} detectará el cambio y actualizará la UI.
         try {
-            await updateDoc(doc(db, 'users', currentUser.uid), {
-                planId: pendingPaymentPlan.id,
-                stripeSubscriptionId: stripeSubscriptionId,
-                updatedAt: serverTimestamp()
-            });
-
             localStorage.setItem(`mixer_seen_pricing_${currentUser.uid}`, 'true');
             setSuccessPlanName(pendingPaymentPlan.name);
             setIsSuccessModalOpen(true);
-
             setIsInitialPlanSelection(false);
             setPendingPaymentPlan(null);
             setStripeClientSecret('');
             setIsPricingModalOpen(false);
         } catch (error) {
-            console.error("Error updating plan:", error);
-            alert("Error al actualizar plan en base de datos.");
+            console.error('Error cerrando modal de pago:', error);
         }
     };
 
@@ -918,6 +914,30 @@ function Dashboard() {
                         <div style={{ overflow: 'hidden' }}>
                             <div style={{ fontSize: '0.9rem', fontWeight: '700', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
                             <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#f1c40f' : '#64748b', fontWeight: '800' }}>{userPlan?.type} {userPlan?.storageGB}GB</div>
+                            {/* Fecha de vencimiento del plan */}
+                            {(() => {
+                                const expiresAt = userProfile?.planExpiresAt;
+                                if (!expiresAt || userPlan?.id === 'free') return null;
+                                const expDate = expiresAt?.toDate ? expiresAt.toDate() : new Date(expiresAt);
+                                const daysLeft = Math.ceil((expDate - Date.now()) / (1000 * 60 * 60 * 24));
+                                const isExpiringSoon = daysLeft <= 7 && daysLeft > 0;
+                                const isExpired = daysLeft <= 0;
+                                return (
+                                    <div style={{
+                                        fontSize: '0.65rem',
+                                        marginTop: '2px',
+                                        fontWeight: '700',
+                                        color: isExpired ? '#ef4444' : isExpiringSoon ? '#f59e0b' : '#64748b'
+                                    }}>
+                                        {isExpired
+                                            ? '⚠️ Plan vencido'
+                                            : isExpiringSoon
+                                                ? `⏰ Vence en ${daysLeft}d`
+                                                : `Vence ${expDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                                        }
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                     <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
@@ -1666,7 +1686,9 @@ function Dashboard() {
                                                     <div key={p.id} style={{ padding: '20px', background: 'rgba(241,196,15,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#f1c40f' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div>
                                                             <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>Plan {p.name}</div>
-                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.storageGB} GB + Acceso Total</div>
+                                                            <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
+                                                                {p.storageGB} GB + {p.id === 'universal_pro' ? 'Acceso Total (Web, Android, PC)' : 'Acceso Total'}
+                                                            </div>
                                                         </div>
                                                         <div style={{ textAlign: 'right' }}>
                                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>

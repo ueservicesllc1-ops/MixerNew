@@ -140,5 +140,12 @@ service cloud.firestore {
         && (!('firebaseUid' in request.resource.data)
             || (request.resource.data.firebaseUid is string && request.resource.data.firebaseUid.size() <= 128));
     }
+
+    // -- PLAN CHANGES (audit log): solo admin puede leer; authenticated users (Admin UI) pueden crear.
+    // En producción, los cambios los genera el server-side webhook (Firebase Admin SDK omite estas reglas).
+    match /plan_changes/{docId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if request.auth != null && isAdmin();
+    }
   }
 }

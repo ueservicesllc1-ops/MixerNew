@@ -66,13 +66,14 @@ const STRIPE_PLANS_CONFIG = {
     'vip1': { name: 'Plan Básico VIP MixCommunity', monthly: 799, annual: 6712 },
     'vip2': { name: 'Plan Estándar VIP MixCommunity', monthly: 999, annual: 8392 },
     'vip3': { name: 'Plan Plus VIP MixCommunity', monthly: 1299, annual: 10912 },
+    'universal_pro': { name: 'Plan Universal PRO', monthly: 1499, annual: 13490 },
     /** Deben coincidir con `DESKTOP_PRO_PLANS[].id` en `src/desktop/desktopProPlans.js` (sin otra config Stripe). */
     'zion_desktop_pro_local': { name: 'Zion Stage PRO (PC)', monthly: 199, annual: 1990 },
     'zion_desktop_pro_online': { name: 'Zion Stage PRO Online', monthly: 599, annual: 5990 },
 };
 
 const DESKTOP_STRIPE_PLAN_IDS = new Set(['zion_desktop_pro_local', 'zion_desktop_pro_online']);
-const PAID_STORAGE_PLAN_IDS = new Set(['std1', 'std2', 'std3', 'vip1', 'vip2', 'vip3']);
+const PAID_STORAGE_PLAN_IDS = new Set(['std1', 'std2', 'std3', 'vip1', 'vip2', 'vip3', 'universal_pro']);
 
 // ── Promoción: primer mes a 0.99 ¢ ───────────────────────────────────────────
 // Válida 60 días a partir del deploy. Se aplica automáticamente la primera vez por usuario.
@@ -129,6 +130,7 @@ async function expirePromoFree1mPlans() {
             .get();
 
         const batch = dbAdmin.batch();
+        const expiredUsers = []; // Para audit log post-batch
         snap.forEach((docSnap) => {
             const data = docSnap.data();
             const activatedAt = data.promoFreeActivatedAt;
@@ -143,14 +145,28 @@ async function expirePromoFree1mPlans() {
                     planId: 'free',
                     stripeSubscriptionStatus: null,
                     customStorageGB: 1,
+                    planExpiresAt: admin.firestore.FieldValue.delete(),
                     promoFreeExpiredAt: admin.firestore.FieldValue.serverTimestamp(),
                 });
+                expiredUsers.push({ id: docSnap.id, email: data.email || '' });
                 expired++;
                 console.log(`[promo-expire] Usuario ${docSnap.id} revertido a free.`);
             }
         });
 
-        if (expired > 0) await batch.commit();
+        if (expired > 0) {
+            await batch.commit();
+            // Registrar en audit log (best-effort, no bloquear)
+            for (const u of expiredUsers) {
+                await logPlanChange(u.id, {
+                    email: u.email,
+                    oldPlan: 'promo_free_1m',
+                    newPlan: 'free',
+                    source: 'cron_expire',
+                    reason: 'Promo de 30 días expirada',
+                }).catch(() => {});
+            }
+        }
         console.log(`[promo-expire] Revisión completa: ${expired} expirados, ${snap.size} revisados.`);
     } catch (e) {
         errors++;
@@ -175,6 +191,30 @@ function desktopTierFromStripePlanId(planId) {
  * Sincroniza suscripción Stripe → Firestore users/{uid}. No toca checkout HTTP ni confirmPayment del front.
  * Planes escritorio: desktopLicenseTier + desktopProActive. Almacenamiento web: planId + stripeSubscriptionId.
  */
+
+/**
+ * Registra un cambio de plan en la colección plan_changes (audit log).
+ * source: 'stripe_webhook' | 'admin_manual' | 'promo_auto' | 'cron_expire'
+ */
+async function logPlanChange(uid, { email = '', oldPlan, newPlan, source, reason = '', changedBy = 'system' }) {
+    if (!dbAdmin) return;
+    try {
+        await dbAdmin.collection('plan_changes').add({
+            uid: String(uid),
+            email,
+            oldPlan: oldPlan || 'unknown',
+            newPlan: newPlan || 'unknown',
+            source,
+            reason,
+            changedBy,
+            changedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+    } catch (e) {
+        // No crítico: no bloquear el flujo principal si el log falla
+        console.warn('[plan_changes] Error registrando cambio de plan:', e?.message);
+    }
+}
+
 async function syncSubscriptionToFirestore(subscriptionRef) {
     if (!dbAdmin || !stripe) return;
     const sub = typeof subscriptionRef === 'string'
@@ -229,7 +269,45 @@ async function syncSubscriptionToFirestore(subscriptionRef) {
         updatedAt: FieldValue.serverTimestamp(),
     };
 
-    if (planId && DESKTOP_STRIPE_PLAN_IDS.has(planId)) {
+    // ── Fecha de vencimiento del periodo actual ───────────────────────────────
+    if (sub.current_period_end) {
+        patch.planExpiresAt = admin.firestore.Timestamp.fromMillis(sub.current_period_end * 1000);
+    }
+    // Si la sub se cancela/expira, limpiar la fecha
+    if (status === 'canceled' || status === 'incomplete_expired') {
+        patch.planExpiresAt = FieldValue.delete();
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // Leer planId actual ANTES del patch para el audit log
+    let oldPlanId = null;
+    let userEmail = '';
+    try {
+        const prevDoc = await dbAdmin.collection('users').doc(String(userId)).get();
+        if (prevDoc.exists) {
+            oldPlanId = prevDoc.data()?.planId || null;
+            userEmail = prevDoc.data()?.email || '';
+        }
+    } catch { /* no crítico */ }
+
+    if (planId === 'universal_pro') {
+        if (status === 'active' || status === 'trialing') {
+            patch.planId = 'universal_pro';
+            patch.desktopLicenseTier = 'pro_online';
+            patch.desktopProActive = true;
+            patch.desktopBillingIssue = FieldValue.delete();
+        } else if (status === 'past_due') {
+            patch.desktopBillingIssue = true;
+            patch.desktopLicenseTier = 'pro_online';
+            patch.desktopProActive = true;
+        } else {
+            patch.desktopLicenseTier = FieldValue.delete();
+            patch.desktopProActive = false;
+            patch.desktopBillingIssue = FieldValue.delete();
+            patch.planId = 'free';
+            patch.stripeSubscriptionId = FieldValue.delete();
+        }
+    } else if (planId && DESKTOP_STRIPE_PLAN_IDS.has(planId)) {
         const tier = desktopTierFromStripePlanId(planId);
         if (status === 'active' || status === 'trialing') {
             patch.planId = planId;
@@ -261,6 +339,19 @@ async function syncSubscriptionToFirestore(subscriptionRef) {
 
     await dbAdmin.collection('users').doc(String(userId)).set(patch, { merge: true });
     console.log('[stripe webhook] users/%s ← subscription %s (%s)', userId, sub.id, status);
+
+    // ── Audit log: solo si el planId cambia efectivamente ────────────────────
+    const newPlanId = patch.planId;
+    if (newPlanId && newPlanId !== oldPlanId) {
+        await logPlanChange(userId, {
+            email: userEmail,
+            oldPlan: oldPlanId,
+            newPlan: newPlanId,
+            source: 'stripe_webhook',
+            reason: `Stripe event: status=${status} sub=${sub.id}`,
+        });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 }
 
 async function handleStripeWebhookEvent(event) {

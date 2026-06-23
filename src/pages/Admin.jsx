@@ -90,6 +90,11 @@ export default function Admin() {
     const [desktopFetchLoading, setDesktopFetchLoading] = useState(false);
     const [desktopTelemetryLoadedAt, setDesktopTelemetryLoadedAt] = useState(null);
 
+    /** Audit Log: historial de cambios de plan */
+    const [auditLog, setAuditLog] = useState([]);
+    const [auditLogLoading, setAuditLogLoading] = useState(false);
+    const [auditLogLoaded, setAuditLogLoaded] = useState(false);
+
     // ── Letras Editor ─────────────────────────────────────────────────────
     const [lyricsSearch, setLyricsSearch] = useState('');
     const [editingLyric, setEditingLyric] = useState(null); // { id, songId, text }
@@ -244,6 +249,24 @@ export default function Admin() {
             alert(`Error telemetría escritorio: ${e?.message || e}`);
         } finally {
             setDesktopFetchLoading(false);
+        }
+    }, [isAdmin]);
+
+    /** Audit log de cambios de plan — bajo demanda, top 500 más recientes. */
+    const loadAuditLog = useCallback(async () => {
+        if (!isAdmin) return;
+        setAuditLogLoading(true);
+        try {
+            const snap = await getDocs(query(collection(db, 'plan_changes'), orderBy('changedAt', 'desc'), limit(500)));
+            const rows = [];
+            snap.forEach(d => rows.push({ id: d.id, ...d.data() }));
+            setAuditLog(rows);
+            setAuditLogLoaded(true);
+        } catch (e) {
+            console.error('[admin loadAuditLog]', e);
+            alert(`Error cargando audit log: ${e?.message || e}`);
+        } finally {
+            setAuditLogLoading(false);
         }
     }, [isAdmin]);
 
@@ -1302,19 +1325,23 @@ export default function Admin() {
 
     const setDesktopPlan = async (uid, target) => {
         if (!uid || !target) return;
+        const user = users.find(u => u.id === uid);
+        const oldPlanId = user?.planId || 'free';
         try {
             const ref = doc(db, 'users', uid);
+            let newPlanId = null;
             if (target === 'pro_local' || target === 'pro_online') {
-                const planId = target === 'pro_local' ? 'zion_desktop_pro_local' : 'zion_desktop_pro_online';
+                newPlanId = target === 'pro_local' ? 'zion_desktop_pro_local' : 'zion_desktop_pro_online';
                 await updateDoc(ref, {
-                    planId,
+                    planId: newPlanId,
                     desktopLicenseTier: target,
                     desktopProActive: true,
                     stripeSubscriptionStatus: 'active',
                     updatedAt: serverTimestamp(),
                 });
-                setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, planId, desktopLicenseTier: target, desktopProActive: true, stripeSubscriptionStatus: 'active' } : u));
+                setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, planId: newPlanId, desktopLicenseTier: target, desktopProActive: true, stripeSubscriptionStatus: 'active' } : u));
             } else if (target === 'revoke') {
+                newPlanId = 'free';
                 await updateDoc(ref, {
                     planId: 'free',
                     desktopProActive: false,
@@ -1323,6 +1350,22 @@ export default function Admin() {
                 });
                 setUsers((prev) => prev.map((u) => u.id === uid ? { ...u, planId: 'free', desktopProActive: false, desktopLicenseTier: null } : u));
             }
+            // ── Audit log ──
+            if (newPlanId) {
+                try {
+                    await addDoc(collection(db, 'plan_changes'), {
+                        uid,
+                        email: user?.email || '',
+                        oldPlan: oldPlanId,
+                        newPlan: newPlanId,
+                        source: 'admin_manual',
+                        changedBy: 'ueservicesllc1@gmail.com',
+                        reason: `Plan desktop asignado: ${target}`,
+                        changedAt: serverTimestamp(),
+                    });
+                } catch (logErr) { console.warn('[plan_changes] log error:', logErr); }
+            }
+            // ──────────────
         } catch (e) {
             console.error('[admin set desktop plan]', e);
             alert('No se pudo aplicar el cambio: ' + (e.message || e));
@@ -1331,6 +1374,8 @@ export default function Admin() {
 
     const updateUserPlan = async (uid, newPlanId) => {
         if (!uid || !newPlanId) return;
+        const user = users.find(u => u.id === uid);
+        const oldPlanId = user?.planId || 'free';
         try {
             const ref = doc(db, 'users', uid);
             const updates = {
@@ -1339,7 +1384,11 @@ export default function Admin() {
             };
             
             // Sincronizar estado de escritorio/vendedor según plan
-            if (newPlanId === 'zion_desktop_pro_local') {
+            if (newPlanId === 'universal_pro') {
+                updates.desktopLicenseTier = 'pro_online';
+                updates.desktopProActive = true;
+                updates.stripeSubscriptionStatus = 'active';
+            } else if (newPlanId === 'zion_desktop_pro_local') {
                 updates.desktopLicenseTier = 'pro_local';
                 updates.desktopProActive = true;
                 updates.stripeSubscriptionStatus = 'active';
@@ -1368,6 +1417,21 @@ export default function Admin() {
             }
 
             await updateDoc(ref, updates);
+
+            // ── Audit log ──
+            try {
+                await addDoc(collection(db, 'plan_changes'), {
+                    uid,
+                    email: user?.email || '',
+                    oldPlan: oldPlanId,
+                    newPlan: newPlanId,
+                    source: 'admin_manual',
+                    changedBy: 'ueservicesllc1@gmail.com',
+                    reason: `Cambio manual desde Admin`,
+                    changedAt: serverTimestamp(),
+                });
+            } catch (logErr) { console.warn('[plan_changes] log error:', logErr); }
+            // ──────────────
             
             setUsers((prev) => prev.map((u) => u.id === uid ? { 
                 ...u, 
@@ -1505,6 +1569,7 @@ export default function Admin() {
                 <button onClick={() => setActiveTab('banners')} style={{ background: activeTab === 'banners' ? '#6366f1' : 'rgba(255,255,255,0.05)', color: activeTab === 'banners' ? '#fff' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Banners Index ({adminDataLoaded ? banners.length : '—'})</button>
                 <button onClick={() => setActiveTab('letras')} style={{ background: activeTab === 'letras' ? '#a78bfa' : 'rgba(255,255,255,0.05)', color: activeTab === 'letras' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>✏️ Letras ({adminDataLoaded ? libraryLyrics.length : '—'})</button>
                 <button onClick={() => setActiveTab('contacts')} style={{ background: activeTab === 'contacts' ? '#10b981' : 'rgba(255,255,255,0.05)', color: activeTab === 'contacts' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>Mensajes ({adminDataLoaded ? contacts.length + accountDeletionRequests.length : '—'})</button>
+                <button onClick={() => { setActiveTab('auditlog'); if (!auditLogLoaded) loadAuditLog(); }} style={{ background: activeTab === 'auditlog' ? '#e879f9' : 'rgba(255,255,255,0.05)', color: activeTab === 'auditlog' ? '#000' : '#fff', border: 'none', padding: '12px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '800' }}>📋 Audit Log</button>
             </div>
 
             {activeTab === 'artists' && (
@@ -2385,6 +2450,34 @@ export default function Admin() {
                                         })()}{' '}|
                                         MTs: <span style={{ color: '#f1c40f', fontWeight: '800' }}>{u.songsCount}</span> |
                                         Registro: <span style={{ color: '#94a3b8' }}>{u.createdAt ? u.createdAt.toDate().toLocaleDateString() : '—'}</span>
+                                        {/* Fecha de vencimiento plan Stripe */}
+                                        {u.planExpiresAt && u.planId !== 'free' && u.planId !== 'promo_free_1m' && (() => {
+                                            const expDate = u.planExpiresAt?.toDate ? u.planExpiresAt.toDate() : new Date(u.planExpiresAt);
+                                            const daysLeft = Math.ceil((expDate - Date.now()) / (1000 * 60 * 60 * 24));
+                                            const isExpired = daysLeft <= 0;
+                                            const isSoon = daysLeft > 0 && daysLeft <= 7;
+                                            return (
+                                                <span style={{
+                                                    fontSize: '0.68rem', fontWeight: '800', padding: '2px 8px', borderRadius: '6px',
+                                                    marginLeft: '6px',
+                                                    background: isExpired ? 'rgba(239,68,68,0.15)' : isSoon ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.12)',
+                                                    color: isExpired ? '#ef4444' : isSoon ? '#f59e0b' : '#10b981',
+                                                    border: `1px solid ${isExpired ? 'rgba(239,68,68,0.3)' : isSoon ? 'rgba(245,158,11,0.3)' : 'rgba(16,185,129,0.2)'}`,
+                                                }}>
+                                                    {isExpired ? '⚠ VENCIDO' : `Vence: ${expDate.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' })}`}
+                                                </span>
+                                            );
+                                        })()}
+                                        {/* Estado Stripe */}
+                                        {u.stripeSubscriptionStatus && (
+                                            <span style={{
+                                                fontSize: '0.65rem', fontWeight: '700', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px',
+                                                background: u.stripeSubscriptionStatus === 'active' ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                                                color: u.stripeSubscriptionStatus === 'active' ? '#10b981' : '#ef4444',
+                                            }}>
+                                                stripe:{u.stripeSubscriptionStatus}
+                                            </span>
+                                        )}
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                                         <div style={{ fontSize: '0.75rem', color: '#475569' }}>{u.email || '(sin email)'}</div>
@@ -2417,6 +2510,7 @@ export default function Admin() {
                                             <option value="vip1">Básico VIP (10 GB)</option>
                                             <option value="vip2">Estándar VIP (20 GB)</option>
                                             <option value="vip3">Plus VIP (50 GB)</option>
+                                            <option value="universal_pro">Universal PRO (100 GB + Multiplataforma)</option>
                                             <option value="zion_desktop_pro_local">PRO (PC - Local)</option>
                                             <option value="zion_desktop_pro_online">PRO Online (PC)</option>
                                             <option value="seller">Vendedor</option>
@@ -3350,7 +3444,87 @@ export default function Admin() {
                 </div>
             )}
 
-            {/* ── Global Preview Modal (L / C badges) ── */}
+            {activeTab === 'auditlog' && (
+                <div className="fade-in">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                        <div>
+                            <h2 style={{ margin: 0 }}>📋 Audit Log — Cambios de Plan</h2>
+                            <p style={{ color: '#94a3b8', margin: '6px 0 0', fontSize: '0.9rem' }}>Historial de cambios de suscripción. Últimos {auditLog.length} registros.</p>
+                        </div>
+                        <button onClick={loadAuditLog} disabled={auditLogLoading} style={{ background: '#e879f9', color: '#000', border: 'none', padding: '10px 20px', borderRadius: '10px', cursor: 'pointer', fontWeight: '800', opacity: auditLogLoading ? 0.6 : 1 }}>
+                            {auditLogLoading ? 'Cargando...' : auditLogLoaded ? '🔄 Recargar' : '📥 Cargar'}
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '20px' }}>
+                        {[{ source: 'stripe_webhook', color: '#10b981', label: '🔗 Stripe Webhook' }, { source: 'admin_manual', color: '#38bdf8', label: '👤 Admin Manual' }, { source: 'cron_expire', color: '#f59e0b', label: '⏰ Cron Expiración' }, { source: 'promo_auto', color: '#a78bfa', label: '🎁 Promo Auto' }].map(({ source, color, label }) => (
+                            <div key={source} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: '#94a3b8' }}>
+                                <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: color }} />{label}
+                            </div>
+                        ))}
+                    </div>
+                    {!auditLogLoaded && !auditLogLoading && (
+                        <div style={{ textAlign: 'center', padding: '80px 40px', color: '#64748b', background: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                            <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📋</div>
+                            <p>Pulsa <strong style={{ color: '#e879f9' }}>Cargar</strong> para ver el historial de cambios de plan.</p>
+                        </div>
+                    )}
+                    {auditLogLoading && <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>Cargando historial...</div>}
+                    {auditLogLoaded && auditLog.length === 0 && <div style={{ textAlign: 'center', padding: '60px', color: '#64748b' }}>No hay registros aún.</div>}
+                    {auditLogLoaded && auditLog.length > 0 && (
+                        <div style={{ background: '#1e293b', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1.5fr 2fr', padding: '14px 24px', background: 'rgba(255,255,255,0.04)', fontSize: '0.75rem', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>
+                                <span>Usuario</span><span>Anterior</span><span>Nuevo</span><span>Fuente</span><span>Fecha</span><span>Razón</span>
+                            </div>
+                            {auditLog.map((row) => {
+                                const sColors = { stripe_webhook: '#10b981', admin_manual: '#38bdf8', cron_expire: '#f59e0b', promo_auto: '#a78bfa' };
+                                const color = sColors[row.source] || '#64748b';
+                                const dt = row.changedAt?.toDate ? row.changedAt.toDate() : (row.changedAt ? new Date(row.changedAt) : null);
+                                return (
+                                    <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1.5fr 2fr', padding: '12px 24px', borderTop: '1px solid rgba(255,255,255,0.04)', alignItems: 'center', fontSize: '0.85rem' }}>
+                                        <div><div style={{ fontWeight: '700', fontSize: '0.8rem' }}>{row.email || (row.uid?.slice(0, 12) + '…')}</div><div style={{ fontSize: '0.65rem', color: '#475569' }}>{row.uid}</div></div>
+                                        <div><span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}>{row.oldPlan || '—'}</span></div>
+                                        {/* Botón extender 30 días */}
+                                        {u.planId && u.planId !== 'free' && (
+                                            <button
+                                                onClick={async () => {
+                                                    if (!window.confirm(`¿Extender plan de ${u.email || u.id} por 30 días adicionales?`)) return;
+                                                    try {
+                                                        const ref = doc(db, 'users', u.id);
+                                                        const updates = { updatedAt: serverTimestamp() };
+                                                        if (u.planId === 'promo_free_1m') {
+                                                            updates.promoFreeActivatedAt = serverTimestamp();
+                                                        } else {
+                                                            const currentExpiry = u.planExpiresAt?.toDate ? u.planExpiresAt.toDate() : new Date();
+                                                            updates.planExpiresAt = new Date(Math.max(currentExpiry.getTime(), Date.now()) + 30 * 24 * 60 * 60 * 1000);
+                                                        }
+                                                        await updateDoc(ref, updates);
+                                                        await addDoc(collection(db, 'plan_changes'), {
+                                                            uid: u.id, email: u.email || '', oldPlan: u.planId, newPlan: u.planId,
+                                                            source: 'admin_manual', changedBy: 'ueservicesllc1@gmail.com',
+                                                            reason: 'Extensión manual +30 días', changedAt: serverTimestamp(),
+                                                        });
+                                                        setUsers(prev => prev.map(pu => pu.id === u.id ? { ...pu, ...updates } : pu));
+                                                        alert('✅ Plan extendido 30 días.');
+                                                    } catch (e) { alert('Error: ' + e.message); }
+                                                }}
+                                                title="Extender plan 30 días más"
+                                                style={{ padding: '6px 14px', fontSize: '0.72rem', fontWeight: '800', borderRadius: '6px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.1)', color: '#818cf8', cursor: 'pointer' }}
+                                            >
+                                                ⏱ +30 días
+                                            </button>
+                                        )}
+                                        <div><span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '6px', background: color + '22', color }}>{row.newPlan || '—'}</span></div>
+                                        <div><span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '6px', background: color + '22', color, fontWeight: '700' }}>{row.source?.replace('_', ' ') || '—'}</span></div>
+                                        <div style={{ color: '#64748b', fontSize: '0.78rem' }}>{dt ? dt.toLocaleString('es-ES', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</div>
+                                        <div style={{ color: '#475569', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.reason || '—'}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+{/* ── Global Preview Modal (L / C badges) ── */}
             {viewingChord && (
                 <div onClick={() => setViewingChord(null)} style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.92)', zIndex: 5000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px' }}>
                     <div onClick={e => e.stopPropagation()} style={{ background: '#1e293b', width: '100%', maxWidth: '900px', height: '90vh', borderRadius: '30px', padding: '40px', overflowY: 'auto', position: 'relative', border: '1px solid rgba(255,255,255,0.1)' }}>
