@@ -16,12 +16,24 @@ function CheckoutForm({ onPaid }) {
         e.preventDefault();
         if (!stripe || !elements) return;
         setBusy(true);
-        const result = await stripe.confirmPayment({ elements, redirect: 'if_required' });
-        if (result.error) {
-            alert('Error en el pago: ' + result.error.message);
+        try {
+            const result = await stripe.confirmPayment({
+                elements,
+                confirmParams: {
+                    return_url: 'https://mixernew-production.up.railway.app/dashboard',
+                },
+                redirect: 'if_required'
+            });
+            if (result.error) {
+                alert('Error en el pago: ' + result.error.message);
+                setBusy(false);
+            } else {
+                onPaid();
+            }
+        } catch (error) {
+            console.error("Stripe confirmation error:", error);
+            alert("Error al procesar el pago: " + (error.message || error));
             setBusy(false);
-        } else {
-            onPaid();
         }
     };
 

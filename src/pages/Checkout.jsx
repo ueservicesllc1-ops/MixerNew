@@ -18,16 +18,25 @@ const StripeCheckoutForm = ({ total, subtotal, discount, onPaymentSuccess }) => 
         e.preventDefault();
         if (!stripe || !elements) return;
         setIsProcessing(true);
-        const result = await stripe.confirmPayment({
-            elements,
-            redirect: 'if_required'
-        });
+        try {
+            const result = await stripe.confirmPayment({
+                elements,
+                confirmParams: {
+                    return_url: window.location.href,
+                },
+                redirect: 'if_required'
+            });
 
-        if (result.error) {
-            alert("Error en el pago: " + result.error.message);
+            if (result.error) {
+                alert("Error en el pago: " + result.error.message);
+                setIsProcessing(false);
+            } else {
+                onPaymentSuccess();
+            }
+        } catch (error) {
+            console.error("Stripe confirmation error:", error);
+            alert("Error al procesar el pago: " + (error.message || error));
             setIsProcessing(false);
-        } else {
-            onPaymentSuccess();
         }
     };
 
