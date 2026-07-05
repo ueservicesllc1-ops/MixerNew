@@ -1925,7 +1925,12 @@ export default function Multitrack() {
     );
 
     const handlePlay = async () => {
-        await audioEngine.init();
+        // init() solo es necesario la primera vez (para WASM/web).
+        // En nativo, ya fue llamado al cargar la canción — llamarlo de nuevo
+        // agrega latencia innecesaria en dispositivos lentos (ej. tablet Helio G85).
+        if (!audioEngine.isWASMReady && !window.Capacitor?.isNativePlatform?.()) {
+            await audioEngine.init();
+        }
         if (isPlaying) {
             await audioEngine.pause();
             setIsPlaying(false);
