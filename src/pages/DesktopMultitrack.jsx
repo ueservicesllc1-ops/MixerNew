@@ -347,7 +347,6 @@ function prepareStagger() {
 }
 
 const PREVIEW_TRACK_NAME = '__PreviewMix';
-const FREE_SETLIST_SONG_LIMIT = 3;
 
 /** SQLite `tracks_json`: manifest v1 o legado (solo array de pistas). */
 function parseDesktopLibraryManifest(tracksJsonStr) {
@@ -2275,12 +2274,6 @@ export default function Multitrack({ session }) {
         if (!trimmed) return;
         if (createSetlistBusyRef.current) return;
 
-        const demoSetlistCount = new Set((setlists || []).map((s) => s.id)).size;
-        if (isDemo && demoSetlistCount >= 1) {
-            alert('Zion Stage (plan gratis): solo puedes crear 1 setlist.');
-            return;
-        }
-
         createSetlistBusyRef.current = true;
         setSetlistCreateBusy(true);
         try {
@@ -2438,14 +2431,6 @@ export default function Multitrack({ session }) {
         if (downloadProgress.songId) {
             console.log("[DOWNLOAD LOCK] acquired - already downloading");
             return;
-        }
-        if (isDemo && activeSetlist) {
-            const alreadyInSetlist = (activeSetlist.songs || []).some((s) => s.id === song.id);
-            const currentCount = (activeSetlist.songs || []).length;
-            if (!alreadyInSetlist && currentCount >= FREE_SETLIST_SONG_LIMIT) {
-                alert(`Zion Stage (plan gratis): máximo ${FREE_SETLIST_SONG_LIMIT} canciones por setlist.`);
-                return;
-            }
         }
 
         const isDownloaded = await LocalLibraryService.isSongDownloaded(song);

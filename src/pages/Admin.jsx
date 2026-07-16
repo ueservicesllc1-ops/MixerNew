@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { db, auth } from '../firebase';
 import { collection, doc, updateDoc, deleteDoc, addDoc, serverTimestamp, writeBatch, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { semverToVersionCode } from '../utils/semverReleaseCompare.js';
@@ -1400,7 +1400,6 @@ export default function Admin() {
                 updates.isSeller = true;
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
-            } else if (newPlanId === 'promo_free_1m') {
                 // Plan gratis 1 mes — se marca la fecha de activación ahora
                 updates.promoFreeActivatedAt = serverTimestamp();
                 updates.desktopLicenseTier = null;
@@ -2429,7 +2428,6 @@ export default function Admin() {
                                     </div>
                                     <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
                                         Plan: <span style={{ color: '#00d2d3', fontWeight: '700' }}>{u.planId || 'free'}</span>{' '}
-                                        {u.planId === 'promo_free_1m' && (() => {
                                             const activatedMs = u.promoFreeActivatedAt?.toMillis?.() ||
                                                 (u.promoFreeActivatedAt?.seconds ? u.promoFreeActivatedAt.seconds * 1000 : null);
                                             if (!activatedMs) return <span style={{ color: '#f59e0b', fontSize: '0.7rem', fontWeight: '700' }}>[sin fecha activación]</span>;
@@ -2451,7 +2449,6 @@ export default function Admin() {
                                         MTs: <span style={{ color: '#f1c40f', fontWeight: '800' }}>{u.songsCount}</span> |
                                         Registro: <span style={{ color: '#94a3b8' }}>{u.createdAt ? u.createdAt.toDate().toLocaleDateString() : '—'}</span>
                                         {/* Fecha de vencimiento plan Stripe */}
-                                        {u.planExpiresAt && u.planId !== 'free' && u.planId !== 'promo_free_1m' && (() => {
                                             const expDate = u.planExpiresAt?.toDate ? u.planExpiresAt.toDate() : new Date(u.planExpiresAt);
                                             const daysLeft = Math.ceil((expDate - Date.now()) / (1000 * 60 * 60 * 24));
                                             const isExpired = daysLeft <= 0;
@@ -2503,7 +2500,6 @@ export default function Admin() {
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
                                             <option value="free">Gratis (Free)</option>
-                                            <option value="promo_free_1m">🎁 Gratis 1 Mes (Promo)</option>
                                             <option value="std1">Básico (10 GB)</option>
                                             <option value="std2">Estándar (20 GB)</option>
                                             <option value="std3">Plus (50 GB)</option>
@@ -3491,7 +3487,6 @@ export default function Admin() {
                                                     try {
                                                         const ref = doc(db, 'users', u.id);
                                                         const updates = { updatedAt: serverTimestamp() };
-                                                        if (u.planId === 'promo_free_1m') {
                                                             updates.promoFreeActivatedAt = serverTimestamp();
                                                         } else {
                                                             const currentExpiry = u.planExpiresAt?.toDate ? u.planExpiresAt.toDate() : new Date();

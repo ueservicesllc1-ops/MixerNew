@@ -65,3 +65,15 @@ ZionAudioCore/build_wasm_real/
 *.txt
 *.patch
 multitrack_good_backup.jsx
+
+# Large binary/audio files
+bass_downloaded.wav
+*.wav
+*.flac
+
+# Desktop release builds
+desktop-release/
+desktop-release2/
+
+# ZionAudioCore old builds
+ZionAudioCore/build_old/

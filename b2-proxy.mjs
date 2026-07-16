@@ -114,72 +114,11 @@ async function ensureFirstMonthCoupon() {
 // Crear el cupón en el arranque (best-effort)
 ensureFirstMonthCoupon().catch(() => {});
 
-// ─────────────────────────────────────────────────────────────────────────────
-// CRON: Expirar planes promo_free_1m vencidos (> 30 días)
-// ─────────────────────────────────────────────────────────────────────────────
-async function expirePromoFree1mPlans() {
-    if (!dbAdmin) return { expired: 0, errors: 0 };
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    let expired = 0;
-    let errors = 0;
-
-    try {
-        const snap = await dbAdmin.collection('users')
-            .where('planId', '==', 'promo_free_1m')
-            .get();
-
-        const batch = dbAdmin.batch();
-        const expiredUsers = []; // Para audit log post-batch
-        snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            const activatedAt = data.promoFreeActivatedAt;
-            if (!activatedAt) return; // sin fecha, ignorar
-
-            const activatedMs = activatedAt.toMillis
-                ? activatedAt.toMillis()
-                : activatedAt.seconds * 1000;
-
-            if (now - activatedMs >= THIRTY_DAYS_MS) {
-                batch.update(docSnap.ref, {
-                    planId: 'free',
-                    stripeSubscriptionStatus: null,
-                    customStorageGB: 1,
-                    planExpiresAt: admin.firestore.FieldValue.delete(),
-                    promoFreeExpiredAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-                expiredUsers.push({ id: docSnap.id, email: data.email || '' });
-                expired++;
-                console.log(`[promo-expire] Usuario ${docSnap.id} revertido a free.`);
-            }
-        });
-
-        if (expired > 0) {
-            await batch.commit();
-            // Registrar en audit log (best-effort, no bloquear)
-            for (const u of expiredUsers) {
-                await logPlanChange(u.id, {
-                    email: u.email,
-                    oldPlan: 'promo_free_1m',
-                    newPlan: 'free',
-                    source: 'cron_expire',
-                    reason: 'Promo de 30 días expirada',
-                }).catch(() => {});
-            }
-        }
-        console.log(`[promo-expire] Revisión completa: ${expired} expirados, ${snap.size} revisados.`);
-    } catch (e) {
-        errors++;
-        console.error('[promo-expire] Error al revisar promos:', e.message);
-    }
-
-    return { expired, errors };
-}
-
-// Ejecutar en arranque y cada 6 horas
-expirePromoFree1mPlans().catch(() => {});
-setInterval(() => expirePromoFree1mPlans().catch(() => {}), 6 * 60 * 60 * 1000);
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────────
+// PLAN promo_free_1m ELIMINADO — ya no existen planes VIP gratuitos de promoción.
+// Los usuarios existentes con planId === 'promo_free_1m' en Firestore seguirán
+// con acceso VIP hasta que el administrador les cambie el plan manualmente.
+// ───────────────────────────────────────────────────────────────────────────────
 
 function desktopTierFromStripePlanId(planId) {
     if (planId === 'zion_desktop_pro_online') return 'pro_online';
