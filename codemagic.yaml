@@ -1,0 +1,33 @@
+workflows:
+  ios-native-workflow:
+    name: Build Native Apple App (iOS, iPadOS, macOS)
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      xcode: latest
+    scripts:
+      - name: Build iOS and iPadOS Simulator App
+        script: |
+          cd ZionStageApple
+          xcodebuild -project ZionStageApple.xcodeproj \
+                     -scheme ZionStageApple \
+                     -sdk iphonesimulator \
+                     -configuration Release \
+                     clean build \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+      - name: Build macOS App
+        script: |
+          cd ZionStageApple
+          xcodebuild -project ZionStageApple.xcodeproj \
+                     -scheme ZionStageApple \
+                     -sdk macosx \
+                     -configuration Release \
+                     clean build \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+    artifacts:
+      - ZionStageApple/build/Release-iphonesimulator/*.app
+      - ZionStageApple/build/Release/*.app
