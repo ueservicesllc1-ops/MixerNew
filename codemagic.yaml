@@ -9,11 +9,11 @@ workflows:
       - name: Build iOS & iPadOS App
         script: |
           cd ZionStageApple
-          xcodebuild -project ZionStageApple.xcodeproj -scheme ZionStageApple -sdk iphonesimulator -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -200
+          xcodebuild -quiet -project ZionStageApple.xcodeproj -scheme ZionStageApple -sdk iphonesimulator -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
       - name: Build macOS App
         script: |
           cd ZionStageApple
-          xcodebuild -project ZionStageApple.xcodeproj -scheme ZionStageApple -sdk macosx -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -200
+          xcodebuild -quiet -project ZionStageApple.xcodeproj -scheme ZionStageApple -sdk macosx -configuration Release CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
     artifacts:
       - ZionStageApple/build/Release-iphonesimulator/*.app
       - ZionStageApple/build/Release/*.app
