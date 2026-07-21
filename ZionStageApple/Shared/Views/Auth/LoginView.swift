@@ -31,7 +31,7 @@ public struct LoginView: View {
 
                 Text("Zion Stage")
                     .font(.largeTitle)
-                    .bold()
+                    .fontWeight(.bold)
                     .foregroundColor(.white)
 
                 Text("Mezclador Multitrack Profesional")
@@ -73,7 +73,7 @@ public struct LoginView: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: .black))
                         } else {
                             Text("Iniciar Sesión")
-                                .bold()
+                                .fontWeight(.bold)
                         }
                     }
                     .frame(maxWidth: .infinity)

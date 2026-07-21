@@ -118,7 +118,7 @@ public struct SongLibraryView: View {
                     Text("Cargar")
                 }
                 .font(.caption)
-                .bold()
+                .fontWeight(.bold)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Color.cyan)

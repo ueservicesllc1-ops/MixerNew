@@ -20,7 +20,7 @@ public struct PadEngineView: View {
         VStack(spacing: 20) {
             Text("Pads Ambientales")
                 .font(.title2)
-                .bold()
+                .fontWeight(.bold)
                 .foregroundColor(.white)
 
             Text(activeKey == nil ? "Selecciona una nota para sonar en continuo" : "Sonando en tonalidad: \(activeKey!)")
@@ -39,7 +39,7 @@ public struct PadEngineView: View {
                     }) {
                         Text(note)
                             .font(.title3)
-                            .bold()
+                            .fontWeight(.bold)
                             .frame(maxWidth: .infinity, minHeight: 60)
                             .background(activeKey == note ? Color.cyan : Color(red: 0.15, green: 0.15, blue: 0.15))
                             .foregroundColor(activeKey == note ? .black : .white)

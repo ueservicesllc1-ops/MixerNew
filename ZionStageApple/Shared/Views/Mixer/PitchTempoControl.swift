@@ -20,7 +20,7 @@ public struct PitchTempoControl: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("TONO (PITCH)")
                     .font(.caption2)
-                    .bold()
+                    .fontWeight(.bold)
                     .foregroundColor(.gray)
 
                 HStack {
@@ -36,7 +36,7 @@ public struct PitchTempoControl: View {
 
                     Text("\(player.pitchSemitones >= 0 ? "+" : "")\(Int(player.pitchSemitones)) st")
                         .font(.callout)
-                        .bold()
+                        .fontWeight(.bold)
                         .foregroundColor(.white)
                         .frame(width: 55)
 
@@ -59,7 +59,7 @@ public struct PitchTempoControl: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("TEMPO (BPM)")
                     .font(.caption2)
-                    .bold()
+                    .fontWeight(.bold)
                     .foregroundColor(.gray)
 
                 HStack {
@@ -75,7 +75,7 @@ public struct PitchTempoControl: View {
 
                     Text("\(Int(player.tempoRatio * 100))%")
                         .font(.callout)
-                        .bold()
+                        .fontWeight(.bold)
                         .foregroundColor(.white)
                         .frame(width: 55)
 

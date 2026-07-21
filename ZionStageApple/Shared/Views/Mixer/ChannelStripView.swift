@@ -40,7 +40,7 @@ public struct ChannelStripView: View {
             // Nombre del Stem / Rol
             Text(stem.name)
                 .font(.caption)
-                .bold()
+                .fontWeight(.bold)
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .frame(maxWidth: 70)
@@ -56,7 +56,7 @@ public struct ChannelStripView: View {
                 }) {
                     Text("M")
                         .font(.caption2)
-                        .bold()
+                        .fontWeight(.bold)
                         .frame(width: 28, height: 28)
                         .background(stem.isMuted ? Color.red : Color.gray.opacity(0.3))
                         .foregroundColor(.white)
@@ -69,7 +69,7 @@ public struct ChannelStripView: View {
                 }) {
                     Text("S")
                         .font(.caption2)
-                        .bold()
+                        .fontWeight(.bold)
                         .frame(width: 28, height: 28)
                         .background(stem.isSolo ? Color.yellow : Color.gray.opacity(0.3))
                         .foregroundColor(stem.isSolo ? .black : .white)
