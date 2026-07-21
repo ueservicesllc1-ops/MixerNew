@@ -42,15 +42,15 @@ public struct Song: Identifiable, Codable, Equatable {
     public var stems: [Stem]
     public var isDownloaded: Bool = false
 
-    public init(id: String, title: String, artist: String, bpm: Double, key: String, timeSignature: String = "4/4", coverUrl: String? = nil, stems: [Stem] = [], isDownloaded: Bool = false) {
+    public init(id: String, title: String, artist: String, bpm: Double, key: String, stems: [Stem] = [], timeSignature: String = "4/4", coverUrl: String? = nil, isDownloaded: Bool = false) {
         self.id = id
         self.title = title
         self.artist = artist
         self.bpm = bpm
         self.key = key
+        self.stems = stems
         self.timeSignature = timeSignature
         self.coverUrl = coverUrl
-        self.stems = stems
         self.isDownloaded = isDownloaded
     }
 }

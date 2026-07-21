@@ -13,8 +13,5 @@ struct ZionStageApp: App {
         WindowGroup {
             MainView()
         }
-        #if os(macOS)
-        .defaultSize(width: 1280, height: 800)
-        #endif
     }
 }
