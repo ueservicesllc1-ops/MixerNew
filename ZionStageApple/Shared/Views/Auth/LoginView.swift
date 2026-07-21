@@ -39,12 +39,20 @@ public struct LoginView: View {
             }
 
             VStack(spacing: 14) {
+                #if os(iOS)
                 TextField("Correo electrónico", text: $email)
                     .padding()
                     .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .cornerRadius(10)
                     .foregroundColor(.white)
                     .autocapitalization(.none)
+                #else
+                TextField("Correo electrónico", text: $email)
+                    .padding()
+                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                    .cornerRadius(10)
+                    .foregroundColor(.white)
+                #endif
 
                 SecureField("Contraseña", text: $password)
                     .padding()
