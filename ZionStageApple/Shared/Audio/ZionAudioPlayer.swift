@@ -40,7 +40,7 @@ public class ZionAudioPlayer: ObservableObject {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetooth])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers, .allowBluetoothHFP])
             try session.setActive(true)
         } catch {
             print("Error al configurar AVAudioSession: \(error.localizedDescription)")
