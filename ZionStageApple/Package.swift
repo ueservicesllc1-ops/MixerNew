@@ -16,7 +16,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "ZionStageApple",
-            path: "Shared"
+            path: "Shared",
+            exclude: ["GoogleService-Info.plist"]
         )
     ]
 )
