@@ -41,7 +41,7 @@ public struct PadEngineView: View {
                             .font(.title3)
                             .bold()
                             .frame(maxWidth: .infinity, minHeight: 60)
-                            .background(activeKey == note ? Color.cyan : Color(white: 0.15))
+                            .background(activeKey == note ? Color.cyan : Color(red: 0.15, green: 0.15, blue: 0.15))
                             .foregroundColor(activeKey == note ? .black : .white)
                             .cornerRadius(12)
                             .overlay(
@@ -65,13 +65,13 @@ public struct PadEngineView: View {
                     .frame(width: 40)
             }
             .padding()
-            .background(Color(white: 0.12))
+            .background(Color(red: 0.12, green: 0.12, blue: 0.12))
             .cornerRadius(12)
             .padding(.horizontal)
 
             Spacer()
         }
         .padding(.top)
-        .background(Color(white: 0.06).ignoresSafeArea())
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06).ignoresSafeArea())
     }
 }

@@ -102,10 +102,10 @@ public struct MixerView: View {
                 }
             }
             .padding()
-            .background(Color(white: 0.1))
+            .background(Color(red: 0.1, green: 0.1, blue: 0.1))
             .cornerRadius(12)
             .padding(.horizontal)
         }
-        .background(Color(white: 0.06).ignoresSafeArea())
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06).ignoresSafeArea())
     }
 }

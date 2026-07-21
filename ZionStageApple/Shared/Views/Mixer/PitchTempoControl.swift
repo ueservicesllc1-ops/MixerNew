@@ -52,7 +52,7 @@ public struct PitchTempoControl: View {
                 }
             }
             .padding(8)
-            .background(Color(white: 0.15))
+            .background(Color(red: 0.15, green: 0.15, blue: 0.15))
             .cornerRadius(8)
 
             // Control de Tempo / BPM
@@ -91,7 +91,7 @@ public struct PitchTempoControl: View {
                 }
             }
             .padding(8)
-            .background(Color(white: 0.15))
+            .background(Color(red: 0.15, green: 0.15, blue: 0.15))
             .cornerRadius(8)
         }
     }

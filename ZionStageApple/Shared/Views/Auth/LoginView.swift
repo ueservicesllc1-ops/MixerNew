@@ -42,14 +42,14 @@ public struct LoginView: View {
             VStack(spacing: 14) {
                 TextField("Correo electrónico", text: $email)
                     .padding()
-                    .background(Color(white: 0.15))
+                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .cornerRadius(10)
                     .foregroundColor(.white)
                     .autocapitalization(.none)
 
                 SecureField("Contraseña", text: $password)
                     .padding()
-                    .background(Color(white: 0.15))
+                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
                     .cornerRadius(10)
                     .foregroundColor(.white)
 
@@ -87,6 +87,6 @@ public struct LoginView: View {
 
             Spacer()
         }
-        .background(Color(white: 0.06).ignoresSafeArea())
+        .background(Color(red: 0.06, green: 0.06, blue: 0.06).ignoresSafeArea())
     }
 }

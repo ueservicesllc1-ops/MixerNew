@@ -74,7 +74,7 @@ public struct SongLibraryView: View {
                         .foregroundColor(.white)
                 }
                 .padding(10)
-                .background(Color(white: 0.18))
+                .background(Color(red: 0.18, green: 0.18, blue: 0.18))
                 .cornerRadius(10)
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -114,12 +114,12 @@ public struct SongLibraryView: View {
                             .cornerRadius(16)
                         }
                     }
-                    .listRowBackground(Color(white: 0.12))
+                    .listRowBackground(Color(red: 0.12, green: 0.12, blue: 0.12))
                 }
                 .listStyle(.plain)
             }
             .navigationTitle("Catálogo de Pistas")
-            .background(Color(white: 0.06).ignoresSafeArea())
+            .background(Color(red: 0.06, green: 0.06, blue: 0.06).ignoresSafeArea())
         }
     }
 }

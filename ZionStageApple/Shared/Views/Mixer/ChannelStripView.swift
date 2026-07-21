@@ -114,7 +114,7 @@ public struct ChannelStripView: View {
             .frame(width: 70)
         }
         .padding(6)
-        .background(Color(white: 0.12))
+        .background(Color(red: 0.12, green: 0.12, blue: 0.12))
         .cornerRadius(8)
     }
 }
