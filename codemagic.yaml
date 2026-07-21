@@ -6,12 +6,12 @@ workflows:
     environment:
       xcode: latest
     scripts:
-      - name: Build iOS & iPadOS App
+      - name: Build iOS & iPadOS Physical App
         script: |
           cd ZionStageApple
           xcodebuild -project ZionStageApple.xcodeproj \
                      -scheme ZionStageApple \
-                     -sdk iphonesimulator \
+                     -sdk iphoneos \
                      -configuration Release \
                      -derivedDataPath build \
                      CODE_SIGN_IDENTITY="" \
@@ -29,5 +29,5 @@ workflows:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
     artifacts:
-      - ZionStageApple/build/Build/Products/Release-iphonesimulator/*.app
+      - ZionStageApple/build/Build/Products/Release-iphoneos/*.app
       - ZionStageApple/build/Build/Products/Release/*.app
