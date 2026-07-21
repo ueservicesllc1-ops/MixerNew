@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-@available(iOS 15.0, macOS 12.0, *)
 public struct PadEngineView: View {
     @State private var activeKey: String? = nil
     @State private var padVolume: Float = 0.8

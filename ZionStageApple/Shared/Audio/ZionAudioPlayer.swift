@@ -10,7 +10,6 @@
 import AVFoundation
 import Combine
 
-@available(iOS 15.0, macOS 12.0, *)
 public class ZionAudioPlayer: ObservableObject {
 
     // MARK: - Singleton

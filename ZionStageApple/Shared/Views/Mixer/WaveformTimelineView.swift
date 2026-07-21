@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-@available(iOS 15.0, macOS 12.0, *)
 public struct WaveformTimelineView: View {
     @ObservedObject public var player: ZionAudioPlayer
 

@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-@available(iOS 15.0, macOS 12.0, *)
 public struct ChannelStripView: View {
     @Binding public var stem: Stem
     public var onVolumeChange: (Float) -> Void
