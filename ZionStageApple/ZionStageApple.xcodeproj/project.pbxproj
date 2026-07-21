@@ -10,19 +10,35 @@
 		1000000129B7E1C000000001 /* ZionStageApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000000 /* ZionStageApp.swift */; };
 		1000000129B7E1C000000002 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000003 /* MainView.swift */; };
 		1000000129B7E1C000000004 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000005 /* Song.swift */; };
-		1000000129B7E1C000000006 /* ZionAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000007 /* ZionAudioPlayer.swift */; };
-		1000000129B7E1C000000008 /* MixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000009 /* MixerView.swift */; };
-		1000000129B7E1C00000000A /* ChannelStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000000B /* ChannelStripView.swift */; };
-		1000000129B7E1C00000000C /* NextGenEngineBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000000D /* NextGenEngineBridge.mm */; };
+		1000000129B7E1C000000006 /* Setlist.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000019 /* Setlist.swift */; };
+		1000000129B7E1C000000008 /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000001A /* UserProfile.swift */; };
+		1000000129B7E1C00000000A /* ZionAudioPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000007 /* ZionAudioPlayer.swift */; };
+		1000000129B7E1C00000000C /* MixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000009 /* MixerView.swift */; };
+		1000000129B7E1C00000000E /* ChannelStripView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000000B /* ChannelStripView.swift */; };
+		1000000129B7E1C00000001B /* PitchTempoControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000001C /* PitchTempoControl.swift */; };
+		1000000129B7E1C00000001D /* WaveformTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000001E /* WaveformTimelineView.swift */; };
+		1000000129B7E1C00000001F /* SongLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000020 /* SongLibraryView.swift */; };
+		1000000129B7E1C000000021 /* PadEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000022 /* PadEngineView.swift */; };
+		1000000129B7E1C000000023 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000024 /* LoginView.swift */; };
+		1000000129B7E1C000000025 /* FirebaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C000000026 /* FirebaseService.swift */; };
+		1000000129B7E1C000000010 /* NextGenEngineBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1000000129B7E1C00000000D /* NextGenEngineBridge.mm */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1000000129B7E1C000000000 /* ZionStageApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZionStageApp.swift; sourceTree = "<group>"; };
 		1000000129B7E1C000000003 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		1000000129B7E1C000000005 /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
+		1000000129B7E1C000000019 /* Setlist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Setlist.swift; sourceTree = "<group>"; };
+		1000000129B7E1C00000001A /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
 		1000000129B7E1C000000007 /* ZionAudioPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZionAudioPlayer.swift; sourceTree = "<group>"; };
 		1000000129B7E1C000000009 /* MixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MixerView.swift; sourceTree = "<group>"; };
 		1000000129B7E1C00000000B /* ChannelStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelStripView.swift; sourceTree = "<group>"; };
+		1000000129B7E1C00000001C /* PitchTempoControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PitchTempoControl.swift; sourceTree = "<group>"; };
+		1000000129B7E1C00000001E /* WaveformTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformTimelineView.swift; sourceTree = "<group>"; };
+		1000000129B7E1C000000020 /* SongLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongLibraryView.swift; sourceTree = "<group>"; };
+		1000000129B7E1C000000022 /* PadEngineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadEngineView.swift; sourceTree = "<group>"; };
+		1000000129B7E1C000000024 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		1000000129B7E1C000000026 /* FirebaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseService.swift; sourceTree = "<group>"; };
 		1000000129B7E1C00000000D /* NextGenEngineBridge.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = NextGenEngineBridge.mm; sourceTree = "<group>"; };
 		1000000129B7E1C00000000E /* ZionStageApple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZionStageApple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -42,9 +58,17 @@
 				1000000129B7E1C000000000 /* ZionStageApp.swift */,
 				1000000129B7E1C000000003 /* MainView.swift */,
 				1000000129B7E1C000000005 /* Song.swift */,
+				1000000129B7E1C000000019 /* Setlist.swift */,
+				1000000129B7E1C00000001A /* UserProfile.swift */,
 				1000000129B7E1C000000007 /* ZionAudioPlayer.swift */,
 				1000000129B7E1C000000009 /* MixerView.swift */,
 				1000000129B7E1C00000000B /* ChannelStripView.swift */,
+				1000000129B7E1C00000001C /* PitchTempoControl.swift */,
+				1000000129B7E1C00000001E /* WaveformTimelineView.swift */,
+				1000000129B7E1C000000020 /* SongLibraryView.swift */,
+				1000000129B7E1C000000022 /* PadEngineView.swift */,
+				1000000129B7E1C000000024 /* LoginView.swift */,
+				1000000129B7E1C000000026 /* FirebaseService.swift */,
 				1000000129B7E1C00000000D /* NextGenEngineBridge.mm */,
 			);
 			path = Shared;
@@ -116,10 +140,18 @@
 				1000000129B7E1C000000001 /* ZionStageApp.swift in Sources */,
 				1000000129B7E1C000000002 /* MainView.swift in Sources */,
 				1000000129B7E1C000000004 /* Song.swift in Sources */,
-				1000000129B7E1C000000006 /* ZionAudioPlayer.swift in Sources */,
-				1000000129B7E1C000000008 /* MixerView.swift in Sources */,
-				1000000129B7E1C00000000A /* ChannelStripView.swift in Sources */,
-				1000000129B7E1C00000000C /* NextGenEngineBridge.mm in Sources */,
+				1000000129B7E1C000000006 /* Setlist.swift in Sources */,
+				1000000129B7E1C000000008 /* UserProfile.swift in Sources */,
+				1000000129B7E1C00000000A /* ZionAudioPlayer.swift in Sources */,
+				1000000129B7E1C00000000C /* MixerView.swift in Sources */,
+				1000000129B7E1C00000000E /* ChannelStripView.swift in Sources */,
+				1000000129B7E1C00000001B /* PitchTempoControl.swift in Sources */,
+				1000000129B7E1C00000001D /* WaveformTimelineView.swift in Sources */,
+				1000000129B7E1C00000001F /* SongLibraryView.swift in Sources */,
+				1000000129B7E1C000000021 /* PadEngineView.swift in Sources */,
+				1000000129B7E1C000000023 /* LoginView.swift in Sources */,
+				1000000129B7E1C000000025 /* FirebaseService.swift in Sources */,
+				1000000129B7E1C000000010 /* NextGenEngineBridge.mm in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
