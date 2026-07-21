@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@available(iOS 15.0, macOS 12.0, *)
 public struct LoginView: View {
     @State private var email: String = ""
     @State private var password: String = ""

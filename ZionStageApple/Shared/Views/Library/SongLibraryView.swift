@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@available(iOS 15.0, macOS 12.0, *)
 public struct SongLibraryView: View {
     @ObservedObject public var player: ZionAudioPlayer = ZionAudioPlayer.shared
     @State private var searchText: String = ""

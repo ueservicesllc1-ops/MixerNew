@@ -8,13 +8,13 @@
 import SwiftUI
 
 @main
+@available(iOS 15.0, macOS 12.0, *)
 struct ZionStageApp: App {
     var body: some Scene {
         WindowGroup {
             MainView()
         }
         #if os(macOS)
-        .windowStyle(HiddenTitleBarWindowStyle())
         .defaultSize(width: 1280, height: 800)
         #endif
     }

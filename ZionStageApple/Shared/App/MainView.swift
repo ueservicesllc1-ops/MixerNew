@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@available(iOS 15.0, macOS 12.0, *)
 public struct MainView: View {
     @State private var selectedTab: Int = 0
     @State private var isLoggedIn: Bool = true

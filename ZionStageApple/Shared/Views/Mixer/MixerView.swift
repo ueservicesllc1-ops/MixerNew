@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+@available(iOS 15.0, macOS 12.0, *)
 public struct MixerView: View {
     @ObservedObject public var player: ZionAudioPlayer = ZionAudioPlayer.shared
 
