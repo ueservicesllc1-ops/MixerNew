@@ -3,6 +3,7 @@
 //  ZionStageApple
 //
 //  Reproductor nativo de Pads continuos ambientales por tonalidad (C, C#, D, etc.).
+//  Compatible iOS 15.0+ y macOS 12.0+
 //
 
 import SwiftUI
@@ -10,6 +11,8 @@ import SwiftUI
 public struct PadEngineView: View {
     @State private var activeKey: String? = nil
     @State private var padVolume: Float = 0.8
+
+    public init() {}
 
     let keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 

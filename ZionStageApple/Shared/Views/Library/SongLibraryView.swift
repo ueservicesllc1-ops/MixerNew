@@ -9,8 +9,12 @@
 import SwiftUI
 
 public struct SongLibraryView: View {
-    @ObservedObject public var player: ZionAudioPlayer = ZionAudioPlayer.shared
+    @ObservedObject public var player: ZionAudioPlayer
     @State private var searchText: String = ""
+
+    public init(player: ZionAudioPlayer = ZionAudioPlayer.shared) {
+        self.player = player
+    }
 
     @State private var songs: [Song] = [
         Song(
