@@ -3,7 +3,6 @@
 //  ZionStageApple
 //
 //  Reproductor nativo de Pads continuos ambientales por tonalidad (C, C#, D, etc.).
-//  Compatible iOS 15.0+ y macOS 12.0+
 //
 
 import SwiftUI
@@ -19,8 +18,7 @@ public struct PadEngineView: View {
     public var body: some View {
         VStack(spacing: 20) {
             Text("Pads Ambientales")
-                .font(.title2)
-                .fontWeight(.bold)
+                .font(.title2.weight(.bold))
                 .foregroundColor(.white)
 
             Text(activeKey == nil ? "Selecciona una nota para sonar en continuo" : "Sonando en tonalidad: \(activeKey!)")
@@ -38,8 +36,7 @@ public struct PadEngineView: View {
                         }
                     }) {
                         Text(note)
-                            .font(.title3)
-                            .fontWeight(.bold)
+                            .font(.title3.weight(.bold))
                             .frame(maxWidth: .infinity, minHeight: 60)
                             .background(activeKey == note ? Color.cyan : Color(red: 0.15, green: 0.15, blue: 0.15))
                             .foregroundColor(activeKey == note ? .black : .white)

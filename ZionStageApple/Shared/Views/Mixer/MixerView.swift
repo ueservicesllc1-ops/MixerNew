@@ -20,8 +20,7 @@ public struct MixerView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text(player.currentSong?.title ?? "Ninguna canción cargada")
-                        .font(.headline)
-                        .fontWeight(.bold)
+                        .font(.headline.weight(.bold))
                         .foregroundColor(.white)
                     Text(player.currentSong?.artist ?? "Selecciona una pista del catálogo")
                         .font(.subheadline)

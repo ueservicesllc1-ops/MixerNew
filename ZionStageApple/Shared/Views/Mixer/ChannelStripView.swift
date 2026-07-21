@@ -39,8 +39,7 @@ public struct ChannelStripView: View {
         VStack(spacing: 8) {
             // Nombre del Stem / Rol
             Text(stem.name)
-                .font(.caption)
-                .fontWeight(.bold)
+                .font(.caption.weight(.bold))
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .frame(maxWidth: 70)
@@ -55,8 +54,7 @@ public struct ChannelStripView: View {
                     onMuteToggle(stem.isMuted)
                 }) {
                     Text("M")
-                        .font(.caption2)
-                        .fontWeight(.bold)
+                        .font(.caption2.weight(.bold))
                         .frame(width: 28, height: 28)
                         .background(stem.isMuted ? Color.red : Color.gray.opacity(0.3))
                         .foregroundColor(.white)
@@ -68,8 +66,7 @@ public struct ChannelStripView: View {
                     onSoloToggle(stem.isSolo)
                 }) {
                     Text("S")
-                        .font(.caption2)
-                        .fontWeight(.bold)
+                        .font(.caption2.weight(.bold))
                         .frame(width: 28, height: 28)
                         .background(stem.isSolo ? Color.yellow : Color.gray.opacity(0.3))
                         .foregroundColor(stem.isSolo ? .black : .white)

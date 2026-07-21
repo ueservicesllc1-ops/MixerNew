@@ -30,8 +30,7 @@ public struct LoginView: View {
                     .foregroundColor(.cyan)
 
                 Text("Zion Stage")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
+                    .font(.largeTitle.weight(.bold))
                     .foregroundColor(.white)
 
                 Text("Mezclador Multitrack Profesional")
@@ -73,7 +72,7 @@ public struct LoginView: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: .black))
                         } else {
                             Text("Iniciar Sesión")
-                                .fontWeight(.bold)
+                                .font(.body.weight(.bold))
                         }
                     }
                     .frame(maxWidth: .infinity)

@@ -25,8 +25,7 @@ public struct WaveformTimelineView: View {
             // Tiempos
             HStack {
                 Text(formatTime(player.currentTime))
-                    .font(.caption)
-                    .fontWeight(.bold)
+                    .font(.caption.weight(.bold))
                     .foregroundColor(.cyan)
 
                 Spacer()

@@ -95,7 +95,7 @@ public struct SongLibraryView: View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
                 Text(song.title)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .foregroundColor(.white)
                 HStack(spacing: 8) {
                     Text(song.artist)
@@ -117,8 +117,7 @@ public struct SongLibraryView: View {
                     Image(systemName: "play.fill")
                     Text("Cargar")
                 }
-                .font(.caption)
-                .fontWeight(.bold)
+                .font(.caption.weight(.bold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Color.cyan)
