@@ -37,20 +37,20 @@ public struct Song: Identifiable, Codable, Equatable {
     public let artist: String
     public let bpm: Double
     public let key: String
+    public var stems: [Stem]
+    public var isDownloaded: Bool
     public let timeSignature: String
     public let coverUrl: String?
-    public var stems: [Stem]
-    public var isDownloaded: Bool = false
 
-    public init(id: String, title: String, artist: String, bpm: Double, key: String, stems: [Stem] = [], timeSignature: String = "4/4", coverUrl: String? = nil, isDownloaded: Bool = false) {
+    public init(id: String, title: String, artist: String, bpm: Double, key: String, stems: [Stem] = [], isDownloaded: Bool = false, timeSignature: String = "4/4", coverUrl: String? = nil) {
         self.id = id
         self.title = title
         self.artist = artist
         self.bpm = bpm
         self.key = key
         self.stems = stems
+        self.isDownloaded = isDownloaded
         self.timeSignature = timeSignature
         self.coverUrl = coverUrl
-        self.isDownloaded = isDownloaded
     }
 }

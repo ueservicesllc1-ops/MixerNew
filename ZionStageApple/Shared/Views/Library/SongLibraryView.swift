@@ -32,7 +32,9 @@ public struct SongLibraryView: View {
                 Stem(id: "s6", name: "Teclados",  role: "keys",   audioUrl: ""),
                 Stem(id: "s7", name: "Voz Lead",  role: "vocal",  audioUrl: "")
             ],
-            isDownloaded: true
+            isDownloaded: true,
+            timeSignature: "4/4",
+            coverUrl: nil
         ),
         Song(
             id: "2",
@@ -47,7 +49,9 @@ public struct SongLibraryView: View {
                 Stem(id: "s11", name: "Bajo",     role: "bass",   audioUrl: ""),
                 Stem(id: "s12", name: "Teclados", role: "keys",   audioUrl: "")
             ],
-            isDownloaded: true
+            isDownloaded: true,
+            timeSignature: "4/4",
+            coverUrl: nil
         )
     ]
 
