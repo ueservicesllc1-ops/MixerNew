@@ -13,9 +13,20 @@ let package = Package(
             targets: ["ZionStageApple"]
         )
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/firebase/firebase-ios-sdk.git",
+            from: "10.29.0"
+        )
+    ],
     targets: [
         .executableTarget(
             name: "ZionStageApple",
+            dependencies: [
+                .product(name: "FirebaseCore", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseAuth", package: "firebase-ios-sdk"),
+                .product(name: "FirebaseFirestore", package: "firebase-ios-sdk"),
+            ],
             path: "Shared",
             exclude: ["GoogleService-Info.plist"]
         )

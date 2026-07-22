@@ -23,6 +23,11 @@
 		9B00000129B7E1C00000001B /* FirebaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000001A /* FirebaseService.swift */; };
 		9B00000129B7E1C00000001C /* CyberHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000001D /* CyberHeaderView.swift */; };
 		9B00000129B7E1C00000002A /* WaveformCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000002B /* WaveformCanvasView.swift */; };
+		9B00000129B7E1C000000030 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000031 /* DownloadManager.swift */; };
+		9B00000129B7E1C000000032 /* ZionPadPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000033 /* ZionPadPlayer.swift */; };
+		9B00000129B7E1C000000034 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000035 /* LyricsView.swift */; };
+		9B00000129B7E1C000000036 /* ChordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000037 /* ChordsView.swift */; };
+		9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000039 /* PartiturasView.swift */; };
 
 /* End PBXBuildFile section */
 
@@ -43,6 +48,11 @@
 		9B00000129B7E1C00000001A /* FirebaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FirebaseService.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C00000001D /* CyberHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/CyberHeaderView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C00000002B /* WaveformCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/WaveformCanvasView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000031 /* DownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DownloadManager.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000033 /* ZionPadPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio/ZionPadPlayer.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000035 /* LyricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/LyricsView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000037 /* ChordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/ChordsView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000039 /* PartiturasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/PartiturasView.swift; sourceTree = "<group>"; };
 
 		9B00000129B7E1C00000001E /* ZionStageApple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZionStageApple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -157,6 +167,11 @@
 				9B00000129B7E1C00000001B /* FirebaseService.swift in Sources */,
 				9B00000129B7E1C00000001C /* CyberHeaderView.swift in Sources */,
 				9B00000129B7E1C00000002A /* WaveformCanvasView.swift in Sources */,
+				9B00000129B7E1C000000030 /* DownloadManager.swift in Sources */,
+				9B00000129B7E1C000000032 /* ZionPadPlayer.swift in Sources */,
+				9B00000129B7E1C000000034 /* LyricsView.swift in Sources */,
+				9B00000129B7E1C000000036 /* ChordsView.swift in Sources */,
+				9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
