@@ -428,7 +428,9 @@ public struct SongLibraryView: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Seleccionar Setlist")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cerrar") { showSetlistSheet = false }
@@ -463,7 +465,9 @@ public struct SongLibraryView: View {
                 Spacer()
             }
             .navigationTitle("Nuevo Setlist")
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Cancelar") { showCreateSetlistSheet = false }
