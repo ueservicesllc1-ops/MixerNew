@@ -426,13 +426,17 @@ public struct SongLibraryView: View {
                         .font(.caption)
                 }
             }
+            #if os(iOS)
             .listStyle(.insetGrouped)
+            #else
+            .listStyle(.inset)
+            #endif
             .navigationTitle("Seleccionar Setlist")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cerrar") { showSetlistSheet = false }
                         .foregroundColor(.cyan)
                 }
@@ -469,7 +473,7 @@ public struct SongLibraryView: View {
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button("Cancelar") { showCreateSetlistSheet = false }
                         .foregroundColor(.gray)
                 }
