@@ -17,6 +17,9 @@ workflows:
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
+          mkdir -p build/Payload
+          cp -r build/Build/Products/Release-iphoneos/ZionStageApple.app build/Payload/
+          cd build && zip -r ZionStageApple.ipa Payload
       - name: Build macOS App
         script: |
           cd ZionStageApple
@@ -29,5 +32,6 @@ workflows:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
     artifacts:
+      - ZionStageApple/build/*.ipa
       - ZionStageApple/build/Build/Products/Release-iphoneos/*.app
       - ZionStageApple/build/Build/Products/Release/*.app
