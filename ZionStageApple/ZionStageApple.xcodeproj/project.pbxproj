@@ -28,7 +28,6 @@
 		9B00000129B7E1C000000034 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000035 /* LyricsView.swift */; };
 		9B00000129B7E1C000000036 /* ChordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000037 /* ChordsView.swift */; };
 		9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000039 /* PartiturasView.swift */; };
-		FB0001A000000001 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000002 /* FirebaseCore */; };
 		FB0001A000000003 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000004 /* FirebaseAuth */; };
 		FB0001A000000005 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000006 /* FirebaseFirestore */; };
 
@@ -115,7 +114,6 @@
 			);
 			name = ZionStageApple;
 			packageProductDependencies = (
-				FB0001A000000002 /* FirebaseCore */,
 				FB0001A000000004 /* FirebaseAuth */,
 				FB0001A000000006 /* FirebaseFirestore */,
 			);
@@ -163,7 +161,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FB0001A000000001 /* FirebaseCore in Frameworks */,
 				FB0001A000000003 /* FirebaseAuth in Frameworks */,
 				FB0001A000000005 /* FirebaseFirestore in Frameworks */,
 			);
@@ -291,11 +288,6 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		FB0001A000000002 /* FirebaseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseCore;
-		};
 		FB0001A000000004 /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
