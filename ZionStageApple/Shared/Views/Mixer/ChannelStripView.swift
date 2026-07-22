@@ -8,18 +8,27 @@
 import SwiftUI
 
 public struct ChannelStripView: View {
-    @Binding public var stem: Stem
+    public let stem: Stem
     public var onVolumeChange: (Float) -> Void
     public var onMuteToggle: (Bool) -> Void
     public var onSoloToggle: (Bool) -> Void
     public var onPanChange: (Float) -> Void
 
-    public init(stem: Binding<Stem>, onVolumeChange: @escaping (Float) -> Void, onMuteToggle: @escaping (Bool) -> Void, onSoloToggle: @escaping (Bool) -> Void, onPanChange: @escaping (Float) -> Void) {
-        self._stem = stem
+    @State private var volume: Float
+    @State private var pan: Float
+    @State private var isMuted: Bool
+    @State private var isSolo: Bool
+
+    public init(stem: Stem, onVolumeChange: @escaping (Float) -> Void, onMuteToggle: @escaping (Bool) -> Void, onSoloToggle: @escaping (Bool) -> Void, onPanChange: @escaping (Float) -> Void) {
+        self.stem = stem
         self.onVolumeChange = onVolumeChange
         self.onMuteToggle = onMuteToggle
         self.onSoloToggle = onSoloToggle
         self.onPanChange = onPanChange
+        self._volume = State(initialValue: stem.volume)
+        self._pan = State(initialValue: stem.pan)
+        self._isMuted = State(initialValue: stem.isMuted)
+        self._isSolo = State(initialValue: stem.isSolo)
     }
 
     private var stemColor: Color {
@@ -66,33 +75,33 @@ public struct ChannelStripView: View {
             // Botones táctiles Mute (M) y Solo (S)
             HStack(spacing: 6) {
                 Button(action: {
-                    stem.isMuted.toggle()
-                    onMuteToggle(stem.isMuted)
+                    isMuted.toggle()
+                    onMuteToggle(isMuted)
                 }) {
                     Text("M")
                         .font(.system(size: 12).weight(.bold))
                         .frame(width: 34, height: 30)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(stem.isMuted ? Color.red : Color(red: 0.2, green: 0.22, blue: 0.28))
-                                .shadow(color: stem.isMuted ? Color.red.opacity(0.6) : Color.clear, radius: 4)
+                                .fill(isMuted ? Color.red : Color(red: 0.2, green: 0.22, blue: 0.28))
+                                .shadow(color: isMuted ? Color.red.opacity(0.6) : Color.clear, radius: 4)
                         )
                         .foregroundColor(.white)
                 }
 
                 Button(action: {
-                    stem.isSolo.toggle()
-                    onSoloToggle(stem.isSolo)
+                    isSolo.toggle()
+                    onSoloToggle(isSolo)
                 }) {
                     Text("S")
                         .font(.system(size: 12).weight(.bold))
                         .frame(width: 34, height: 30)
                         .background(
                             RoundedRectangle(cornerRadius: 6)
-                                .fill(stem.isSolo ? Color.yellow : Color(red: 0.2, green: 0.22, blue: 0.28))
-                                .shadow(color: stem.isSolo ? Color.yellow.opacity(0.6) : Color.clear, radius: 4)
+                                .fill(isSolo ? Color.yellow : Color(red: 0.2, green: 0.22, blue: 0.28))
+                                .shadow(color: isSolo ? Color.yellow.opacity(0.6) : Color.clear, radius: 4)
                         )
-                        .foregroundColor(stem.isSolo ? .black : .white)
+                        .foregroundColor(isSolo ? .black : .white)
                 }
             }
 
@@ -101,8 +110,8 @@ public struct ChannelStripView: View {
                 // VUMeter LED Vertical
                 VStack(spacing: 2) {
                     ForEach((0..<16).reversed(), id: \.self) { i in
-                        let level = Double(stem.volume) * 16.0
-                        let isActive = !stem.isMuted && Double(i) <= level
+                        let level = Double(volume) * 16.0
+                        let isActive = !isMuted && Double(i) <= level
                         let ledColor: Color = i > 12 ? .red : (i > 9 ? .yellow : .green)
 
                         Rectangle()
@@ -114,15 +123,15 @@ public struct ChannelStripView: View {
 
                 // Slider Fader Vertical
                 VStack(spacing: 4) {
-                    Text("\(Int(stem.volume * 100))%")
+                    Text("\(Int(volume * 100))%")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
 
                     Slider(value: Binding(
-                        get: { Double(stem.volume) },
+                        get: { Double(volume) },
                         set: { newValue in
-                            stem.volume = Float(newValue)
-                            onVolumeChange(Float(newValue))
+                            volume = Float(newValue)
+                            onVolumeChange(volume)
                         }
                     ), in: 0.0...1.2)
                     .rotationEffect(.degrees(-90))
@@ -134,7 +143,7 @@ public struct ChannelStripView: View {
 
             // Balance Pan (L <-> R)
             VStack(spacing: 2) {
-                Text(stem.pan == 0 ? "C" : (stem.pan < 0 ? "L\(Int(abs(stem.pan) * 100))" : "R\(Int(stem.pan * 100))"))
+                Text(pan == 0 ? "C" : (pan < 0 ? "L\(Int(abs(pan) * 100))" : "R\(Int(pan * 100))"))
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.gray)
 
@@ -144,10 +153,10 @@ public struct ChannelStripView: View {
                         .foregroundColor(.gray)
 
                     Slider(value: Binding(
-                        get: { Double(stem.pan) },
+                        get: { Double(pan) },
                         set: { newValue in
-                            stem.pan = Float(newValue)
-                            onPanChange(Float(newValue))
+                            pan = Float(newValue)
+                            onPanChange(pan)
                         }
                     ), in: -1.0...1.0)
                     .accentColor(.cyan)

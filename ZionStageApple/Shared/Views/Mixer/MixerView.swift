@@ -53,26 +53,21 @@ public struct MixerView: View {
                 ScrollView(.horizontal, showsIndicators: true) {
                     HStack(spacing: 12) {
                         ForEach(sortedStems) { stem in
-                            if let idx = player.currentSong?.stems.firstIndex(where: { $0.id == stem.id }) {
-                                ChannelStripView(
-                                    stem: Binding(
-                                        get: { player.currentSong!.stems[idx] },
-                                        set: { player.currentSong!.stems[idx] = $0 }
-                                    ),
-                                    onVolumeChange: { vol in
-                                        player.setTrackVolume(id: stem.id, volume: vol)
-                                    },
-                                    onMuteToggle: { muted in
-                                        player.setTrackMute(id: stem.id, muted: muted)
-                                    },
-                                    onSoloToggle: { solo in
-                                        player.setTrackSolo(id: stem.id, solo: solo)
-                                    },
-                                    onPanChange: { pan in
-                                        player.setTrackPan(id: stem.id, pan: pan)
-                                    }
-                                )
-                            }
+                            ChannelStripView(
+                                stem: stem,
+                                onVolumeChange: { vol in
+                                    player.setTrackVolume(id: stem.id, volume: vol)
+                                },
+                                onMuteToggle: { muted in
+                                    player.setTrackMute(id: stem.id, muted: muted)
+                                },
+                                onSoloToggle: { solo in
+                                    player.setTrackSolo(id: stem.id, solo: solo)
+                                },
+                                onPanChange: { pan in
+                                    player.setTrackPan(id: stem.id, pan: pan)
+                                }
+                            )
                         }
                     }
                     .padding(.horizontal)
