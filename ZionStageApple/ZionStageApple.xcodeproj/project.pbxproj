@@ -85,7 +85,13 @@
 				9B00000129B7E1C000000016 /* PadEngineView.swift */,
 				9B00000129B7E1C000000018 /* LoginView.swift */,
 				9B00000129B7E1C00000001A /* FirebaseService.swift */,
-
+				9B00000129B7E1C00000001D /* CyberHeaderView.swift */,
+				9B00000129B7E1C00000002B /* WaveformCanvasView.swift */,
+				9B00000129B7E1C000000031 /* DownloadManager.swift */,
+				9B00000129B7E1C000000033 /* ZionPadPlayer.swift */,
+				9B00000129B7E1C000000035 /* LyricsView.swift */,
+				9B00000129B7E1C000000037 /* ChordsView.swift */,
+				9B00000129B7E1C000000039 /* PartiturasView.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
