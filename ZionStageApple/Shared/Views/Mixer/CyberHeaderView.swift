@@ -35,7 +35,7 @@ public struct CyberHeaderView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "metronome")
                                 .font(.system(size: 10))
-                            Text("\(Int(song.bpm)) BPM")
+                            Text("\(Int(song.tempo ?? 120)) BPM")
                                 .font(.system(size: 11).weight(.bold))
                         }
                         .padding(.horizontal, 8)
@@ -49,7 +49,7 @@ public struct CyberHeaderView: View {
                         HStack(spacing: 3) {
                             Image(systemName: "music.note")
                                 .font(.system(size: 10))
-                            Text(song.key)
+                            Text(song.key ?? "-")
                                 .font(.system(size: 11).weight(.bold))
                         }
                         .padding(.horizontal, 8)
@@ -60,7 +60,7 @@ public struct CyberHeaderView: View {
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.cyan.opacity(0.4), lineWidth: 1))
 
                         // Badge Compás
-                        Text(song.timeSignature)
+                        Text(song.timeSignature ?? "4/4")
                             .font(.system(size: 11).weight(.bold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 3)
