@@ -2,7 +2,7 @@
 //  ChannelStripView.swift
 //  ZionStageApple
 //
-//  Tira de canal individual para la consola multitrack (Fader, Mute, Solo, Pan, VUMeter).
+//  Tira de canal multitrack profesional (Fader vertical, Mute, Solo, Pan, VUMeter LED, Colores por Instrumento).
 //
 
 import SwiftUI
@@ -23,42 +23,61 @@ public struct ChannelStripView: View {
     }
 
     private var stemColor: Color {
-        switch stem.role.lowercased() {
-        case "vocal", "guias", "lead vocal": return Color.red
-        case "drums", "bateria": return Color.orange
-        case "bass", "bajo": return Color.blue
-        case "guitar", "guitarras": return Color.green
-        case "keys", "teclados", "synths": return Color.purple
-        case "click", "metronomo": return Color.yellow
-        case "guide", "guia": return Color.cyan
-        default: return Color.gray
+        let nameLower = stem.name.lowercased()
+        let roleLower = stem.role.lowercased()
+        if nameLower.contains("click") || roleLower.contains("click") {
+            return Color(red: 0.95, green: 0.75, blue: 0.1) // Amarillo Click
         }
+        if nameLower.contains("guia") || nameLower.contains("guide") || roleLower.contains("guide") {
+            return Color(red: 0.0, green: 0.8, blue: 0.9) // Cían Guía
+        }
+        if nameLower.contains("voz") || nameLower.contains("vocal") || roleLower.contains("vocal") {
+            return Color(red: 0.9, green: 0.25, blue: 0.25) // Rojo Voces
+        }
+        if nameLower.contains("bateria") || nameLower.contains("drum") || roleLower.contains("drums") {
+            return Color(red: 0.95, green: 0.5, blue: 0.15) // Naranja Batería
+        }
+        if nameLower.contains("bajo") || nameLower.contains("bass") || roleLower.contains("bass") {
+            return Color(red: 0.2, green: 0.5, blue: 0.95) // Azul Bajo
+        }
+        if nameLower.contains("guitar") || nameLower.contains("guit") || roleLower.contains("guitar") {
+            return Color(red: 0.2, green: 0.8, blue: 0.35) // Verde Guitarras
+        }
+        if nameLower.contains("key") || nameLower.contains("tecl") || nameLower.contains("synth") {
+            return Color(red: 0.65, green: 0.3, blue: 0.9) // Púrpura Teclados
+        }
+        return Color(red: 0.5, green: 0.55, blue: 0.65)
     }
 
     public var body: some View {
         VStack(spacing: 8) {
-            // Nombre del Stem / Rol
+            // Etiqueta del Stem / Rol con color temático
             Text(stem.name)
-                .font(.caption.weight(.bold))
+                .font(.system(size: 11).weight(.bold))
                 .foregroundColor(.white)
                 .lineLimit(1)
-                .frame(maxWidth: 70)
-                .padding(.vertical, 4)
-                .background(stemColor.opacity(0.8))
-                .cornerRadius(4)
+                .frame(width: 76, height: 26)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(stemColor.opacity(0.85))
+                        .shadow(color: stemColor.opacity(0.4), radius: 4, x: 0, y: 2)
+                )
 
-            // Controles de Mute / Solo
-            HStack(spacing: 4) {
+            // Botones táctiles Mute (M) y Solo (S)
+            HStack(spacing: 6) {
                 Button(action: {
                     stem.isMuted.toggle()
                     onMuteToggle(stem.isMuted)
                 }) {
                     Text("M")
-                        .font(.caption2.weight(.bold))
-                        .frame(width: 28, height: 28)
-                        .background(stem.isMuted ? Color.red : Color.gray.opacity(0.3))
+                        .font(.system(size: 12).weight(.bold))
+                        .frame(width: 34, height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(stem.isMuted ? Color.red : Color(red: 0.2, green: 0.22, blue: 0.28))
+                                .shadow(color: stem.isMuted ? Color.red.opacity(0.6) : Color.clear, radius: 4)
+                        )
                         .foregroundColor(.white)
-                        .cornerRadius(4)
                 }
 
                 Button(action: {
@@ -66,52 +85,89 @@ public struct ChannelStripView: View {
                     onSoloToggle(stem.isSolo)
                 }) {
                     Text("S")
-                        .font(.caption2.weight(.bold))
-                        .frame(width: 28, height: 28)
-                        .background(stem.isSolo ? Color.yellow : Color.gray.opacity(0.3))
+                        .font(.system(size: 12).weight(.bold))
+                        .frame(width: 34, height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(stem.isSolo ? Color.yellow : Color(red: 0.2, green: 0.22, blue: 0.28))
+                                .shadow(color: stem.isSolo ? Color.yellow.opacity(0.6) : Color.clear, radius: 4)
+                        )
                         .foregroundColor(stem.isSolo ? .black : .white)
-                        .cornerRadius(4)
                 }
             }
 
-            // Slider de Fader vertical
-            VStack {
-                Text("\(Int(stem.volume * 100))%")
-                    .font(.system(size: 10))
+            // Fader de Volumen Vertical + VUMeter LED simulado
+            HStack(spacing: 6) {
+                // VUMeter LED Vertical
+                VStack(spacing: 2) {
+                    ForEach((0..<16).reversed(), id: \.self) { i in
+                        let level = Double(stem.volume) * 16.0
+                        let isActive = !stem.isMuted && Double(i) <= level
+                        let ledColor: Color = i > 12 ? .red : (i > 9 ? .yellow : .green)
+
+                        Rectangle()
+                            .fill(isActive ? ledColor : Color.gray.opacity(0.2))
+                            .frame(width: 4, height: 8)
+                            .cornerRadius(1)
+                    }
+                }
+
+                // Slider Fader Vertical
+                VStack(spacing: 4) {
+                    Text("\(Int(stem.volume * 100))%")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
+
+                    Slider(value: Binding(
+                        get: { Double(stem.volume) },
+                        set: { newValue in
+                            stem.volume = Float(newValue)
+                            onVolumeChange(Float(newValue))
+                        }
+                    ), in: 0.0...1.2)
+                    .rotationEffect(.degrees(-90))
+                    .accentColor(stemColor)
+                    .frame(width: 150, height: 36)
+                }
+            }
+            .frame(height: 175)
+
+            // Balance Pan (L <-> R)
+            VStack(spacing: 2) {
+                Text(stem.pan == 0 ? "C" : (stem.pan < 0 ? "L\(Int(abs(stem.pan) * 100))" : "R\(Int(stem.pan * 100))"))
+                    .font(.system(size: 9, design: .monospaced))
                     .foregroundColor(.gray)
 
-                Slider(value: Binding(
-                    get: { Double(stem.volume) },
-                    set: { newValue in
-                        stem.volume = Float(newValue)
-                        onVolumeChange(Float(newValue))
-                    }
-                ), in: 0.0...1.2)
-                .rotationEffect(.degrees(-90))
-                .frame(width: 160, height: 40)
-            }
-            .frame(height: 180)
+                HStack(spacing: 2) {
+                    Text("L")
+                        .font(.system(size: 8).weight(.bold))
+                        .foregroundColor(.gray)
 
-            // Knob/Slider de Pan (L <-> R)
-            HStack {
-                Text("L")
-                    .font(.system(size: 8))
-                    .foregroundColor(.gray)
-                Slider(value: Binding(
-                    get: { Double(stem.pan) },
-                    set: { newValue in
-                        stem.pan = Float(newValue)
-                        onPanChange(Float(newValue))
-                    }
-                ), in: -1.0...1.0)
-                Text("R")
-                    .font(.system(size: 8))
-                    .foregroundColor(.gray)
+                    Slider(value: Binding(
+                        get: { Double(stem.pan) },
+                        set: { newValue in
+                            stem.pan = Float(newValue)
+                            onPanChange(Float(newValue))
+                        }
+                    ), in: -1.0...1.0)
+                    .accentColor(.cyan)
+
+                    Text("R")
+                        .font(.system(size: 8).weight(.bold))
+                        .foregroundColor(.gray)
+                }
+                .frame(width: 76)
             }
-            .frame(width: 70)
         }
-        .padding(6)
-        .background(Color(red: 0.12, green: 0.12, blue: 0.12))
-        .cornerRadius(8)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(red: 0.1, green: 0.12, blue: 0.16))
+                .shadow(color: Color.black.opacity(0.3), radius: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(stemColor.opacity(0.3), lineWidth: 1)
+        )
     }
 }

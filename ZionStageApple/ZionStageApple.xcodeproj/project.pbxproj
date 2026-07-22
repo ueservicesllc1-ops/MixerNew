@@ -21,6 +21,8 @@
 		9B00000129B7E1C000000017 /* PadEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000016 /* PadEngineView.swift */; };
 		9B00000129B7E1C000000019 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000018 /* LoginView.swift */; };
 		9B00000129B7E1C00000001B /* FirebaseService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000001A /* FirebaseService.swift */; };
+		9B00000129B7E1C00000001C /* CyberHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000001D /* CyberHeaderView.swift */; };
+		9B00000129B7E1C00000002A /* WaveformCanvasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000002B /* WaveformCanvasView.swift */; };
 
 /* End PBXBuildFile section */
 
@@ -39,6 +41,8 @@
 		9B00000129B7E1C000000016 /* PadEngineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Pads/PadEngineView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C000000018 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Auth/LoginView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C00000001A /* FirebaseService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/FirebaseService.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C00000001D /* CyberHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/CyberHeaderView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C00000002B /* WaveformCanvasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/WaveformCanvasView.swift; sourceTree = "<group>"; };
 
 		9B00000129B7E1C00000001E /* ZionStageApple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZionStageApple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -151,6 +155,8 @@
 				9B00000129B7E1C000000017 /* PadEngineView.swift in Sources */,
 				9B00000129B7E1C000000019 /* LoginView.swift in Sources */,
 				9B00000129B7E1C00000001B /* FirebaseService.swift in Sources */,
+				9B00000129B7E1C00000001C /* CyberHeaderView.swift in Sources */,
+				9B00000129B7E1C00000002A /* WaveformCanvasView.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
