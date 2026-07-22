@@ -12,8 +12,8 @@ import FirebaseCore
 @main
 struct ZionStageApp: App {
 
-    // FirebaseService como StateObject: se crea una única vez y persiste en toda la app.
-    @StateObject private var firebase = FirebaseService.shared
+    // FirebaseService como ObservedObject: el singleton ya existe, solo observamos sus cambios.
+    @ObservedObject private var firebase = FirebaseService.shared
 
     init() {
         // Configurar Firebase con GoogleService-Info.plist embebido en el bundle

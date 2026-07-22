@@ -28,6 +28,9 @@
 		9B00000129B7E1C000000034 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000035 /* LyricsView.swift */; };
 		9B00000129B7E1C000000036 /* ChordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000037 /* ChordsView.swift */; };
 		9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000039 /* PartiturasView.swift */; };
+		FB0001A000000001 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000002 /* FirebaseCore */; };
+		FB0001A000000003 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000004 /* FirebaseAuth */; };
+		FB0001A000000005 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000006 /* FirebaseFirestore */; };
 
 /* End PBXBuildFile section */
 
@@ -103,6 +106,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9B00000129B7E1C000000025 /* Build configuration list for PBXNativeTarget "ZionStageApple" */;
 			buildPhases = (
+				FB0001A000000010 /* Frameworks */,
 				9B00000129B7E1C000000023 /* Sources */,
 			);
 			buildRules = (
@@ -110,6 +114,11 @@
 			dependencies = (
 			);
 			name = ZionStageApple;
+			packageProductDependencies = (
+				FB0001A000000002 /* FirebaseCore */,
+				FB0001A000000004 /* FirebaseAuth */,
+				FB0001A000000006 /* FirebaseFirestore */,
+			);
 			productName = ZionStageApple;
 			productReference = 9B00000129B7E1C00000001E /* ZionStageApple.app */;
 			productType = "com.apple.product-type.application";
@@ -138,6 +147,9 @@
 			);
 			mainGroup = 9B00000129B7E1C00000001F;
 			productRefGroup = 9B00000129B7E1C000000021 /* Products */;
+			packageReferences = (
+				FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -145,6 +157,19 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FB0001A000000010 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FB0001A000000001 /* FirebaseCore in Frameworks */,
+				FB0001A000000003 /* FirebaseAuth in Frameworks */,
+				FB0001A000000005 /* FirebaseFirestore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		9B00000129B7E1C000000023 /* Sources */ = {
@@ -253,6 +278,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 10.29.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FB0001A000000002 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		FB0001A000000004 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		FB0001A000000006 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = FB0001A000000007 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 9B00000129B7E1C000000024 /* Project object */;
 }

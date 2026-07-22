@@ -3,7 +3,8 @@
 //  ZionStageApple
 //
 //  Visor de partituras PDF por instrumento.
-//  Usa PDFKit nativo de iOS/macOS.
+//  iOS: usa PDFKit nativo (PDFView via UIViewRepresentable).
+//  macOS: usa PDFView nativo directamente.
 //
 
 import SwiftUI
@@ -45,16 +46,14 @@ public struct PartiturasView: View {
                         .padding(.vertical, 10)
                     }
                     .background(Color(red: 0.08, green: 0.09, blue: 0.14))
-
                     Divider().background(Color.cyan.opacity(0.2))
                 }
 
                 // Visor PDF
                 if let p = selectedPartitura ?? partituras.first {
                     ZStack(alignment: .topTrailing) {
-                        PDFViewRepresentable(urlString: p.pdfUrl)
+                        CrossPlatformPDFView(urlString: p.pdfUrl)
 
-                        // Botón pantalla completa
                         Button(action: { isFullscreen = true }) {
                             Image(systemName: "arrow.up.left.and.arrow.down.right")
                                 .font(.system(size: 16))
@@ -71,7 +70,7 @@ public struct PartiturasView: View {
         .sheet(isPresented: $isFullscreen) {
             if let p = selectedPartitura ?? partituras.first {
                 ZStack(alignment: .topTrailing) {
-                    PDFViewRepresentable(urlString: p.pdfUrl)
+                    CrossPlatformPDFView(urlString: p.pdfUrl)
                         .ignoresSafeArea()
 
                     Button(action: { isFullscreen = false }) {
@@ -85,9 +84,7 @@ public struct PartiturasView: View {
             }
         }
         .onAppear {
-            if selectedPartitura == nil {
-                selectedPartitura = partituras.first
-            }
+            if selectedPartitura == nil { selectedPartitura = partituras.first }
         }
     }
 
@@ -108,30 +105,78 @@ public struct PartiturasView: View {
     }
 }
 
-// MARK: - PDFKit Wrapper
-struct PDFViewRepresentable: UIViewRepresentable {
+// MARK: - PDF View cross-platform (iOS + macOS)
+struct CrossPlatformPDFView: View {
     let urlString: String
+    @State private var pdfDoc: PDFDocument? = nil
 
-    func makeUIView(context: Context) -> PDFView {
-        let pdfView = PDFView()
-        pdfView.autoScales = true
-        pdfView.displayMode = .singlePageContinuous
-        pdfView.displayDirection = .vertical
-        pdfView.backgroundColor = UIColor(red: 0.06, green: 0.07, blue: 0.1, alpha: 1)
-
-        if let url = URL(string: urlString) {
-            // Cargar desde URL remota en background
-            DispatchQueue.global(qos: .userInitiated).async {
-                if let data = try? Data(contentsOf: url),
-                   let doc = PDFDocument(data: data) {
-                    DispatchQueue.main.async {
-                        pdfView.document = doc
-                    }
+    var body: some View {
+        Group {
+            if let doc = pdfDoc {
+                #if os(iOS)
+                IOSPDFView(document: doc)
+                #else
+                MacPDFView(document: doc)
+                #endif
+            } else {
+                VStack {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                    Text("Cargando partitura...")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                        .padding(.top, 8)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        return pdfView
+        .onAppear { loadPDF() }
     }
 
-    func updateUIView(_ uiView: PDFView, context: Context) {}
+    private func loadPDF() {
+        guard let url = URL(string: urlString) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let data = try? Data(contentsOf: url),
+               let doc = PDFDocument(data: data) {
+                DispatchQueue.main.async { pdfDoc = doc }
+            }
+        }
+    }
 }
+
+// MARK: - iOS PDFView
+#if os(iOS)
+private struct IOSPDFView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.backgroundColor = UIColor(red: 0.06, green: 0.07, blue: 0.1, alpha: 1)
+        view.document = document
+        return view
+    }
+
+    func updateUIView(_ uiView: PDFView, context: Context) {
+        uiView.document = document
+    }
+}
+#else
+// MARK: - macOS PDFView
+private struct MacPDFView: NSViewRepresentable {
+    let document: PDFDocument
+
+    func makeNSView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.document = document
+        return view
+    }
+
+    func updateNSView(_ nsView: PDFView, context: Context) {
+        nsView.document = document
+    }
+}
+#endif

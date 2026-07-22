@@ -179,6 +179,7 @@ public class ZionAudioPlayer: ObservableObject {
 
                     audioFiles[track.name] = audioFile
                     playerNodes[track.name] = playerNode
+                    timePitchNodes[track.name] = timePitch  // ← Guardar para poder cambiar pitch/tempo después
 
                     // Extraer duración real del archivo
                     let fileDuration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
