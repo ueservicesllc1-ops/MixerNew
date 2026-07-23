@@ -15,11 +15,20 @@ workflows:
                      -configuration Release \
                      -derivedDataPath build \
                      IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-                     CODE_SIGN_IDENTITY="-" \
+                     CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=YES
+                     CODE_SIGNING_ALLOWED=NO
+          
+          echo "--- Contenido de Release-iphoneos ---"
+          ls -lah build/Build/Products/Release-iphoneos/ || true
+          
           mkdir -p build/Payload
-          cp -r build/Build/Products/Release-iphoneos/ZionStageApple.app build/Payload/
+          find build/Build/Products/Release-iphoneos -name "*.app" -exec cp -R {} build/Payload/ \;
+          
+          echo "--- Contenido de Payload (copiado) ---"
+          ls -lah build/Payload/
+          ls -lah build/Payload/*.app/ || true
+          
           cd build && zip -r ZionStageApple.ipa Payload
       - name: Build macOS App
         script: |
@@ -30,9 +39,9 @@ workflows:
                      -configuration Release \
                      -derivedDataPath build \
                      MACOSX_DEPLOYMENT_TARGET=12.0 \
-                     CODE_SIGN_IDENTITY="-" \
+                     CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=YES
+                     CODE_SIGNING_ALLOWED=NO
     artifacts:
       - ZionStageApple/build/*.ipa
       - ZionStageApple/build/Build/Products/Release-iphoneos/*.app
