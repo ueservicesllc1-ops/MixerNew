@@ -10,39 +10,26 @@ workflows:
         script: |
           cd ZionStageApple
 
-          # Paso 1: Compilar sin firma (el binario se genera en Intermediates)
+          # Paso 1: Compilar sin firma para iOS
           xcodebuild build -project ZionStageApple.xcodeproj \
                      -scheme ZionStageApple \
                      -sdk iphoneos \
                      -configuration Release \
-                     -derivedDataPath build \
+                     -derivedDataPath build_ios \
                      IPHONEOS_DEPLOYMENT_TARGET=15.0 \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
-          # Paso 2: Diagnóstico - qué produjo Xcode
+          # Paso 2: Diagnóstico
           echo "======================================="
-          echo "=== DIAGNÓSTICO DEL BUILD ==="
+          echo "=== DIAGNÓSTICO DEL BUILD IOS ==="
           echo "======================================="
           
-          echo "--- Contenido de Release-iphoneos ---"
-          ls -lahR build/Build/Products/Release-iphoneos/ 2>/dev/null | head -80
-          
-          echo "--- Buscando el ejecutable compilado en Intermediates ---"
-          find build/Build/Intermediates.noindex -type f -name "ZionStageApple" 2>/dev/null
-          
-          echo "--- Buscando CUALQUIER Mach-O binario ---"
-          find build -type f -name "ZionStageApple" ! -name "*.swift*" ! -name "*.plist" ! -name "*.d" 2>/dev/null
-          
-          echo "--- Frameworks generados ---"
-          find build/Build/Products/Release-iphoneos -name "*.framework" -type d 2>/dev/null | head -20
+          APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          # Paso 3: Ensamblar manualmente el .app
-          APP_DIR="build/Build/Products/Release-iphoneos/ZionStageApple.app"
-
-          # Buscar el binario ejecutable en los productos intermedios
-          BINARY=$(find build/Build/Intermediates.noindex -type f -name "ZionStageApple" -path "*/Objects-normal/arm64/*" 2>/dev/null | grep -v ".swiftmodule" | grep -v ".swiftsourceinfo" | head -1)
+          # Buscar el binario ejecutable en los productos intermedios de iOS
+          BINARY=$(find build_ios/Build/Intermediates.noindex -type f -name "ZionStageApple" -path "*/Objects-normal/arm64/*" 2>/dev/null | grep -v ".swiftmodule" | grep -v ".swiftsourceinfo" | head -1)
 
           echo "--- Binario encontrado: ${BINARY:-NINGUNO} ---"
 
@@ -52,7 +39,7 @@ workflows:
             chmod +x "$APP_DIR/ZionStageApple"
 
             # Copiar frameworks de Firebase y Swift al .app
-            FRAMEWORKS_SRC="build/Build/Products/Release-iphoneos"
+            FRAMEWORKS_SRC="build_ios/Build/Products/Release-iphoneos"
             if ls "$FRAMEWORKS_SRC"/*.framework 1>/dev/null 2>&1; then
               echo "=== Copiando frameworks ==="
               mkdir -p "$APP_DIR/Frameworks"
@@ -60,7 +47,7 @@ workflows:
             fi
             
             # Copiar Swift dylibs si existen
-            SWIFT_LIBS=$(find build -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
+            SWIFT_LIBS=$(find build_ios -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
             if [ -n "$SWIFT_LIBS" ]; then
               echo "=== Copiando PackageFrameworks ==="
               mkdir -p "$APP_DIR/Frameworks"
@@ -72,14 +59,12 @@ workflows:
             du -sh "$APP_DIR"
           else
             echo "!!! ERROR: No se encontró el binario o el directorio .app !!!"
-            echo "Listando TODOS los archivos llamados ZionStageApple:"
-            find build -name "ZionStageApple" -type f 2>/dev/null
           fi
 
-          # Paso 4: Empaquetar IPA
-          mkdir -p build/Payload
-          cp -R "$APP_DIR" build/Payload/
-          cd build && zip -r ZionStageApple.ipa Payload
+          # Paso 4: Empaquetar IPA de iOS
+          mkdir -p build_ios/Payload
+          cp -R "$APP_DIR" build_ios/Payload/
+          cd build_ios && zip -r ZionStageApple.ipa Payload
 
           echo "=== Tamaño final del IPA ==="
           ls -lah ZionStageApple.ipa
@@ -91,12 +76,12 @@ workflows:
                      -scheme ZionStageApple \
                      -sdk macosx \
                      -configuration Release \
-                     -derivedDataPath build \
+                     -derivedDataPath build_macos \
                      MACOSX_DEPLOYMENT_TARGET=12.0 \
                      CODE_SIGN_IDENTITY="" \
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
     artifacts:
-      - ZionStageApple/build/*.ipa
-      - ZionStageApple/build/Build/Products/Release-iphoneos/*.app
-      - ZionStageApple/build/Build/Products/Release/*.app
+      - ZionStageApple/build_ios/*.ipa
+      - ZionStageApple/build_ios/Build/Products/Release-iphoneos/*.app
+      - ZionStageApple/build_macos/Build/Products/Release/*.app
