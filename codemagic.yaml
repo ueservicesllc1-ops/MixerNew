@@ -28,46 +28,42 @@ workflows:
           
           APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          # Buscar el binario ejecutable Mach-O real usando el comando 'file'
-          BINARY=$(find build_ios -type f -name "ZionStageApple" 2>/dev/null | xargs file 2>/dev/null | grep -i "arm64" | grep -i "executable" | cut -d: -f1 | head -1)
-
-          if [ -z "$BINARY" ]; then
-            BINARY=$(find build_ios -type f -name "ZionStageApple" 2>/dev/null | grep -v "\." | head -1)
-          fi
-
-          echo "--- Binario encontrado: ${BINARY:-NINGUNO} ---"
-
-          if [ -d "$APP_DIR" ]; then
+          # Verificar y asegurar que el binario ejecutable esté en .app
+          APP_BINARY="$APP_DIR/ZionStageApple"
+          if [ ! -f "$APP_BINARY" ]; then
+            echo "--- Binario no estaba en .app, buscando en Intermediates ---"
+            BINARY=$(find build_ios/Build/Intermediates.noindex -type f -name "ZionStageApple" 2>/dev/null | xargs file 2>/dev/null | grep -i "executable" | cut -d: -f1 | head -1)
             if [ -n "$BINARY" ]; then
-              echo "=== Inyectando binario ($BINARY) en .app ==="
-              cp "$BINARY" "$APP_DIR/ZionStageApple"
-              chmod +x "$APP_DIR/ZionStageApple"
-            else
-              echo "!!! ADVERTENCIA: No se detectó binario separado, verificando si ya existe en .app !!!"
+              echo "=== Copiando binario ($BINARY) a .app ==="
+              cp "$BINARY" "$APP_BINARY"
             fi
-
-            # Copiar frameworks de Firebase y Swift al .app
-            FRAMEWORKS_SRC="build_ios/Build/Products/Release-iphoneos"
-            if ls "$FRAMEWORKS_SRC"/*.framework 1>/dev/null 2>&1; then
-              echo "=== Copiando frameworks ==="
-              mkdir -p "$APP_DIR/Frameworks"
-              cp -R "$FRAMEWORKS_SRC"/*.framework "$APP_DIR/Frameworks/"
-            fi
-            
-            # Copiar Swift dylibs/frameworks si existen
-            SWIFT_LIBS=$(find build_ios -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
-            if [ -n "$SWIFT_LIBS" ]; then
-              echo "=== Copiando PackageFrameworks ==="
-              mkdir -p "$APP_DIR/Frameworks"
-              cp -R "$SWIFT_LIBS"/* "$APP_DIR/Frameworks/" 2>/dev/null || true
-            fi
-
-            echo "=== Contenido final de .app ==="
-            ls -lah "$APP_DIR/"
-            du -sh "$APP_DIR"
-          else
-            echo "!!! ERROR: No se encontró el directorio .app !!!"
           fi
+
+          if [ -f "$APP_BINARY" ]; then
+            chmod +x "$APP_BINARY"
+            echo "=== Binario verificado con éxito: $(ls -lh '$APP_BINARY') ==="
+          else
+            echo "!!! ERROR CRÍTICO: No se encontró el binario ejecutable !!!"
+          fi
+
+          # Eliminar cualquier Frameworks/ vacío o con librerías estáticas inválidas que rompan Sideloadly
+          if [ -d "$APP_DIR/Frameworks" ]; then
+            for fw in "$APP_DIR/Frameworks"/*.framework; do
+              if [ -d "$fw" ]; then
+                fw_name=$(basename "$fw" .framework)
+                if [ ! -f "$fw/$fw_name" ]; then
+                  echo "=== Removiendo framework estático sin binario dinámico (para compatibilidad con Sideloadly): $fw ==="
+                  rm -rf "$fw"
+                fi
+              fi
+            done
+            # Si la carpeta Frameworks quedó vacía, eliminarla
+            rmdir "$APP_DIR/Frameworks" 2>/dev/null || true
+          fi
+
+          echo "=== Contenido verificado de .app ==="
+          ls -lah "$APP_DIR/"
+          du -sh "$APP_DIR"
 
           # Paso 4: Empaquetar IPA de iOS
           mkdir -p build_ios/Payload
