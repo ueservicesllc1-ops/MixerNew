@@ -16,6 +16,16 @@ public struct MainView: View {
     @ObservedObject var player: ZionAudioPlayer = ZionAudioPlayer.shared
 
     @State private var isPerformanceModeActive: Bool = false
+    @State private var selectedTab = 0
+    @State private var bottomPanel: BottomPanel? = nil
+    
+    @State private var activeLyrics: String? = nil
+    @State private var activeChords: String? = nil
+    @State private var activePartituras: [Partitura] = []
+    
+    @State private var lyricsListener: Any? = nil
+    @State private var chordsListener: Any? = nil
+    @State private var partiturasListener: Any? = nil
 
     enum BottomPanel: String, CaseIterable {
         case lyrics = "Letras"
