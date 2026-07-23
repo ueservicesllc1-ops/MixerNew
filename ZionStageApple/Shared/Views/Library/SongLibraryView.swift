@@ -238,7 +238,7 @@ public struct SongLibraryView: View {
 
                 if isDownloading, let prog = downloader.progress {
                     HStack(spacing: 6) {
-                        ProgressView(value: prog.fraction)
+                        ProgressView(value: prog.overallFraction)
                             .progressViewStyle(.linear)
                             .tint(.cyan)
                             .frame(width: 100)

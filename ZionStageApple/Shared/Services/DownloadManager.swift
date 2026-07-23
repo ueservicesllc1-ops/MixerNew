@@ -28,6 +28,8 @@ public struct DownloadProgress {
         return min(1.0, completedFraction + currentPart)
     }
 
+    public var fraction: Double { overallFraction }
+
     public var label: String {
         "Descargando \(trackName) (\(currentTrackIndex + 1)/\(totalTracks))..."
     }
