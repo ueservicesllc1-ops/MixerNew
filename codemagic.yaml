@@ -10,67 +10,39 @@ workflows:
         script: |
           cd ZionStageApple
 
-          # Paso 1: Compilar sin firma para iOS
+          # Paso 1: Compilar para iOS con firma Ad-Hoc (cero certificados requeridos)
           xcodebuild build -project ZionStageApple.xcodeproj \
                      -scheme ZionStageApple \
                      -sdk iphoneos \
                      -configuration Release \
                      -derivedDataPath build_ios \
                      IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGN_IDENTITY="-" \
                      CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
+                     CODE_SIGNING_ALLOWED=YES \
+                     AD_HOC_CODE_SIGNING_ALLOWED=YES
 
-          # Paso 2: Diagnóstico
+          # Paso 2: Diagnóstico de productos generados
           echo "======================================="
           echo "=== DIAGNÓSTICO DEL BUILD IOS ==="
           echo "======================================="
           
           APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          # Verificar y asegurar que el binario ejecutable esté en .app
-          APP_BINARY="$APP_DIR/ZionStageApple"
-          if [ ! -f "$APP_BINARY" ]; then
-            echo "--- Binario no estaba en .app, buscando en Intermediates ---"
-            BINARY=$(find build_ios/Build/Intermediates.noindex -type f -name "ZionStageApple" 2>/dev/null | xargs file 2>/dev/null | grep -i "executable" | cut -d: -f1 | head -1)
-            if [ -n "$BINARY" ]; then
-              echo "=== Copiando binario ($BINARY) a .app ==="
-              cp "$BINARY" "$APP_BINARY"
-            fi
-          fi
-
-          if [ -f "$APP_BINARY" ]; then
-            chmod +x "$APP_BINARY"
-            echo "=== Binario verificado con éxito: $(ls -lh '$APP_BINARY') ==="
+          if [ -d "$APP_DIR" ]; then
+            echo "=== Contenido oficial del paquete .app ==="
+            ls -lah "$APP_DIR/"
+            du -sh "$APP_DIR"
           else
-            echo "!!! ERROR CRÍTICO: No se encontró el binario ejecutable !!!"
+            echo "!!! ERROR CRÍTICO: No se generó la carpeta .app !!!"
           fi
 
-          # Eliminar cualquier Frameworks/ vacío o con librerías estáticas inválidas que rompan Sideloadly
-          if [ -d "$APP_DIR/Frameworks" ]; then
-            for fw in "$APP_DIR/Frameworks"/*.framework; do
-              if [ -d "$fw" ]; then
-                fw_name=$(basename "$fw" .framework)
-                if [ ! -f "$fw/$fw_name" ]; then
-                  echo "=== Removiendo framework estático sin binario dinámico (para compatibilidad con Sideloadly): $fw ==="
-                  rm -rf "$fw"
-                fi
-              fi
-            done
-            # Si la carpeta Frameworks quedó vacía, eliminarla
-            rmdir "$APP_DIR/Frameworks" 2>/dev/null || true
-          fi
-
-          echo "=== Contenido verificado de .app ==="
-          ls -lah "$APP_DIR/"
-          du -sh "$APP_DIR"
-
-          # Paso 4: Empaquetar IPA de iOS
+          # Paso 3: Empaquetar IPA estándar de iOS
           mkdir -p build_ios/Payload
           cp -R "$APP_DIR" build_ios/Payload/
           cd build_ios && zip -r ZionStageApple.ipa Payload
 
-          echo "=== Tamaño final del IPA ==="
+          echo "=== Tamaño final del IPA de iOS ==="
           ls -lah ZionStageApple.ipa
 
       - name: Build macOS App
