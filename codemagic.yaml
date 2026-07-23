@@ -9,24 +9,81 @@ workflows:
       - name: Build iOS & iPadOS Physical App
         script: |
           cd ZionStageApple
-          # Forzamos a Xcode a construir el ejecutable permitiendo la firma
-          # y usamos `|| true` para ignorar el error final cuando falla al no tener certificado.
-          # Así obtenemos un .app completamente poblado.
+
+          # Paso 1: Compilar sin firma (el binario se genera en Intermediates)
           xcodebuild build -project ZionStageApple.xcodeproj \
                      -scheme ZionStageApple \
                      -sdk iphoneos \
                      -configuration Release \
                      -derivedDataPath build \
                      IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-                     CODE_SIGN_IDENTITY="-" \
-                     CODE_SIGNING_REQUIRED=YES \
-                     CODE_SIGNING_ALLOWED=YES || true
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
+
+          # Paso 2: Diagnóstico - qué produjo Xcode
+          echo "======================================="
+          echo "=== DIAGNÓSTICO DEL BUILD ==="
+          echo "======================================="
           
-          echo "--- Armando IPA desde el .app construido ---"
+          echo "--- Contenido de Release-iphoneos ---"
+          ls -lahR build/Build/Products/Release-iphoneos/ 2>/dev/null | head -80
+          
+          echo "--- Buscando el ejecutable compilado en Intermediates ---"
+          find build/Build/Intermediates.noindex -type f -name "ZionStageApple" 2>/dev/null
+          
+          echo "--- Buscando CUALQUIER Mach-O binario ---"
+          find build -type f -name "ZionStageApple" ! -name "*.swift*" ! -name "*.plist" ! -name "*.d" 2>/dev/null
+          
+          echo "--- Frameworks generados ---"
+          find build/Build/Products/Release-iphoneos -name "*.framework" -type d 2>/dev/null | head -20
+
+          # Paso 3: Ensamblar manualmente el .app
+          APP_DIR="build/Build/Products/Release-iphoneos/ZionStageApple.app"
+
+          # Buscar el binario ejecutable en los productos intermedios
+          BINARY=$(find build/Build/Intermediates.noindex -type f -name "ZionStageApple" -path "*/Objects-normal/arm64/*" 2>/dev/null | grep -v ".swiftmodule" | grep -v ".swiftsourceinfo" | head -1)
+
+          echo "--- Binario encontrado: ${BINARY:-NINGUNO} ---"
+
+          if [ -n "$BINARY" ] && [ -d "$APP_DIR" ]; then
+            echo "=== Inyectando binario en .app ==="
+            cp "$BINARY" "$APP_DIR/ZionStageApple"
+            chmod +x "$APP_DIR/ZionStageApple"
+
+            # Copiar frameworks de Firebase y Swift al .app
+            FRAMEWORKS_SRC="build/Build/Products/Release-iphoneos"
+            if ls "$FRAMEWORKS_SRC"/*.framework 1>/dev/null 2>&1; then
+              echo "=== Copiando frameworks ==="
+              mkdir -p "$APP_DIR/Frameworks"
+              cp -R "$FRAMEWORKS_SRC"/*.framework "$APP_DIR/Frameworks/"
+            fi
+            
+            # Copiar Swift dylibs si existen
+            SWIFT_LIBS=$(find build -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
+            if [ -n "$SWIFT_LIBS" ]; then
+              echo "=== Copiando PackageFrameworks ==="
+              mkdir -p "$APP_DIR/Frameworks"
+              cp -R "$SWIFT_LIBS"/* "$APP_DIR/Frameworks/" 2>/dev/null || true
+            fi
+
+            echo "=== Contenido final de .app ==="
+            ls -lah "$APP_DIR/"
+            du -sh "$APP_DIR"
+          else
+            echo "!!! ERROR: No se encontró el binario o el directorio .app !!!"
+            echo "Listando TODOS los archivos llamados ZionStageApple:"
+            find build -name "ZionStageApple" -type f 2>/dev/null
+          fi
+
+          # Paso 4: Empaquetar IPA
           mkdir -p build/Payload
-          cp -R build/Build/Products/Release-iphoneos/*.app build/Payload/ || true
-          
+          cp -R "$APP_DIR" build/Payload/
           cd build && zip -r ZionStageApple.ipa Payload
+
+          echo "=== Tamaño final del IPA ==="
+          ls -lah ZionStageApple.ipa
+
       - name: Build macOS App
         script: |
           cd ZionStageApple
