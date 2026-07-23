@@ -10,7 +10,7 @@
 //
 
 import SwiftUI
-
+import FirebaseFirestore
 public struct MainView: View {
     @EnvironmentObject var firebase: FirebaseService
     @ObservedObject var player: ZionAudioPlayer = ZionAudioPlayer.shared
