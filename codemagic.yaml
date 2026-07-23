@@ -28,15 +28,23 @@ workflows:
           
           APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          # Buscar el binario ejecutable en los productos intermedios de iOS
-          BINARY=$(find build_ios/Build/Intermediates.noindex -type f -name "ZionStageApple" -path "*/Objects-normal/arm64/*" 2>/dev/null | grep -v ".swiftmodule" | grep -v ".swiftsourceinfo" | head -1)
+          # Buscar el binario ejecutable Mach-O real usando el comando 'file'
+          BINARY=$(find build_ios -type f -name "ZionStageApple" 2>/dev/null | xargs file 2>/dev/null | grep -i "arm64" | grep -i "executable" | cut -d: -f1 | head -1)
+
+          if [ -z "$BINARY" ]; then
+            BINARY=$(find build_ios -type f -name "ZionStageApple" 2>/dev/null | grep -v "\." | head -1)
+          fi
 
           echo "--- Binario encontrado: ${BINARY:-NINGUNO} ---"
 
-          if [ -n "$BINARY" ] && [ -d "$APP_DIR" ]; then
-            echo "=== Inyectando binario en .app ==="
-            cp "$BINARY" "$APP_DIR/ZionStageApple"
-            chmod +x "$APP_DIR/ZionStageApple"
+          if [ -d "$APP_DIR" ]; then
+            if [ -n "$BINARY" ]; then
+              echo "=== Inyectando binario ($BINARY) en .app ==="
+              cp "$BINARY" "$APP_DIR/ZionStageApple"
+              chmod +x "$APP_DIR/ZionStageApple"
+            else
+              echo "!!! ADVERTENCIA: No se detectó binario separado, verificando si ya existe en .app !!!"
+            fi
 
             # Copiar frameworks de Firebase y Swift al .app
             FRAMEWORKS_SRC="build_ios/Build/Products/Release-iphoneos"
@@ -46,7 +54,7 @@ workflows:
               cp -R "$FRAMEWORKS_SRC"/*.framework "$APP_DIR/Frameworks/"
             fi
             
-            # Copiar Swift dylibs si existen
+            # Copiar Swift dylibs/frameworks si existen
             SWIFT_LIBS=$(find build_ios -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
             if [ -n "$SWIFT_LIBS" ]; then
               echo "=== Copiando PackageFrameworks ==="
@@ -58,7 +66,7 @@ workflows:
             ls -lah "$APP_DIR/"
             du -sh "$APP_DIR"
           else
-            echo "!!! ERROR: No se encontró el binario o el directorio .app !!!"
+            echo "!!! ERROR: No se encontró el directorio .app !!!"
           fi
 
           # Paso 4: Empaquetar IPA de iOS
