@@ -146,9 +146,15 @@ public struct MainView: View {
                     .animation(.spring(response: 0.3), value: bottomPanel)
                 }
             }
+            #if os(iOS)
             .fullScreenCover(isPresented: $isPerformanceModeActive) {
                 PerformanceModeView(player: player, onClose: { isPerformanceModeActive = false })
             }
+            #else
+            .sheet(isPresented: $isPerformanceModeActive) {
+                PerformanceModeView(player: player, onClose: { isPerformanceModeActive = false })
+            }
+            #endif
             .onChange(of: player.currentSong?.id) { songId in
                 loadTextContent(songId: songId)
             }
