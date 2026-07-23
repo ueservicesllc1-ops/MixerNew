@@ -3,24 +3,22 @@
 //  ZionStageApple
 //
 //  Motor de audio nativo 100% Swift con AVAudioEngine.
-//  - Carga stems desde archivos locales (descargados por DownloadManager)
+//  - Carga stems desde archivos locales (OfflineStorageManager)
 //  - Seek/Scrubbing real con AVAudioPlayerNode.scheduleSegment
 //  - Pitch con AVAudioUnitTimePitch (semitones → cents)
 //  - Tempo con AVAudioUnitTimePitch.rate
 //  - Mute / Solo / Pan / Volumen individual por stem
-//  - VU Meter real via installTap en mainMixerNode
-//  - Auto-stop cuando la canción termina
+//  - VU Meter real por canal individual (per-stem tap)
+//  - Loop A-B sample-accurate
+//  - Background Audio (MPNowPlayingInfoCenter & MPRemoteCommandCenter)
+//  - Manejo de interrupciones de audio (llamadas, Siri, etc.)
+//  - Auto-stop y Auto-advance de setlist
 //  Compatible con iOS 15.0+ y macOS 12.0+
 //
 
 import AVFoundation
 import Combine
-
-// MARK: - VU Meter Data
-public struct VUMeterData {
-    public let stemId: String
-    public let rmsDB: Float   // dB, -60 a 0
-}
+import MediaPlayer
 
 public class ZionAudioPlayer: ObservableObject {
 
@@ -38,6 +36,14 @@ public class ZionAudioPlayer: ObservableObject {
     @Published public var vuLevels: [String: Float] = [:]  // stemId → dB (-60...0)
     @Published public var waveformPeaks: [Float] = []       // Array de picos para canvas
 
+    // MARK: - Loop A-B
+    @Published public var isLooping: Bool = false
+    @Published public var loopStart: Double = 0.0
+    @Published public var loopEnd: Double = 0.0
+
+    // MARK: - Setlist Auto-advance
+    public var onSongEnded: (() -> Void)? = nil
+
     @Published public var masterVolume: Float = 1.0 {
         didSet { engine.mainMixerNode.outputVolume = masterVolume }
     }
@@ -45,6 +51,7 @@ public class ZionAudioPlayer: ObservableObject {
     @Published public var tempoRatio: Float = 1.0 {
         didSet {
             timePitchNodes.values.forEach { $0.rate = tempoRatio }
+            updateNowPlayingInfo()
         }
     }
 
@@ -58,20 +65,21 @@ public class ZionAudioPlayer: ObservableObject {
     // MARK: - Internals
     private let engine = AVAudioEngine()
     private var playerNodes: [String: AVAudioPlayerNode] = [:]
+    private var stemMixerNodes: [String: AVAudioMixerNode] = [:]
     private var timePitchNodes: [String: AVAudioUnitTimePitch] = [:]
     private var audioFiles: [String: AVAudioFile] = [:]
-    private var stemVolumes: [String: Float] = [:]        // volumen real por stem
+    private var stemVolumes: [String: Float] = [:]
     private var mutedStems: Set<String> = []
     private var soloedStem: String? = nil
 
     private var progressTimer: Timer?
-    private var vuTap: Bool = false
-    private var startSampleTime: AVAudioFramePosition = 0
-    private var seekPosition: Double = 0.0                // posición de seek en segundos
+    private var seekPosition: Double = 0.0
 
     private init() {
         setupEngine()
         configureSession()
+        setupInterruptionObserver()
+        setupRemoteCommandCenter()
     }
 
     // MARK: - Setup
@@ -79,7 +87,7 @@ public class ZionAudioPlayer: ObservableObject {
         #if os(iOS)
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.allowBluetoothA2DP])
+            try session.setCategory(.playback, mode: .default, options: [.allowBluetoothA2DP, .mixWithOthers])
             try session.setActive(true)
         } catch {
             print("[ZionAudioPlayer] AVAudioSession error: \(error.localizedDescription)")
@@ -88,22 +96,6 @@ public class ZionAudioPlayer: ObservableObject {
     }
 
     private func setupEngine() {
-        // Instalar VU tap en mainMixerNode para leer niveles reales
-        let format = engine.mainMixerNode.outputFormat(forBus: 0)
-        engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            guard let self = self else { return }
-            let rms = self.calculateRMS(buffer: buffer)
-            let db = 20 * log10(max(rms, 0.00001))
-            let clampedDB = max(-60, min(0, db))
-            DispatchQueue.main.async {
-                // Distribuir el nivel master a todos los stems (simplificado)
-                for stemId in self.playerNodes.keys {
-                    self.vuLevels[stemId] = clampedDB
-                }
-            }
-        }
-        vuTap = true
-
         engine.mainMixerNode.outputVolume = masterVolume
 
         do {
@@ -113,16 +105,73 @@ public class ZionAudioPlayer: ObservableObject {
         }
     }
 
-    private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
-        guard let channelData = buffer.floatChannelData else { return 0 }
-        let frameCount = Int(buffer.frameLength)
-        guard frameCount > 0 else { return 0 }
-        var sum: Float = 0
-        let data = channelData[0]
-        for i in 0..<frameCount {
-            sum += data[i] * data[i]
+    // MARK: - Manejo de Interrupciones (Llamadas, Siri, etc.)
+    private func setupInterruptionObserver() {
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self,
+                  let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+
+            if type == .began {
+                if self.isPlaying {
+                    self.pause()
+                }
+            } else if type == .ended {
+                if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        self.play()
+                    }
+                }
+            }
         }
-        return sqrt(sum / Float(frameCount))
+        #endif
+    }
+
+    // MARK: - Remote Control (Lockscreen & Control Center)
+    private func setupRemoteCommandCenter() {
+        let commandCenter = MPRemoteCommandCenter.shared()
+
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            self?.play()
+            return .success
+        }
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            self?.pause()
+            return .success
+        }
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause()
+            return .success
+        }
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            if let event = event as? MPChangePlaybackPositionCommandEvent {
+                self?.seek(to: event.positionTime)
+                return .success
+            }
+            return .commandFailed
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        var nowPlayingInfo = [String: Any]()
+        if let song = currentSong {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = song.title
+            nowPlayingInfo[MPMediaItemPropertyArtist] = song.artist
+        } else {
+            nowPlayingInfo[MPMediaItemPropertyTitle] = "Zion Stage"
+        }
+        nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
+        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(tempoRatio) : 0.0
+
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlayingInfo
     }
 
     // MARK: - Carga de Canción
@@ -132,9 +181,8 @@ public class ZionAudioPlayer: ObservableObject {
         currentSong = song
         waveformPeaks = []
         seekPosition = 0.0
+        isLooping = false
 
-        let dl = DownloadManager.shared
-        var loadedCount = 0
         let criticalTracks = song.tracks.filter {
             $0.name != "__PreviewMix" && !$0.url.isEmpty
         }
@@ -148,10 +196,10 @@ public class ZionAudioPlayer: ObservableObject {
         }
 
         Task {
+            var loadedCount = 0
             for track in criticalTracks {
-                // Obtener path local
-                guard let localURL = dl.localURL(songId: song.id, trackName: track.name) else {
-                    print("[ZionAudioPlayer] Track no descargado: \(track.name)")
+                guard let localURL = OfflineStorageManager.shared.getTrackPath(songId: song.id, trackName: track.name) else {
+                    print("[ZionAudioPlayer] Track no en disco: \(track.name)")
                     loadedCount += 1
                     continue
                 }
@@ -159,35 +207,50 @@ public class ZionAudioPlayer: ObservableObject {
                 do {
                     let audioFile = try AVAudioFile(forReading: localURL)
                     let playerNode = AVAudioPlayerNode()
+                    let stemMixer = AVAudioMixerNode()
                     let timePitch = AVAudioUnitTimePitch()
                     timePitch.rate = tempoRatio
                     timePitch.pitch = pitchSemitones * 100.0
 
                     engine.attach(playerNode)
+                    engine.attach(stemMixer)
                     engine.attach(timePitch)
-                    engine.connect(playerNode, to: timePitch, format: audioFile.processingFormat)
+
+                    // Cadena de audio: Player -> StemMixer -> TimePitch -> MainMixer
+                    engine.connect(playerNode, to: stemMixer, format: audioFile.processingFormat)
+                    engine.connect(stemMixer, to: timePitch, format: audioFile.processingFormat)
                     engine.connect(timePitch, to: engine.mainMixerNode, format: audioFile.processingFormat)
 
-                    playerNode.volume = stemVolumes[track.name] ?? 1.0
-                    if mutedStems.contains(track.name) { playerNode.volume = 0 }
+                    let vol = stemVolumes[track.name] ?? 1.0
+                    stemMixer.outputVolume = mutedStems.contains(track.name) ? 0 : vol
 
-                    // Pan automático: Click/Guide → izquierda (-1), resto → derecha (+1)
-                    // (igual que la app Android con panMode)
+                    // Pan automático: Click/Guide -> izquierda (-1), resto -> derecha (+1)
                     let nameLow = track.name.lowercased()
                     let isClickOrGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia")
-                    playerNode.pan = isClickOrGuide ? -1.0 : 1.0
+                    stemMixer.pan = isClickOrGuide ? -1.0 : 1.0
+
+                    // Tap VU meter por stem individual
+                    let stemId = "\(song.id)_\(track.name)"
+                    stemMixer.installTap(onBus: 0, bufferSize: 1024, format: audioFile.processingFormat) { [weak self] buffer, _ in
+                        guard let self = self else { return }
+                        let rms = self.calculateRMS(buffer: buffer)
+                        let db = 20 * log10(max(rms, 0.00001))
+                        let clampedDB = max(-60, min(0, db))
+                        DispatchQueue.main.async {
+                            self.vuLevels[stemId] = clampedDB
+                        }
+                    }
 
                     audioFiles[track.name] = audioFile
                     playerNodes[track.name] = playerNode
-                    timePitchNodes[track.name] = timePitch  // ← Guardar para poder cambiar pitch/tempo después
+                    stemMixerNodes[track.name] = stemMixer
+                    timePitchNodes[track.name] = timePitch
 
-                    // Extraer duración real del archivo
                     let fileDuration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
                     if fileDuration > duration {
                         DispatchQueue.main.async { self.duration = fileDuration }
                     }
 
-                    // Generar peaks para la waveform (del primer stem cargado)
                     if waveformPeaks.isEmpty {
                         await generateWaveformPeaks(from: audioFile)
                     }
@@ -204,12 +267,12 @@ public class ZionAudioPlayer: ObservableObject {
                 }
             }
 
-            // Programar buffers en todos los players listos
             scheduleAllFromPosition(0)
 
             DispatchQueue.main.async {
                 self.isLoading = false
                 self.loadLabel = ""
+                self.updateNowPlayingInfo()
             }
         }
     }
@@ -249,8 +312,19 @@ public class ZionAudioPlayer: ObservableObject {
             self.waveformPeaks = peaks
         }
 
-        // Resetear posición del archivo
         file.framePosition = 0
+    }
+
+    private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
+        guard let channelData = buffer.floatChannelData else { return 0 }
+        let frameCount = Int(buffer.frameLength)
+        guard frameCount > 0 else { return 0 }
+        var sum: Float = 0
+        let data = channelData[0]
+        for i in 0..<frameCount {
+            sum += data[i] * data[i]
+        }
+        return sqrt(sum / Float(frameCount))
     }
 
     // MARK: - Programar audio desde una posición (seek)
@@ -272,12 +346,18 @@ public class ZionAudioPlayer: ObservableObject {
                 completionCallbackType: .dataConsumed
             ) { [weak self] _ in
                 DispatchQueue.main.async {
-                    // Auto-stop cuando el stem más largo termina
                     if self?.isPlaying == true {
-                        self?.stop()
+                        self?.handleSongFinished()
                     }
                 }
             }
+        }
+    }
+
+    private func handleSongFinished() {
+        stop()
+        if let callback = onSongEnded {
+            callback()
         }
     }
 
@@ -294,11 +374,11 @@ public class ZionAudioPlayer: ObservableObject {
         }
         isPlaying = true
         startProgressTimer()
+        updateNowPlayingInfo()
     }
 
     public func pause() {
         guard isPlaying else { return }
-        // Capturar posición actual antes de pausar
         if let firstNode = playerNodes.values.first,
            let lastRenderTime = firstNode.lastRenderTime,
            let playerTime = firstNode.playerTime(forNodeTime: lastRenderTime) {
@@ -308,6 +388,7 @@ public class ZionAudioPlayer: ObservableObject {
         for playerNode in playerNodes.values { playerNode.pause() }
         isPlaying = false
         stopProgressTimer()
+        updateNowPlayingInfo()
     }
 
     public func togglePlayPause() {
@@ -322,7 +403,7 @@ public class ZionAudioPlayer: ObservableObject {
             self.currentTime = 0.0
         }
         stopProgressTimer()
-        // Re-programar desde el inicio para permitir reproducir de nuevo
+        updateNowPlayingInfo()
         scheduleAllFromPosition(0)
     }
 
@@ -330,7 +411,6 @@ public class ZionAudioPlayer: ObservableObject {
         let wasPlaying = isPlaying
         let clampedTime = max(0, min(duration, time))
 
-        // Detener players sin resetear seekPosition
         for playerNode in playerNodes.values { playerNode.stop() }
         isPlaying = false
         stopProgressTimer()
@@ -341,20 +421,29 @@ public class ZionAudioPlayer: ObservableObject {
         scheduleAllFromPosition(clampedTime)
 
         if wasPlaying { play() }
+        updateNowPlayingInfo()
+    }
+
+    // MARK: - Loop A-B
+    public func toggleLoop() {
+        isLooping.toggle()
+        if isLooping && loopEnd <= loopStart {
+            loopStart = 0
+            loopEnd = duration > 0 ? duration : 30
+        }
+    }
+
+    public func setLoopRange(start: Double, end: Double) {
+        loopStart = max(0, start)
+        loopEnd = min(duration, max(loopStart + 1.0, end))
     }
 
     // MARK: - Controles por Stem
     public func setTrackVolume(id stemId: String, volume: Float) {
-        // stemId = "songId_trackName" — extraer trackName
         let trackName = stemId.components(separatedBy: "_").dropFirst().joined(separator: "_")
         stemVolumes[trackName] = volume
         if !mutedStems.contains(trackName) && soloedStem == nil {
-            playerNodes[trackName]?.volume = max(0, min(1.2, volume))
-        }
-        // Actualizar stem en currentSong para que SwiftUI lo refleje
-        if var song = currentSong, let idx = song.tracks.firstIndex(where: { $0.name == trackName }) {
-            _ = idx // solo para actualizar el binding
-            currentSong = song
+            stemMixerNodes[trackName]?.outputVolume = max(0, min(1.2, volume))
         }
     }
 
@@ -362,11 +451,11 @@ public class ZionAudioPlayer: ObservableObject {
         let trackName = stemId.components(separatedBy: "_").dropFirst().joined(separator: "_")
         if muted {
             mutedStems.insert(trackName)
-            playerNodes[trackName]?.volume = 0
+            stemMixerNodes[trackName]?.outputVolume = 0
         } else {
             mutedStems.remove(trackName)
             if soloedStem == nil {
-                playerNodes[trackName]?.volume = stemVolumes[trackName] ?? 1.0
+                stemMixerNodes[trackName]?.outputVolume = stemVolumes[trackName] ?? 1.0
             }
         }
     }
@@ -376,20 +465,20 @@ public class ZionAudioPlayer: ObservableObject {
 
         if solo {
             soloedStem = trackName
-            for (name, node) in playerNodes {
-                node.volume = name == trackName ? (stemVolumes[name] ?? 1.0) : 0
+            for (name, node) in stemMixerNodes {
+                node.outputVolume = name == trackName ? (stemVolumes[name] ?? 1.0) : 0
             }
         } else {
             soloedStem = nil
-            for (name, node) in playerNodes {
-                node.volume = mutedStems.contains(name) ? 0 : (stemVolumes[name] ?? 1.0)
+            for (name, node) in stemMixerNodes {
+                node.outputVolume = mutedStems.contains(name) ? 0 : (stemVolumes[name] ?? 1.0)
             }
         }
     }
 
     public func setTrackPan(id stemId: String, pan: Float) {
         let trackName = stemId.components(separatedBy: "_").dropFirst().joined(separator: "_")
-        playerNodes[trackName]?.pan = max(-1.0, min(1.0, pan))
+        stemMixerNodes[trackName]?.pan = max(-1.0, min(1.0, pan))
     }
 
     // MARK: - Timer de Progreso
@@ -416,23 +505,36 @@ public class ZionAudioPlayer: ObservableObject {
 
         DispatchQueue.main.async {
             self.currentTime = clampedTime
-            // Auto-stop cuando llega al final
+
+            // Manejo de Loop A-B
+            if self.isLooping && self.loopEnd > self.loopStart && clampedTime >= self.loopEnd {
+                self.seek(to: self.loopStart)
+                return
+            }
+
             if clampedTime >= self.duration - 0.2 && self.duration > 0 {
-                self.stop()
+                self.handleSongFinished()
             }
         }
     }
 
     // MARK: - Limpieza
     private func detachAllNodes() {
+        for (name, stemMixer) in stemMixerNodes {
+            stemMixer.removeTap(onBus: 0)
+        }
         for playerNode in playerNodes.values {
             playerNode.stop()
             engine.detach(playerNode)
+        }
+        for stemMixer in stemMixerNodes.values {
+            engine.detach(stemMixer)
         }
         for timePitch in timePitchNodes.values {
             engine.detach(timePitch)
         }
         playerNodes.removeAll()
+        stemMixerNodes.removeAll()
         timePitchNodes.removeAll()
         audioFiles.removeAll()
         stemVolumes.removeAll()

@@ -15,19 +15,13 @@ public struct MainView: View {
     @EnvironmentObject var firebase: FirebaseService
     @ObservedObject var player: ZionAudioPlayer = ZionAudioPlayer.shared
 
-    @State private var selectedTab: Int = 1  // Empieza en Catálogo para elegir canción
-    @State private var bottomPanel: BottomPanel? = nil
-    @State private var activeLyrics: String? = nil
-    @State private var activeChords: String? = nil
-    @State private var activePartituras: [Partitura] = []
-    @State private var lyricsListener: (any Any)? = nil  // ListenerRegistration opaco
-    @State private var chordsListener: (any Any)? = nil
-    @State private var partiturasListener: (any Any)? = nil
+    @State private var isPerformanceModeActive: Bool = false
 
     enum BottomPanel: String, CaseIterable {
         case lyrics = "Letras"
         case chords = "Acordes"
         case partituras = "Partituras"
+        case metronome = "Metrónomo"
     }
 
     public init() {}
@@ -63,7 +57,7 @@ public struct MainView: View {
                 .accentColor(.cyan)
                 .preferredColorScheme(.dark)
 
-                // Panel inferior (Letras / Acordes / Partituras)
+                // Panel inferior (Letras / Acordes / Partituras / Metrónomo)
                 if let panel = bottomPanel {
                     VStack(spacing: 0) {
                         // Handle + selector de panel
@@ -90,6 +84,10 @@ public struct MainView: View {
                         case .partituras:
                             PartiturasView(partituras: activePartituras)
                                 .frame(height: 340)
+
+                        case .metronome:
+                            MetronomePanelView()
+                                .frame(height: 340)
                         }
                     }
                     .background(
@@ -107,16 +105,39 @@ public struct MainView: View {
 
                 // Botones flotantes de panel cuando hay canción activa
                 if player.currentSong != nil {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
+                        // Botón Performance Mode (Fullscreen Stage)
+                        Button(action: { isPerformanceModeActive = true }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "rectangle.inset.topright.fill")
+                                    .font(.system(size: 14))
+                                Text("Escenario")
+                                    .font(.system(size: 9, weight: .bold))
+                            }
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.orange)
+                                    .shadow(color: Color.orange.opacity(0.5), radius: 6)
+                            )
+                        }
+
                         Spacer()
+
                         panelToggleButton(panel: .lyrics, icon: "text.bubble.fill", label: "Letras")
                         panelToggleButton(panel: .chords, icon: "music.quarternote.3", label: "Acordes")
                         panelToggleButton(panel: .partituras, icon: "doc.richtext.fill", label: "Partituras")
+                        panelToggleButton(panel: .metronome, icon: "metronome.fill", label: "Click")
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, bottomPanel != nil ? 360 : 80)
                     .animation(.spring(response: 0.3), value: bottomPanel)
                 }
+            }
+            .fullScreenCover(isPresented: $isPerformanceModeActive) {
+                PerformanceModeView(player: player, onClose: { isPerformanceModeActive = false })
             }
             .onChange(of: player.currentSong?.id) { songId in
                 loadTextContent(songId: songId)

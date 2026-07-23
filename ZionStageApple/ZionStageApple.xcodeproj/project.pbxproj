@@ -28,6 +28,14 @@
 		9B00000129B7E1C000000034 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000035 /* LyricsView.swift */; };
 		9B00000129B7E1C000000036 /* ChordsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000037 /* ChordsView.swift */; };
 		9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000039 /* PartiturasView.swift */; };
+		9B00000129B7E1C000000041 /* OfflineStorageManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000040 /* OfflineStorageManager.swift */; };
+		9B00000129B7E1C000000043 /* MetronomeEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000042 /* MetronomeEngine.swift */; };
+		9B00000129B7E1C000000045 /* TransposerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000044 /* TransposerService.swift */; };
+		9B00000129B7E1C000000047 /* BandSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000046 /* BandSyncService.swift */; };
+		9B00000129B7E1C000000049 /* SongMapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000048 /* SongMapService.swift */; };
+		9B00000129B7E1C00000004B /* HorizontalMixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004A /* HorizontalMixerView.swift */; };
+		9B00000129B7E1C00000004D /* PerformanceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004C /* PerformanceModeView.swift */; };
+		9B00000129B7E1C00000004F /* MetronomePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004E /* MetronomePanelView.swift */; };
 		FB0001A000000003 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000004 /* FirebaseAuth */; };
 		FB0001A000000005 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000006 /* FirebaseFirestore */; };
 
@@ -55,6 +63,14 @@
 		9B00000129B7E1C000000035 /* LyricsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/LyricsView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C000000037 /* ChordsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/ChordsView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C000000039 /* PartiturasView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Lyrics/PartiturasView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000040 /* OfflineStorageManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OfflineStorageManager.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000042 /* MetronomeEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Audio/MetronomeEngine.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000044 /* TransposerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/TransposerService.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000046 /* BandSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/BandSyncService.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000048 /* SongMapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/SongMapService.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C00000004A /* HorizontalMixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/HorizontalMixerView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C00000004C /* PerformanceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/PerformanceModeView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C00000004E /* MetronomePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/MetronomePanelView.swift; sourceTree = "<group>"; };
 
 		9B00000129B7E1C00000001E /* ZionStageApple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZionStageApple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -92,6 +108,14 @@
 				9B00000129B7E1C000000035 /* LyricsView.swift */,
 				9B00000129B7E1C000000037 /* ChordsView.swift */,
 				9B00000129B7E1C000000039 /* PartiturasView.swift */,
+				9B00000129B7E1C000000040 /* OfflineStorageManager.swift */,
+				9B00000129B7E1C000000042 /* MetronomeEngine.swift */,
+				9B00000129B7E1C000000044 /* TransposerService.swift */,
+				9B00000129B7E1C000000046 /* BandSyncService.swift */,
+				9B00000129B7E1C000000048 /* SongMapService.swift */,
+				9B00000129B7E1C00000004A /* HorizontalMixerView.swift */,
+				9B00000129B7E1C00000004C /* PerformanceModeView.swift */,
+				9B00000129B7E1C00000004E /* MetronomePanelView.swift */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -200,6 +224,14 @@
 				9B00000129B7E1C000000034 /* LyricsView.swift in Sources */,
 				9B00000129B7E1C000000036 /* ChordsView.swift in Sources */,
 				9B00000129B7E1C000000038 /* PartiturasView.swift in Sources */,
+				9B00000129B7E1C000000041 /* OfflineStorageManager.swift in Sources */,
+				9B00000129B7E1C000000043 /* MetronomeEngine.swift in Sources */,
+				9B00000129B7E1C000000045 /* TransposerService.swift in Sources */,
+				9B00000129B7E1C000000047 /* BandSyncService.swift in Sources */,
+				9B00000129B7E1C000000049 /* SongMapService.swift in Sources */,
+				9B00000129B7E1C00000004B /* HorizontalMixerView.swift in Sources */,
+				9B00000129B7E1C00000004D /* PerformanceModeView.swift in Sources */,
+				9B00000129B7E1C00000004F /* MetronomePanelView.swift in Sources */,
 
 			);
 			runOnlyForDeploymentPostprocessing = 0;
