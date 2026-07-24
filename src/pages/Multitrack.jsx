@@ -45,7 +45,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
-const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true;
+const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true && window.Capacitor?.getPlatform?.() === 'android';
 
 /** Serializa preparación en APK: evita solapar getUri / I-O y picos de RAM. */
 let isPreparingSong = false;
@@ -1348,7 +1348,7 @@ export default function Multitrack() {
 
         try {
             const tracks = song.tracks || [];
-            const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+            const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
 
             // Loop tracks to download
             for (let i = 0; i < tracks.length; i++) {
@@ -1504,7 +1504,7 @@ export default function Multitrack() {
         setIsPlaying(false);
         progressRef.current = 0;
         
-        const isAppNativeLoad = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        const isAppNativeLoad = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
 
         if (isAppNativeLoad && isPreparingSong) {
             console.log('[PREPARE] ignored, already running');
