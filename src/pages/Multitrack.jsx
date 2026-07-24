@@ -45,7 +45,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
-const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true && window.Capacitor?.getPlatform?.() === 'android';
+const isAppNative = typeof window !== 'undefined' && isAppNative === true && window.Capacitor?.getPlatform?.() === 'android';
 
 /** Serializa preparación en APK: evita solapar getUri / I-O y picos de RAM. */
 let isPreparingSong = false;
@@ -705,7 +705,7 @@ export default function Multitrack() {
     useEffect(() => {
         const lockOrientation = async () => {
             try {
-                if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+                if (typeof window !== 'undefined' && isAppNative) {
                     await ScreenOrientation.lock({ orientation: 'landscape' });
                 }
             } catch (e) {
@@ -1113,7 +1113,7 @@ export default function Multitrack() {
             ];
             setTracks(emptyTracks);
             audioEngine.onProgress = (t) => {
-                if (!window.Capacitor?.isNativePlatform?.()) progressRef.current = t;
+                if (!isAppNative) progressRef.current = t;
             };
             setLoading(false);
         };
@@ -1215,7 +1215,7 @@ export default function Multitrack() {
 
     // Precarga solo en web (IndexedDB + AudioBuffers). En APK desactivado: llenaba memoria y C++ colas → cierres en 4.º tema.
     const preloadSetlistSongs = async (songs) => {
-        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) return;
+        if (typeof window !== 'undefined' && isAppNative) return;
 
         for (const song of songs) {
             if (preloadCache.current.has(song.id)) {
@@ -1348,7 +1348,7 @@ export default function Multitrack() {
 
         try {
             const tracks = song.tracks || [];
-            const isAppNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
+            const isAppNative = typeof window !== 'undefined' && !!isAppNative && window.Capacitor?.getPlatform?.() === 'android';
 
             // Loop tracks to download
             for (let i = 0; i < tracks.length; i++) {
@@ -1504,7 +1504,7 @@ export default function Multitrack() {
         setIsPlaying(false);
         progressRef.current = 0;
         
-        const isAppNativeLoad = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
+        const isAppNativeLoad = typeof window !== 'undefined' && !!isAppNative && window.Capacitor?.getPlatform?.() === 'android';
 
         if (isAppNativeLoad && isPreparingSong) {
             console.log('[PREPARE] ignored, already running');
@@ -1836,7 +1836,7 @@ export default function Multitrack() {
     const handleLogin = async () => {
         setShowLoginModal(true);
         try {
-            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+            if (typeof window !== 'undefined' && isAppNative) {
                 await ScreenOrientation.lock({ orientation: 'portrait' });
             }
         } catch { /* ignore */ }
@@ -1857,7 +1857,7 @@ export default function Multitrack() {
             setLoginEmail('');
             setLoginPassword('');
             // Automatically handled by the useEffect on [currentUser], but we double call it just in case
-            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+            if (typeof window !== 'undefined' && isAppNative) {
                 await ScreenOrientation.lock({ orientation: 'landscape' });
             }
         } catch (error) {
@@ -1898,7 +1898,7 @@ export default function Multitrack() {
     const handleLogout = async () => {
         try {
             await signOut(auth);
-            if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+            if (typeof window !== 'undefined' && isAppNative) {
                 await ScreenOrientation.lock({ orientation: 'portrait' });
             }
             navigate('/'); // Regresar a inicio
@@ -1928,7 +1928,7 @@ export default function Multitrack() {
         // init() solo es necesario la primera vez (para WASM/web).
         // En nativo, ya fue llamado al cargar la canción — llamarlo de nuevo
         // agrega latencia innecesaria en dispositivos lentos (ej. tablet Helio G85).
-        if (!audioEngine.isWASMReady && !window.Capacitor?.isNativePlatform?.()) {
+        if (!audioEngine.isWASMReady && !isAppNative) {
             await audioEngine.init();
         }
         if (isPlaying) {
@@ -2061,7 +2061,7 @@ export default function Multitrack() {
     }, []);
 
     const totalDuration = React.useMemo(() => {
-        const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        const isNative = typeof window !== 'undefined' && !!isAppNative;
         const validDur = (v) => Number.isFinite(v) && v > 1;
 
         // Android contract: no fake 180 fallback.
@@ -2112,7 +2112,7 @@ export default function Multitrack() {
     // Time display (transport): Web Audio only — native uses getSnapshot via ProgressBar + onNextGenPlaybackSnapshot.
     const timeDisplayRef = useRef(null);
     useEffect(() => {
-        const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        const isNative = typeof window !== 'undefined' && isAppNative;
         if (isNative) return undefined;
         let rafId;
         const tick = () => {
@@ -2129,7 +2129,7 @@ export default function Multitrack() {
     }, [totalDuration]);
     // AUTO-STOP when song finishes — interval-based so it doesn't depend on progress state (avoids 60fps re-renders)
     useEffect(() => {
-        const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+        const isNative = typeof window !== 'undefined' && !!isAppNative;
         if (!isPlaying || totalDuration <= 0) {
             nativeAutoStopFiredRef.current = false;
             return;
@@ -2403,7 +2403,7 @@ export default function Multitrack() {
     // ── ORIENTATION MANAGEMENT ───────────────────────────────────
     useEffect(() => {
         // Detect native environment
-        const isNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.();
+        const isNative = typeof window !== 'undefined' && isAppNative;
         if (!isNative) return;
 
         const lockOrientation = async () => {

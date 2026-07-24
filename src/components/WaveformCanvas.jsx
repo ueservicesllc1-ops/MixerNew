@@ -41,7 +41,7 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
     // Markers Context Menu State
     const [contextMenu, setContextMenu] = useState(null);
 
-    const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
+    const isNative = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
     const isZionElectronDesktop = typeof window !== 'undefined'
         && !!window.zionNative
         && !window.Capacitor?.isNativePlatform?.();
