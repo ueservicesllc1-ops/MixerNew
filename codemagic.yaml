@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       xcode: latest
-      node: 20
+      node: 22
     scripts:
       - name: Build Web App & Sync Capacitor iOS
         script: |
