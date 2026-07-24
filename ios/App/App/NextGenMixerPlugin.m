@@ -1,7 +1,7 @@
 #import <Capacitor/Capacitor.h>
 
 CAP_PLUGIN(NextGenMixerPlugin, "NextGenMixerBridge",
-    CAP_PLUGIN_METHOD(loadTracks, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(loadSongSession, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(play, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(pause, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(stop, CAPPluginReturnPromise);

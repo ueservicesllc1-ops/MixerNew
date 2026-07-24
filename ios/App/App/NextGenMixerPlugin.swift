@@ -8,7 +8,7 @@ public class NextGenMixerPlugin: CAPPlugin {
     // We will use our dedicated Capacitor Audio Player instance
     private let audioPlayer = ZionAudioPlayerCapacitor.shared
 
-    @objc func loadTracks(_ call: CAPPluginCall) {
+    @objc func loadSongSession(_ call: CAPPluginCall) {
         guard let tracksArray = call.getArray("tracks") as? [[String: Any]] else {
             call.reject("Missing or invalid 'tracks' array")
             return
