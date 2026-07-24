@@ -13,6 +13,48 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Montserrat:wght@400;600;700;800&display=swap"
     rel="stylesheet">
+  <style>
+    body {
+      background-color: #0f172a;
+      color: white;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+  <script>
+    window.addEventListener('error', function(e) {
+      var d = document.createElement('div');
+      d.style.position = 'fixed';
+      d.style.top = '0';
+      d.style.left = '0';
+      d.style.right = '0';
+      d.style.padding = '20px';
+      d.style.backgroundColor = 'rgba(200, 0, 0, 0.9)';
+      d.style.color = 'white';
+      d.style.zIndex = '9999999';
+      d.style.fontSize = '12px';
+      d.style.fontFamily = 'monospace';
+      d.style.wordBreak = 'break-word';
+      d.innerHTML = '<b>JS Crash:</b> ' + e.message + '<br>' + e.filename + ':' + e.lineno + '<br><br>' + (e.error ? e.error.stack : '');
+      document.body.appendChild(d);
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      var d = document.createElement('div');
+      d.style.position = 'fixed';
+      d.style.bottom = '0';
+      d.style.left = '0';
+      d.style.right = '0';
+      d.style.padding = '20px';
+      d.style.backgroundColor = 'rgba(150, 50, 0, 0.9)';
+      d.style.color = 'white';
+      d.style.zIndex = '9999999';
+      d.style.fontSize = '12px';
+      d.style.fontFamily = 'monospace';
+      d.style.wordBreak = 'break-word';
+      d.innerHTML = '<b>Promise Crash:</b> ' + (e.reason ? e.reason.message || e.reason : 'Unknown');
+      document.body.appendChild(d);
+    });
+  </script>
 </head>
 
 <body>
