@@ -8,144 +8,73 @@ workflows:
     scripts:
       - name: Build iOS & iPadOS Physical App
         script: |
-          set -e
           cd ZionStageApple
 
           # ══════════════════════════════════════════
-          # PASO 1: Compilar para iOS sin firma
+          # PASO 1: Compilar para iOS usando -destination
+          # (Esto fuerza a SPM a compilar Firebase para iOS,
+          #  no para macOS, evitando el error de .o faltantes)
           # ══════════════════════════════════════════
-          xcodebuild build -project ZionStageApple.xcodeproj \
-                     -scheme ZionStageApple \
-                     -sdk iphoneos \
-                     -configuration Release \
-                     -derivedDataPath build_ios \
-                     IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
+          xcodebuild build \
+            -project ZionStageApple.xcodeproj \
+            -scheme ZionStageApple \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -derivedDataPath build_ios \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=15.0
 
           # ══════════════════════════════════════════
-          # PASO 2: Diagnosticar toda la salida de Xcode
+          # PASO 2: Verificar el .app generado
           # ══════════════════════════════════════════
           echo "======================================="
-          echo "=== DIAGNÓSTICO COMPLETO ==="
+          echo "=== DIAGNÓSTICO POST-BUILD ==="
           echo "======================================="
 
-          echo "--- Todos los archivos llamados ZionStageApple (sin extensión) ---"
-          find build_ios -type f -name "ZionStageApple" 2>/dev/null | while read f; do
-            echo "  $f  ($(ls -lh "$f" | awk '{print $5}'))"
-            file "$f" || true
-          done
-
-          echo "--- Todas las carpetas .app ---"
-          find build_ios -type d -name "*.app" 2>/dev/null
-
-          echo "--- Contenido de Release-iphoneos (si existe) ---"
-          ls -lahR build_ios/Build/Products/Release-iphoneos/ 2>/dev/null | head -60
-
-          echo "--- Frameworks dinámicos (.framework con binario) ---"
-          find build_ios/Build/Products/Release-iphoneos -name "*.framework" -type d 2>/dev/null | while read fw; do
-            fw_name=$(basename "$fw" .framework)
-            if [ -f "$fw/$fw_name" ]; then
-              fw_type=$(file "$fw/$fw_name" 2>/dev/null || echo "unknown")
-              echo "  DINÁMICO: $fw ($fw_type)"
-            else
-              echo "  ESTÁTICO (sin binario): $fw"
-            fi
-          done
-
-          echo "--- PackageFrameworks ---"
-          find build_ios -path "*/PackageFrameworks" -type d 2>/dev/null | head -5
-
-          # ══════════════════════════════════════════
-          # PASO 3: Ensamblar manualmente el .app completo
-          # ══════════════════════════════════════════
           APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          if [ ! -d "$APP_DIR" ]; then
-            echo "!!! No existe $APP_DIR, buscando alternativa..."
-            APP_DIR=$(find build_ios -type d -name "ZionStageApple.app" 2>/dev/null | head -1)
-          fi
+          echo "--- Buscando .app ---"
+          find build_ios -type d -name "ZionStageApple.app" 2>/dev/null
 
-          if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
-            echo "!!! ERROR CRÍTICO: No se generó la carpeta .app !!!"
-            exit 1
-          fi
-
-          echo "=== Usando .app en: $APP_DIR ==="
-
-          # 3a: Buscar e inyectar el binario ejecutable Mach-O ARM64
-          BINARY=""
-
-          # Intentar la ruta estándar de Intermediates
-          BINARY=$(find build_ios/Build/Intermediates.noindex -type f -name "ZionStageApple" -path "*/Objects-normal/arm64/*" 2>/dev/null | while read f; do
-            if file "$f" | grep -qi "mach-o\|executable"; then
-              echo "$f"
-              break
-            fi
-          done)
-
-          # Fallback: cualquier archivo ZionStageApple que sea un ejecutable Mach-O
-          if [ -z "$BINARY" ]; then
-            BINARY=$(find build_ios -type f -name "ZionStageApple" 2>/dev/null | while read f; do
-              if file "$f" | grep -qi "mach-o\|executable"; then
-                echo "$f"
-                break
-              fi
-            done)
-          fi
-
-          if [ -n "$BINARY" ]; then
-            echo "=== Inyectando binario: $BINARY ($(ls -lh "$BINARY" | awk '{print $5}')) ==="
-            cp "$BINARY" "$APP_DIR/ZionStageApple"
-            chmod +x "$APP_DIR/ZionStageApple"
-          else
-            echo "!!! ADVERTENCIA: No se encontró binario ejecutable Mach-O para inyectar !!!"
-            echo "!!! El .ipa resultante no será funcional !!!"
-          fi
-
-          # 3b: Copiar SOLO frameworks dinámicos (con binario ejecutable dentro)
-          FRAMEWORKS_SRC="build_ios/Build/Products/Release-iphoneos"
-          for fw in "$FRAMEWORKS_SRC"/*.framework; do
-            [ ! -d "$fw" ] && continue
-            fw_name=$(basename "$fw" .framework)
-            # Solo copiar si el framework contiene un binario ejecutable
-            if [ -f "$fw/$fw_name" ]; then
-              echo "=== Copiando framework dinámico: $fw_name ==="
-              mkdir -p "$APP_DIR/Frameworks"
-              cp -R "$fw" "$APP_DIR/Frameworks/"
-            else
-              echo "--- Omitiendo framework estático (sin binario): $fw_name ---"
-            fi
+          echo "--- Buscando binarios ejecutables ZionStageApple ---"
+          find build_ios -type f -name "ZionStageApple" 2>/dev/null | while read f; do
+            echo "  $f  size=$(ls -lh "$f" | awk '{print $5}')  type=$(file "$f")"
           done
 
-          # 3c: Copiar PackageFrameworks (frameworks de Swift Package Manager)
-          PKG_FW=$(find build_ios -path "*/Release-iphoneos/PackageFrameworks" -type d 2>/dev/null | head -1)
-          if [ -n "$PKG_FW" ]; then
-            for fw in "$PKG_FW"/*.framework; do
-              [ ! -d "$fw" ] && continue
-              fw_name=$(basename "$fw" .framework)
-              if [ -f "$fw/$fw_name" ]; then
-                echo "=== Copiando PackageFramework dinámico: $fw_name ==="
-                mkdir -p "$APP_DIR/Frameworks"
-                cp -R "$fw" "$APP_DIR/Frameworks/"
+          # Si el .app no tiene el binario dentro, inyectarlo
+          if [ -d "$APP_DIR" ]; then
+            if [ ! -f "$APP_DIR/ZionStageApple" ]; then
+              echo "=== Binario no está dentro del .app, buscando para inyectar ==="
+              BINARY=$(find build_ios -type f -name "ZionStageApple" ! -path "*.app/*" 2>/dev/null | while read f; do
+                if file "$f" | grep -qi "mach-o"; then echo "$f"; break; fi
+              done)
+              if [ -n "$BINARY" ]; then
+                echo "=== Inyectando: $BINARY ==="
+                cp "$BINARY" "$APP_DIR/ZionStageApple"
+                chmod +x "$APP_DIR/ZionStageApple"
               fi
-            done
-          fi
+            fi
 
-          # Verificación final del .app
-          echo "======================================="
-          echo "=== CONTENIDO FINAL DEL .APP ==="
-          echo "======================================="
-          ls -lah "$APP_DIR/"
-          if [ -d "$APP_DIR/Frameworks" ]; then
-            echo "--- Frameworks incluidos ---"
-            ls -lah "$APP_DIR/Frameworks/"
+            echo "=== Contenido final del .app ==="
+            ls -lah "$APP_DIR/"
+            du -sh "$APP_DIR"
+          else
+            echo "!!! .app no encontrado en ruta esperada, buscando alternativa ==="
+            APP_DIR=$(find build_ios -type d -name "ZionStageApple.app" 2>/dev/null | head -1)
+            if [ -n "$APP_DIR" ]; then
+              echo "=== Encontrado en: $APP_DIR ==="
+              ls -lah "$APP_DIR/"
+              du -sh "$APP_DIR"
+            else
+              echo "!!! ERROR CRÍTICO: No existe ningún .app !!!"
+              exit 1
+            fi
           fi
-          du -sh "$APP_DIR"
 
           # ══════════════════════════════════════════
-          # PASO 4: Empaquetar IPA
+          # PASO 3: Empaquetar IPA
           # ══════════════════════════════════════════
           rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
           mkdir -p build_ios/Payload
@@ -160,15 +89,16 @@ workflows:
       - name: Build macOS App
         script: |
           cd ZionStageApple
-          xcodebuild -project ZionStageApple.xcodeproj \
-                     -scheme ZionStageApple \
-                     -sdk macosx \
-                     -configuration Release \
-                     -derivedDataPath build_macos \
-                     MACOSX_DEPLOYMENT_TARGET=12.0 \
-                     CODE_SIGN_IDENTITY="" \
-                     CODE_SIGNING_REQUIRED=NO \
-                     CODE_SIGNING_ALLOWED=NO
+          xcodebuild build \
+            -project ZionStageApple.xcodeproj \
+            -scheme ZionStageApple \
+            -destination 'platform=macOS' \
+            -configuration Release \
+            -derivedDataPath build_macos \
+            MACOSX_DEPLOYMENT_TARGET=12.0 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
     artifacts:
       - ZionStageApple/build_ios/*.ipa
       - ZionStageApple/build_ios/Build/Products/Release-iphoneos/*.app
