@@ -15,9 +15,9 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
-		B910EB9C1CA94F4997DCDBB3 /* NextGenMixerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD72CE486E74A72A99D608C /* NextGenMixerPlugin.swift */; };
-		0636218E038A4DB4859EDFC9 /* NextGenMixerPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 389444B8BE7742DEB6486212 /* NextGenMixerPlugin.m */; };
-		2899971FA3EC442797FF26DC /* ZionAudioPlayerCapacitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDD07EAA31E04E51958EBD9C /* ZionAudioPlayerCapacitor.swift */; };
+		C89599CDE432438B9D0FCCFF /* NextGenMixerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F27D315D06142939BDFAAF1 /* NextGenMixerPlugin.swift */; };
+		A82EF42160864475B718CB66 /* NextGenMixerPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */; };
+		B760BF66FC73456793916D41 /* ZionAudioPlayerCapacitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,9 +31,9 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
-		6CD72CE486E74A72A99D608C /* NextGenMixerPlugin.swift */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.swift"; path = "NextGenMixerPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
-		389444B8BE7742DEB6486212 /* NextGenMixerPlugin.m */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.m"; path = "NextGenMixerPlugin.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
-		BDD07EAA31E04E51958EBD9C /* ZionAudioPlayerCapacitor.swift */ = {isa = PBXFileReference; name = "ZionAudioPlayerCapacitor.swift"; path = "ZionAudioPlayerCapacitor.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		0F27D315D06142939BDFAAF1 /* NextGenMixerPlugin.swift */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.swift"; path = "NextGenMixerPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.m"; path = "NextGenMixerPlugin.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
+		E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */ = {isa = PBXFileReference; name = "ZionAudioPlayerCapacitor.swift"; path = "ZionAudioPlayerCapacitor.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,9 +76,9 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				2FAD9762203C412B000D30F8 /* config.xml */,
 				50B271D01FEDC1A000F3C39B /* public */,
-				6CD72CE486E74A72A99D608C /* NextGenMixerPlugin.swift */,
-				389444B8BE7742DEB6486212 /* NextGenMixerPlugin.m */,
-				BDD07EAA31E04E51958EBD9C /* ZionAudioPlayerCapacitor.swift */,
+				0F27D315D06142939BDFAAF1 /* NextGenMixerPlugin.swift */,
+				1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */,
+				E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -165,9 +165,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
-				B910EB9C1CA94F4997DCDBB3 /* NextGenMixerPlugin.swift in Sources */,
-				0636218E038A4DB4859EDFC9 /* NextGenMixerPlugin.m in Sources */,
-				2899971FA3EC442797FF26DC /* ZionAudioPlayerCapacitor.swift in Sources */,
+				C89599CDE432438B9D0FCCFF /* NextGenMixerPlugin.swift in Sources */,
+				A82EF42160864475B718CB66 /* NextGenMixerPlugin.m in Sources */,
+				B760BF66FC73456793916D41 /* ZionAudioPlayerCapacitor.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
