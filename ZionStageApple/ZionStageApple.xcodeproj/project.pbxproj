@@ -36,6 +36,8 @@
 		9B00000129B7E1C00000004B /* HorizontalMixerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004A /* HorizontalMixerView.swift */; };
 		9B00000129B7E1C00000004D /* PerformanceModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004C /* PerformanceModeView.swift */; };
 		9B00000129B7E1C00000004F /* MetronomePanelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C00000004E /* MetronomePanelView.swift */; };
+		9B00000129B7E1C000000051 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000050 /* GoogleService-Info.plist */; };
+		9B00000129B7E1C000000053 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B00000129B7E1C000000054 /* Assets.xcassets */; };
 		FB0001A000000003 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000004 /* FirebaseAuth */; };
 		FB0001A000000005 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = FB0001A000000006 /* FirebaseFirestore */; };
 
@@ -71,6 +73,8 @@
 		9B00000129B7E1C00000004A /* HorizontalMixerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/HorizontalMixerView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C00000004C /* PerformanceModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/PerformanceModeView.swift; sourceTree = "<group>"; };
 		9B00000129B7E1C00000004E /* MetronomePanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Mixer/MetronomePanelView.swift; sourceTree = "<group>"; };
+		9B00000129B7E1C000000050 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = GoogleService-Info.plist; sourceTree = "<group>"; };
+		9B00000129B7E1C000000054 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 
 		9B00000129B7E1C00000001E /* ZionStageApple.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ZionStageApple.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -116,6 +120,8 @@
 				9B00000129B7E1C00000004A /* HorizontalMixerView.swift */,
 				9B00000129B7E1C00000004C /* PerformanceModeView.swift */,
 				9B00000129B7E1C00000004E /* MetronomePanelView.swift */,
+				9B00000129B7E1C000000050 /* GoogleService-Info.plist */,
+				9B00000129B7E1C000000054 /* Assets.xcassets */,
 			);
 			path = Shared;
 			sourceTree = "<group>";
@@ -137,6 +143,7 @@
 			buildPhases = (
 				FB0001A000000010 /* Frameworks */,
 				9B00000129B7E1C000000023 /* Sources */,
+				9B00000129B7E1C000000052 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -197,6 +204,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9B00000129B7E1C000000052 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9B00000129B7E1C000000051 /* GoogleService-Info.plist in Resources */,
+				9B00000129B7E1C000000053 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		9B00000129B7E1C000000023 /* Sources */ = {
