@@ -2,8 +2,9 @@
 //  CyberHeaderView.swift
 //  ZionStageApple
 //
-//  Cabecera estilo Cyber/Dark con información de la canción (Título, Artista, BPM, Key, Compás)
-//  y controles avanzados de Tono (Pitch Shift -3 a +3 semitonos) y Tempo (Ratio BPM).
+//  Cabecera multitrack en SwiftUI estilo Android/Slate.
+//  Muestra el título de la canción, artista, badges de BPM, Key y Compás,
+//  junto con el control de Tono (Pitch Shift) y Tempo (Speed multiplier).
 //
 
 import SwiftUI
@@ -17,57 +18,57 @@ public struct CyberHeaderView: View {
 
     public var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            // Título, Artista y Badges
+            // Título de la Canción, Artista y Badges
             VStack(alignment: .leading, spacing: 6) {
-                Text(player.currentSong?.title ?? "Ninguna canción cargada")
-                    .font(.title2.weight(.bold))
+                Text(player.currentSong?.title ?? "Sin canción cargada")
+                    .font(.system(size: 20, weight: .bold, design: .default))
                     .foregroundColor(.white)
                     .lineLimit(1)
 
                 HStack(spacing: 8) {
-                    Text(player.currentSong?.artist ?? "Selecciona una pista de la librería")
-                        .font(.subheadline)
-                        .foregroundColor(Color(red: 0.7, green: 0.7, blue: 0.7))
+                    Text(player.currentSong?.artist ?? "Selecciona un tema del catálogo")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.6, green: 0.7, blue: 0.8))
                         .lineLimit(1)
 
                     if let song = player.currentSong {
                         // Badge BPM
                         HStack(spacing: 3) {
-                            Image(systemName: "metronome")
+                            Image(systemName: "metronome.fill")
                                 .font(.system(size: 10))
                             Text("\(Int(song.tempo ?? 120)) BPM")
-                                .font(.system(size: 11).weight(.bold))
+                                .font(.system(size: 11, weight: .bold))
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.orange.opacity(0.2))
-                        .foregroundColor(.orange)
+                        .padding(.vertical, 4)
+                        .background(Color(red: 0.97, green: 0.45, blue: 0.09).opacity(0.2))
+                        .foregroundColor(Color(red: 0.97, green: 0.45, blue: 0.09))
                         .cornerRadius(6)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.orange.opacity(0.4), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(red: 0.97, green: 0.45, blue: 0.09).opacity(0.5), lineWidth: 1))
 
                         // Badge Tonalidad / Key
                         HStack(spacing: 3) {
                             Image(systemName: "music.note")
                                 .font(.system(size: 10))
                             Text(song.key ?? "-")
-                                .font(.system(size: 11).weight(.bold))
+                                .font(.system(size: 11, weight: .bold))
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.cyan.opacity(0.2))
-                        .foregroundColor(.cyan)
+                        .padding(.vertical, 4)
+                        .background(Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.2))
+                        .foregroundColor(Color(red: 0.07, green: 0.71, blue: 0.71))
                         .cornerRadius(6)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.cyan.opacity(0.4), lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.5), lineWidth: 1))
 
                         // Badge Compás
                         Text(song.timeSignature ?? "4/4")
-                            .font(.system(size: 11).weight(.bold))
+                            .font(.system(size: 11, weight: .bold))
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.purple.opacity(0.2))
-                            .foregroundColor(.purple)
+                            .padding(.vertical, 4)
+                            .background(Color(red: 0.66, green: 0.33, blue: 0.97).opacity(0.2))
+                            .foregroundColor(Color(red: 0.66, green: 0.33, blue: 0.97))
                             .cornerRadius(6)
-                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.purple.opacity(0.4), lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color(red: 0.66, green: 0.33, blue: 0.97).opacity(0.5), lineWidth: 1))
                     }
                 }
             }
@@ -79,13 +80,13 @@ public struct CyberHeaderView: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(red: 0.1, green: 0.12, blue: 0.18))
-                .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(red: 0.09, green: 0.12, blue: 0.2))
+                .shadow(color: Color.black.opacity(0.5), radius: 6, x: 0, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.cyan.opacity(0.25), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal)
     }
