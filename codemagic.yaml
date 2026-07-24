@@ -1,29 +1,23 @@
 workflows:
   ios-native-workflow:
-    name: Build Native Apple App (iOS, iPadOS)
+    name: Build Native Apple App (iOS, iPadOS, macOS)
     max_build_duration: 60
     instance_type: mac_mini_m1
     environment:
       xcode: latest
-      node: 20
     scripts:
-      - name: Build Web App & Sync Capacitor iOS
+      - name: Build iOS & iPadOS Physical App
         script: |
-          set -e
-          npm ci || npm install
-          npm run build
-          npx cap add ios || true
-          npx cap sync ios
+          cd ZionStageApple
 
-      - name: Build iOS App with Capacitor (100% Identical to Android)
-        script: |
-          set -e
-          cd ios/App
-
-          # Compilar el proyecto Xcode de Capacitor para iOS
+          # ══════════════════════════════════════════
+          # PASO 1: Compilar para iOS usando -destination
+          # (Esto fuerza a SPM a compilar Firebase para iOS,
+          #  no para macOS, evitando el error de .o faltantes)
+          # ══════════════════════════════════════════
           xcodebuild build \
-            -project App.xcodeproj \
-            -scheme App \
+            -project ZionStageApple.xcodeproj \
+            -scheme ZionStageApple \
             -destination 'generic/platform=iOS' \
             -configuration Release \
             -derivedDataPath build_ios \
@@ -32,56 +26,80 @@ workflows:
             CODE_SIGNING_ALLOWED=NO \
             IPHONEOS_DEPLOYMENT_TARGET=15.0
 
+          # ══════════════════════════════════════════
+          # PASO 2: Verificar el .app generado
+          # ══════════════════════════════════════════
           echo "======================================="
-          echo "=== DIAGNÓSTICO DEL BUNDLE CAPACITOR IOS ==="
+          echo "=== DIAGNÓSTICO POST-BUILD ==="
           echo "======================================="
 
-          APP_DIR=$(find build_ios -type d -name "App.app" 2>/dev/null | head -1)
+          APP_DIR="build_ios/Build/Products/Release-iphoneos/ZionStageApple.app"
 
-          if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
-            echo "=== App.app encontrado en: $APP_DIR ==="
+          echo "--- Buscando .app ---"
+          find build_ios -type d -name "ZionStageApple.app" 2>/dev/null
 
-            # Inyectar binario si Xcode no lo colocó dentro de App.app por falta de firma
-            if [ ! -f "$APP_DIR/App" ]; then
-              echo "=== Buscando binario ejecutable para inyectar ==="
-              BINARY=$(find build_ios -type f -name "App" ! -path "*.app/*" 2>/dev/null | while read f; do
+          echo "--- Buscando binarios ejecutables ZionStageApple ---"
+          find build_ios -type f -name "ZionStageApple" 2>/dev/null | while read f; do
+            echo "  $f  size=$(ls -lh "$f" | awk '{print $5}')  type=$(file "$f")"
+          done
+
+          # Si el .app no tiene el binario dentro, inyectarlo
+          if [ -d "$APP_DIR" ]; then
+            if [ ! -f "$APP_DIR/ZionStageApple" ]; then
+              echo "=== Binario no está dentro del .app, buscando para inyectar ==="
+              BINARY=$(find build_ios -type f -name "ZionStageApple" ! -path "*.app/*" 2>/dev/null | while read f; do
                 if file "$f" | grep -qi "mach-o"; then echo "$f"; break; fi
               done)
               if [ -n "$BINARY" ]; then
-                echo "=== Inyectando binario: $BINARY ==="
-                cp "$BINARY" "$APP_DIR/App"
-                chmod +x "$APP_DIR/App"
+                echo "=== Inyectando: $BINARY ==="
+                cp "$BINARY" "$APP_DIR/ZionStageApple"
+                chmod +x "$APP_DIR/ZionStageApple"
               fi
             fi
 
-            # Copiar frameworks dinámicos si existen en Release-iphoneos
-            FW_DIR="build_ios/Build/Products/Release-iphoneos"
-            if [ -d "$FW_DIR" ]; then
-              for fw in "$FW_DIR"/*.framework; do
-                [ ! -d "$fw" ] && continue
-                fw_name=$(basename "$fw" .framework)
-                if [ -f "$fw/$fw_name" ]; then
-                  echo "=== Copiando framework dinámico: $fw_name ==="
-                  mkdir -p "$APP_DIR/Frameworks"
-                  cp -R "$fw" "$APP_DIR/Frameworks/"
-                fi
-              done
-            fi
-
-            rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
-            mkdir -p build_ios/Payload
-            cp -R "$APP_DIR" build_ios/Payload/
-            cd build_ios && zip -r ZionStageApple.ipa Payload
-
-            echo "======================================="
-            echo "=== TAMAÑO FINAL DEL IPA CAPACITOR ==="
-            echo "======================================="
-            ls -lah ZionStageApple.ipa
+            echo "=== Contenido final del .app ==="
+            ls -lah "$APP_DIR/"
+            du -sh "$APP_DIR"
           else
-            echo "!!! ERROR CRÍTICO: No se encontró App.app !!!"
-            exit 1
+            echo "!!! .app no encontrado en ruta esperada, buscando alternativa ==="
+            APP_DIR=$(find build_ios -type d -name "ZionStageApple.app" 2>/dev/null | head -1)
+            if [ -n "$APP_DIR" ]; then
+              echo "=== Encontrado en: $APP_DIR ==="
+              ls -lah "$APP_DIR/"
+              du -sh "$APP_DIR"
+            else
+              echo "!!! ERROR CRÍTICO: No existe ningún .app !!!"
+              exit 1
+            fi
           fi
 
+          # ══════════════════════════════════════════
+          # PASO 3: Empaquetar IPA
+          # ══════════════════════════════════════════
+          rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
+          mkdir -p build_ios/Payload
+          cp -R "$APP_DIR" build_ios/Payload/
+          cd build_ios && zip -r ZionStageApple.ipa Payload
+
+          echo "======================================="
+          echo "=== TAMAÑO FINAL DEL IPA ==="
+          echo "======================================="
+          ls -lah ZionStageApple.ipa
+
+      - name: Build macOS App
+        script: |
+          cd ZionStageApple
+          xcodebuild build \
+            -project ZionStageApple.xcodeproj \
+            -scheme ZionStageApple \
+            -destination 'platform=macOS' \
+            -configuration Release \
+            -derivedDataPath build_macos \
+            MACOSX_DEPLOYMENT_TARGET=12.0 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
     artifacts:
-      - ios/App/build_ios/*.ipa
-      - ios/App/build_ios/Build/Products/Release-iphoneos/*.app
+      - ZionStageApple/build_ios/*.ipa
+      - ZionStageApple/build_ios/Build/Products/Release-iphoneos/*.app
+      - ZionStageApple/build_macos/Build/Products/Release/*.app
