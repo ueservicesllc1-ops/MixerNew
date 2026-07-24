@@ -82,4 +82,14 @@ class DataStore: ObservableObject {
         listener?.remove()
         listener = nil
     }
+    
+    func fetchLyrics(for songId: String, completion: @escaping (String?) -> Void) {
+        db.collection("lyrics").whereField("songId", isEqualTo: songId).getDocuments { snapshot, error in
+            if let doc = snapshot?.documents.first {
+                completion(doc.data()["content"] as? String)
+            } else {
+                completion(nil)
+            }
+        }
+    }
 }

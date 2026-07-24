@@ -22,6 +22,7 @@
 		FE87939F35854759B1C6E650 /* SetlistsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45480545B0D438AB40B78E1 /* SetlistsView.swift */; };
 		2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */; };
 		749C825094224049800E43CE /* AudioEngineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */; };
+		54BF15354E064317A1D72659 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 023AE95B18F34151A24648F1 /* LyricsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +43,7 @@
 		B45480545B0D438AB40B78E1 /* SetlistsView.swift */ = {isa = PBXFileReference; name = "SetlistsView.swift"; path = "SetlistsView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */ = {isa = PBXFileReference; name = "DownloadManager.swift"; path = "DownloadManager.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */ = {isa = PBXFileReference; name = "AudioEngineViewModel.swift"; path = "AudioEngineViewModel.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		023AE95B18F34151A24648F1 /* LyricsView.swift */ = {isa = PBXFileReference; name = "LyricsView.swift"; path = "LyricsView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +93,7 @@
 				B45480545B0D438AB40B78E1 /* SetlistsView.swift */,
 				1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */,
 				1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */,
+				023AE95B18F34151A24648F1 /* LyricsView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -184,6 +187,7 @@
 				FE87939F35854759B1C6E650 /* SetlistsView.swift in Sources */,
 				2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */,
 				749C825094224049800E43CE /* AudioEngineViewModel.swift in Sources */,
+				54BF15354E064317A1D72659 /* LyricsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

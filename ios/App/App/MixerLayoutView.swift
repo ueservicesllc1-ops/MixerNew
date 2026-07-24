@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MixerLayoutView: View {
     @ObservedObject var authViewModel: AuthViewModel
+    @State private var selectedTab: Int = 0
     
     var body: some View {
         HStack(spacing: 0) {
@@ -26,22 +27,38 @@ struct MixerLayoutView: View {
                 .padding()
                 .background(Color.Zion.cardDark)
                 
-                // Mixer Grid
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: 12) {
-                        if AudioEngineViewModel.shared.loadedTracks.isEmpty {
-                            Text("Selecciona una canción del setlist para comenzar.")
-                                .foregroundColor(Color.Zion.textSecondary)
-                                .padding(.top, 50)
-                        } else {
-                            ForEach(AudioEngineViewModel.shared.loadedTracks) { track in
-                                MixerChannelView(track: track)
+                // Tabs Navigation
+                HStack {
+                    Button("Mixer") { selectedTab = 0 }
+                        .padding()
+                        .foregroundColor(selectedTab == 0 ? Color.Zion.primaryCyan : .gray)
+                    Button("Letras") { selectedTab = 1 }
+                        .padding()
+                        .foregroundColor(selectedTab == 1 ? Color.Zion.primaryCyan : .gray)
+                    Spacer()
+                }
+                .background(Color.Zion.cardDark)
+                
+                // Content
+                if selectedTab == 0 {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        HStack(spacing: 12) {
+                            if AudioEngineViewModel.shared.loadedTracks.isEmpty {
+                                Text("Selecciona una canción del setlist para comenzar.")
+                                    .foregroundColor(Color.Zion.textSecondary)
+                                    .padding(.top, 50)
+                            } else {
+                                ForEach(AudioEngineViewModel.shared.loadedTracks) { track in
+                                    MixerChannelView(track: track)
+                                }
                             }
                         }
+                        .padding()
                     }
-                    .padding()
+                    .background(Color.Zion.backgroundDark)
+                } else {
+                    LyricsView()
                 }
-                .background(Color.Zion.backgroundDark)
                 
                 // Bottom Playback Bar
                 HStack(spacing: 20) {
