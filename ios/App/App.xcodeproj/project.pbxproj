@@ -23,6 +23,10 @@
 		2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */; };
 		749C825094224049800E43CE /* AudioEngineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */; };
 		54BF15354E064317A1D72659 /* LyricsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 023AE95B18F34151A24648F1 /* LyricsView.swift */; };
+		20324F8C0E754436AA098E92 /* MixerChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84584147A0B44D2AA5B5618F /* MixerChannelView.swift */; };
+		DDCBC02D15B047D7848FEEA9 /* MixerLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A1E084913C45418073D14D /* MixerLayoutView.swift */; };
+		886A65C7650D40019B05677B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB20BB8083E4BDF8BF9259D /* Theme.swift */; };
+		B47CCB883A424EE390FBF443 /* VerticalFader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +48,10 @@
 		1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */ = {isa = PBXFileReference; name = "DownloadManager.swift"; path = "DownloadManager.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */ = {isa = PBXFileReference; name = "AudioEngineViewModel.swift"; path = "AudioEngineViewModel.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		023AE95B18F34151A24648F1 /* LyricsView.swift */ = {isa = PBXFileReference; name = "LyricsView.swift"; path = "LyricsView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		84584147A0B44D2AA5B5618F /* MixerChannelView.swift */ = {isa = PBXFileReference; name = "MixerChannelView.swift"; path = "MixerChannelView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		97A1E084913C45418073D14D /* MixerLayoutView.swift */ = {isa = PBXFileReference; name = "MixerLayoutView.swift"; path = "MixerLayoutView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		ABB20BB8083E4BDF8BF9259D /* Theme.swift */ = {isa = PBXFileReference; name = "Theme.swift"; path = "Theme.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */ = {isa = PBXFileReference; name = "VerticalFader.swift"; path = "VerticalFader.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +102,10 @@
 				1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */,
 				1D1DED08BC464C1AAE4ADF13 /* AudioEngineViewModel.swift */,
 				023AE95B18F34151A24648F1 /* LyricsView.swift */,
+				84584147A0B44D2AA5B5618F /* MixerChannelView.swift */,
+				97A1E084913C45418073D14D /* MixerLayoutView.swift */,
+				ABB20BB8083E4BDF8BF9259D /* Theme.swift */,
+				98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -188,6 +200,10 @@
 				2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */,
 				749C825094224049800E43CE /* AudioEngineViewModel.swift in Sources */,
 				54BF15354E064317A1D72659 /* LyricsView.swift in Sources */,
+				20324F8C0E754436AA098E92 /* MixerChannelView.swift in Sources */,
+				DDCBC02D15B047D7848FEEA9 /* MixerLayoutView.swift in Sources */,
+				886A65C7650D40019B05677B /* Theme.swift in Sources */,
+				B47CCB883A424EE390FBF443 /* VerticalFader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
