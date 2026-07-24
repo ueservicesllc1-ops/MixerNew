@@ -556,7 +556,7 @@ export const NativeEngine = {
     getPosition: async () => {
         try {
             const s = await nextGenSnapshot();
-            const p = s.positionSec;
+            const p = s.positionSec ?? s.currentTime;
             return typeof p === 'number' && Number.isFinite(p) ? p : 0;
         } catch (err) {
             console.warn('[NativeEngine] getPosition error', err);
@@ -567,7 +567,7 @@ export const NativeEngine = {
     getDuration: async () => {
         try {
             const s = await nextGenSnapshot();
-            const d = s.durationSec;
+            const d = s.durationSec ?? s.duration;
             return typeof d === 'number' && Number.isFinite(d) ? d : 0;
         } catch (err) {
             console.warn('[NativeEngine] getDuration error', err);
