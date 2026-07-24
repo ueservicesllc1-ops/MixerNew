@@ -17,7 +17,7 @@ async function getNative() {
     return _nativeEngine;
 }
 
-const IS_NATIVE = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
+const IS_NATIVE = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
 const IS_DESKTOP = typeof window !== 'undefined' && (
     window.electronAPI?.isDesktop === true || window.zionNative?.isDesktop === true
 );
