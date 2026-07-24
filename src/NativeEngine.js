@@ -416,7 +416,29 @@ export const NativeEngine = {
     loadTracks: async (tracks) => {
         try {
             console.log('[NEXTGEN_UI] load song', tracks?.length ?? 0);
-            await NextGenMixerBridge.loadSongSession({ tracks });
+            const batch = [];
+            for (const t of tracks) {
+                try {
+                    let absolutePath = t.path;
+                    if (absolutePath && !absolutePath.includes('://') && !absolutePath.startsWith('/')) {
+                        const base = absolutePath.includes('.') ? absolutePath.substring(0, absolutePath.lastIndexOf('.')) : absolutePath;
+                        if (await fileExists(`${base}.flac`)) {
+                            absolutePath = await getFilePath(`${base}.flac`);
+                        } else if (await fileExists(`${base}.wav`)) {
+                            absolutePath = await getFilePath(`${base}.wav`);
+                        } else if (await fileExists(`${base}.mp3`)) {
+                            absolutePath = await getFilePath(`${base}.mp3`);
+                        } else {
+                            const { uri } = await Filesystem.getUri({ path: absolutePath, directory: Directory.Data });
+                            absolutePath = uri.replace('file://', '');
+                        }
+                    }
+                    batch.push({ id: t.id, path: absolutePath });
+                } catch (e) {
+                    batch.push({ id: t.id, path: t.path });
+                }
+            }
+            await NextGenMixerBridge.loadSongSession({ tracks: batch });
         } catch (err) {
             console.error('[NativeEngine] loadTracks error:', err);
         }
