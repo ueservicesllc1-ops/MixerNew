@@ -31,9 +31,9 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
-		6CD72CE486E74A72A99D608C /* NextGenMixerPlugin.swift */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.swift"; path = "App/NextGenMixerPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
-		389444B8BE7742DEB6486212 /* NextGenMixerPlugin.m */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.m"; path = "App/NextGenMixerPlugin.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
-		BDD07EAA31E04E51958EBD9C /* ZionAudioPlayerCapacitor.swift */ = {isa = PBXFileReference; name = "ZionAudioPlayerCapacitor.swift"; path = "App/ZionAudioPlayerCapacitor.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		6CD72CE486E74A72A99D608C /* NextGenMixerPlugin.swift */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.swift"; path = "NextGenMixerPlugin.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		389444B8BE7742DEB6486212 /* NextGenMixerPlugin.m */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.m"; path = "NextGenMixerPlugin.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
+		BDD07EAA31E04E51958EBD9C /* ZionAudioPlayerCapacitor.swift */ = {isa = PBXFileReference; name = "ZionAudioPlayerCapacitor.swift"; path = "ZionAudioPlayerCapacitor.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
