@@ -20,9 +20,12 @@ workflows:
           set -e
           cd ios/App
 
-          # Compilar el proyecto Xcode de Capacitor para iOS
+          # Instalar CocoaPods
+          pod install
+
+          # Compilar usando el workspace (requerido por CocoaPods)
           xcodebuild build \
-            -project App.xcodeproj \
+            -workspace App.xcworkspace \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -configuration Release \
