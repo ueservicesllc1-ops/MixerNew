@@ -1,8 +1,17 @@
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin, Capacitor } from '@capacitor/core';
 
 /**
  * NextGen native multitrack bridge (Android). Zion uses this for playback via NativeEngine.
  */
-export const NextGenMixerBridge = registerPlugin('NextGenMixerBridge', {
-    web: () => import('./NextGenMixerPluginWeb.js').then((m) => new m.NextGenMixerPluginWeb()),
-});
+import { NextGenMixerPluginWeb } from './NextGenMixerPluginWeb.js';
+
+let bridge;
+if (Capacitor.getPlatform() === 'ios') {
+    bridge = new NextGenMixerPluginWeb();
+} else {
+    bridge = registerPlugin('NextGenMixerBridge', {
+        web: () => import('./NextGenMixerPluginWeb.js').then((m) => new m.NextGenMixerPluginWeb()),
+    });
+}
+
+export const NextGenMixerBridge = bridge;
