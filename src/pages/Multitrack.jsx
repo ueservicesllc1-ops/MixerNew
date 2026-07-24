@@ -45,7 +45,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
-const isAppNative = typeof window !== 'undefined' && isAppNative === true && window.Capacitor?.getPlatform?.() === 'android';
+const isAppNative = typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() === true && window.Capacitor?.getPlatform?.() === 'android';
 
 /** Serializa preparación en APK: evita solapar getUri / I-O y picos de RAM. */
 let isPreparingSong = false;
@@ -1348,7 +1348,7 @@ export default function Multitrack() {
 
         try {
             const tracks = song.tracks || [];
-            const isAppNative = typeof window !== 'undefined' && !!isAppNative && window.Capacitor?.getPlatform?.() === 'android';
+            const isAppNativeInner = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.() && window.Capacitor?.getPlatform?.() === 'android';
 
             // Loop tracks to download
             for (let i = 0; i < tracks.length; i++) {

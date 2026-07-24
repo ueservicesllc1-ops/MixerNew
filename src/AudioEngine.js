@@ -177,11 +177,16 @@ class AudioEngine {
             try {
                 console.log("[AudioEngine] Initializing Zion Core C++ WASM...");
                 const ZionAudioCoreModule = (await import('./wasm/zion_audio_core_wasm.js')).default;
+                const wasmUrl = new URL('./wasm/zion_audio_core_wasm.wasm', import.meta.url).href;
+                
+                // Fetch the WASM binary manually to bypass iOS Capacitor MIME type restrictions
+                const response = await fetch(wasmUrl);
+                const wasmBinary = await response.arrayBuffer();
+
                 this.wasm = await ZionAudioCoreModule({
+                    wasmBinary: wasmBinary,
                     locateFile: (path) => {
-                        if (path.endsWith('.wasm')) {
-                            return new URL('./wasm/zion_audio_core_wasm.wasm', import.meta.url).href;
-                        }
+                        if (path.endsWith('.wasm')) return wasmUrl;
                         return path;
                     }
                 });
