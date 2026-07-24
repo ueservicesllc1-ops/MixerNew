@@ -88,7 +88,7 @@ struct SetlistsView: View {
         }
         .background(Color.zionBackground)
         .onAppear {
-            dataStore.startListening()
+            dataStore.startListeningToSetlists()
         }
         .onDisappear {
             dataStore.stopListening()
