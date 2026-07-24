@@ -2,40 +2,40 @@ import AVFoundation
 import Foundation
 import Combine
 
-public class AudioEngineViewModel: ObservableObject {
+class AudioEngineViewModel: ObservableObject {
 
     // MARK: - Singleton
     public static let shared = AudioEngineViewModel()
 
     // MARK: - Published State for SwiftUI
-    @Published public var isPlaying: Bool = false
-    @Published public var currentTime: Double = 0.0
-    @Published public var duration: Double = 0.0
-    @Published public var vuLevels: [String: Float] = [:]
+    @Published var isPlaying: Bool = false
+    @Published var currentTime: Double = 0.0
+    @Published var duration: Double = 0.0
+    @Published var vuLevels: [String: Float] = [:]
     
     // For tracking which tracks are currently loaded
-    @Published public var loadedTracks: [SongTrack] = []
+    @Published var loadedTracks: [SongTrack] = []
 
     // MARK: - Mixer Properties
-    @Published public var masterVolume: Float = 1.0 {
+    @Published var masterVolume: Float = 1.0 {
         didSet { engine.mainMixerNode.outputVolume = masterVolume }
     }
 
-    @Published public var tempoRatio: Float = 1.0 {
+    @Published var tempoRatio: Float = 1.0 {
         didSet { timePitchNodes.values.forEach { $0.rate = tempoRatio } }
     }
 
-    @Published public var pitchSemitones: Float = 0.0 {
+    @Published var pitchSemitones: Float = 0.0 {
         didSet {
             let cents = pitchSemitones * 100.0
             timePitchNodes.values.forEach { $0.pitch = cents }
         }
     }
     
-    @Published public var stemVolumes: [String: Float] = [:]
-    @Published public var mutedStems: Set<String> = []
-    @Published public var soloedStem: String? = nil
-    @Published public var stemPans: [String: Float] = [:]
+    @Published var stemVolumes: [String: Float] = [:]
+    @Published var mutedStems: Set<String> = []
+    @Published var soloedStem: String? = nil
+    @Published var stemPans: [String: Float] = [:]
 
     // MARK: - Internals
     private let engine = AVAudioEngine()
@@ -73,7 +73,7 @@ public class AudioEngineViewModel: ObservableObject {
     }
 
     // MARK: - Track Loading
-    public func loadTracks(_ tracks: [SongTrack]) {
+    func loadTracks(_ tracks: [SongTrack]) {
         stop()
         detachAllNodes()
         seekPosition = 0.0
@@ -188,7 +188,7 @@ public class AudioEngineViewModel: ObservableObject {
     }
 
     // MARK: - Playback Controls
-    public func play() {
+    func play() {
         guard !isPlaying, !playerNodes.isEmpty else { return }
 
         if !engine.isRunning {
@@ -202,7 +202,7 @@ public class AudioEngineViewModel: ObservableObject {
         startProgressTimer()
     }
 
-    public func pause() {
+    func pause() {
         guard isPlaying else { return }
         if let firstNode = playerNodes.values.first,
            let lastRenderTime = firstNode.lastRenderTime,
@@ -215,7 +215,7 @@ public class AudioEngineViewModel: ObservableObject {
         stopProgressTimer()
     }
 
-    public func stop() {
+    func stop() {
         for playerNode in playerNodes.values { playerNode.stop() }
         isPlaying = false
         seekPosition = 0.0
@@ -224,7 +224,7 @@ public class AudioEngineViewModel: ObservableObject {
         scheduleAllFromPosition(0)
     }
 
-    public func seek(to time: Double) {
+    func seek(to time: Double) {
         let wasPlaying = isPlaying
         let clampedTime = max(0, min(duration, time))
 
@@ -241,14 +241,14 @@ public class AudioEngineViewModel: ObservableObject {
     }
 
     // MARK: - Track Controls
-    public func setTrackVolume(id trackId: String, volume: Float) {
+    func setTrackVolume(id trackId: String, volume: Float) {
         stemVolumes[trackId] = volume
         if !mutedStems.contains(trackId) && soloedStem == nil {
             stemMixerNodes[trackId]?.outputVolume = max(0, min(1.2, volume))
         }
     }
 
-    public func setTrackMute(id trackId: String, muted: Bool) {
+    func setTrackMute(id trackId: String, muted: Bool) {
         if muted {
             mutedStems.insert(trackId)
             stemMixerNodes[trackId]?.outputVolume = 0
@@ -260,7 +260,7 @@ public class AudioEngineViewModel: ObservableObject {
         }
     }
 
-    public func setTrackSolo(id trackId: String, solo: Bool) {
+    func setTrackSolo(id trackId: String, solo: Bool) {
         if solo {
             soloedStem = trackId
             for (name, node) in stemMixerNodes {
@@ -274,7 +274,7 @@ public class AudioEngineViewModel: ObservableObject {
         }
     }
 
-    public func setTrackPan(id trackId: String, pan: Float) {
+    func setTrackPan(id trackId: String, pan: Float) {
         stemPans[trackId] = pan
         stemMixerNodes[trackId]?.pan = max(-1.0, min(1.0, pan))
     }

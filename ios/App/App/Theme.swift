@@ -1,23 +1,27 @@
 import SwiftUI
 
 extension Color {
-    struct Zion {
-        static let primaryCyan = Color(hex: "#13b5b6")
-        static let transportBlue = Color(hex: "#13b5b6")
-        static let dangerRed = Color(hex: "#ef4444")
-        static let warningYellow = Color(hex: "#f59e0b")
-        static let primeCoral = Color(hex: "#f17853")
-        
-        static let backgroundDark = Color(hex: "#0f172a")
-        static let cardDark = Color(hex: "#1e293b")
-        static let borderSubtleDark = Color.white.opacity(0.1)
-        
-        static let textPrimary = Color(hex: "#e2e8f0")
-        static let textSecondary = Color(hex: "#94a3b8")
-        
-        static let faderTrackDark = Color(hex: "#0f172a")
-        static let faderFill = Color(hex: "#13b5b6")
-    }
+    static let zionBackground = Color(hex: "#0b0f19")
+    static let zionPanel = Color(hex: "#151b2b")
+    static let zionPanelLight = Color(hex: "#1e2638")
+    
+    static let zionBorderSubtle = Color.white.opacity(0.1)
+    static let zionButtonDark = Color(hex: "#1a2235")
+    static let zionButtonHover = Color(hex: "#252f48")
+    static let zionTextPrimary = Color.white
+    static let zionTextSecondary = Color(hex: "#8b949e")
+    
+    static let zionCyan = Color(hex: "#00bcd4")
+    static let zionFaderThumb = Color(hex: "#2c3e50")
+    
+    static let zionRed = Color(hex: "#ef4444")
+    static let zionYellow = Color(hex: "#f59e0b")
+    static let zionOrange = Color(hex: "#ff7043")
+    
+    static let zionTrackOrange = Color(hex: "#ff9800")
+    static let zionTrackCyan = Color(hex: "#00bcd4")
+    static let zionTrackPurple = Color(hex: "#673ab7")
+    static let zionTrackYellow = Color(hex: "#ffc107")
 }
 
 extension Color {

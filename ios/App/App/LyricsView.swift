@@ -9,7 +9,7 @@ struct LyricsView: View {
         VStack {
             Text("Teleprompter")
                 .font(.headline)
-                .foregroundColor(Color.Zion.textPrimary)
+                .foregroundColor(Color.zionTextPrimary)
                 .padding()
             
             ScrollView {
@@ -21,7 +21,7 @@ struct LyricsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.Zion.backgroundDark)
+        .background(Color.zionBackground)
         .onReceive(engine.$loadedTracks) { tracks in
             if !tracks.isEmpty {
                 // HACK: the songId is not inside SongTrack directly in our current models.

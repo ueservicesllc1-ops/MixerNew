@@ -3,9 +3,10 @@ import SwiftUI
 struct VerticalFader: View {
     @Binding var value: Float // 0.0 to 1.2
     var trackId: String
+    var trackColor: Color = Color.zionCyan
     
     let height: CGFloat = 200
-    let width: CGFloat = 40
+    let width: CGFloat = 20
     let faderMax: Float = 1.2
     
     var body: some View {
@@ -13,31 +14,28 @@ struct VerticalFader: View {
             ZStack(alignment: .bottom) {
                 // Background Track
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.Zion.faderTrackDark)
+                    .fill(Color.zionBackground.opacity(0.5))
                     .frame(width: width, height: height)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.Zion.borderSubtleDark, lineWidth: 1)
+                            .stroke(Color.zionBorderSubtle, lineWidth: 1)
                     )
                 
-                // Fill (Optional: to show volume level below thumb)
+                // Fill
                 let fillHeight = CGFloat(min(max(value / faderMax, 0), 1)) * height
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.Zion.faderFill.opacity(0.2))
+                    .fill(trackColor)
                     .frame(width: width, height: fillHeight)
                 
                 // Thumb
-                let thumbHeight: CGFloat = 30
-                let yOffset = height - fillHeight - (thumbHeight / 2) + (thumbHeight / 2 * CGFloat(value / faderMax))
+                let thumbHeight: CGFloat = 24
                 
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.gray)
-                    .frame(width: width + 10, height: thumbHeight)
-                    .shadow(radius: 3)
+                    .fill(Color(hex: "#1b2130"))
+                    .frame(width: 40, height: thumbHeight)
+                    .shadow(color: .black.opacity(0.5), radius: 3)
                     .overlay(
-                        Rectangle()
-                            .fill(Color.white)
-                            .frame(height: 2)
+                        RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.1), lineWidth: 1)
                     )
                     .offset(y: -CGFloat(min(max(value / faderMax, 0), 1)) * height + thumbHeight / 2)
                     .gesture(
@@ -51,6 +49,6 @@ struct VerticalFader: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
         }
-        .frame(width: width + 10, height: height)
+        .frame(width: 40, height: height)
     }
 }

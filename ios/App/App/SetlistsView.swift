@@ -3,62 +3,95 @@ import SwiftUI
 struct SetlistsView: View {
     @StateObject private var dataStore = DataStore()
     
-    // Zion Theme Colors
-    let zionBlue = Color(red: 0.1, green: 0.5, blue: 0.9)
-    let darkBackground = Color(red: 0.05, green: 0.05, blue: 0.08)
-    let cardBackground = Color(red: 0.1, green: 0.1, blue: 0.15)
-    
     var body: some View {
-        ZStack {
-            darkBackground.edgesIgnoringSafeArea(.all)
-            
-            if dataStore.isLoading && dataStore.setlists.isEmpty {
-                ProgressView("Cargando setlists...")
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Image(systemName: "music.note.list")
+                    .foregroundColor(Color.zionCyan)
+                Text("Domingo")
+                    .font(.headline)
                     .foregroundColor(.white)
-            } else if dataStore.setlists.isEmpty {
-                Text("No tienes setlists.")
-                    .foregroundColor(.gray)
+                Spacer()
+                Button("+Canciones") {}.font(.caption).foregroundColor(.purple)
+                Button("+Setlist") {}.font(.caption).foregroundColor(Color.zionCyan)
+            }
+            .padding()
+            .background(Color.zionPanel)
+            
+            // List
+            if dataStore.setlists.isEmpty {
+                VStack {
+                    Spacer()
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                    Text("Cargando Setlists...")
+                        .foregroundColor(Color.zionTextSecondary)
+                        .padding(.top, 10)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             } else {
-                List {
-                    ForEach(dataStore.setlists) { setlist in
-                        Section(header: Text(setlist.name).foregroundColor(.white).font(.headline)) {
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(dataStore.setlists) { setlist in
                             if let songs = setlist.songs, !songs.isEmpty {
-                                ForEach(songs) { song in
+                                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                                    let isSelected = AudioEngineViewModel.shared.loadedTracks.first?.id.contains(song.id) ?? false
+                                    
                                     Button(action: {
                                         if let tracks = song.tracks {
-                                            // Load tracks to AudioEngine
                                             AudioEngineViewModel.shared.loadTracks(tracks)
                                         }
                                     }) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(song.name)
-                                                .font(.subheadline)
-                                                .foregroundColor(Color.Zion.primaryCyan)
-                                            Text(song.artist ?? "Desconocido")
+                                        HStack {
+                                            Text("\(index + 1)")
                                                 .font(.caption)
-                                                .foregroundColor(.gray)
+                                                .foregroundColor(isSelected ? .white : Color.zionTextSecondary)
+                                                .frame(width: 20)
+                                            
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(song.name)
+                                                    .font(.system(size: 14, weight: .bold))
+                                                    .foregroundColor(isSelected ? .white : Color.zionTextPrimary)
+                                                Text("\(song.artist ?? "Desconocido") • \(song.key ?? "C") • \(song.bpm ?? 120) BPM")
+                                                    .font(.system(size: 11))
+                                                    .foregroundColor(isSelected ? .white.opacity(0.8) : Color.zionTextSecondary)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            if isSelected {
+                                                HStack(spacing: 4) {
+                                                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                                                    Text("READY").font(.caption2).bold().foregroundColor(.green)
+                                                }
+                                            }
+                                            
+                                            Image(systemName: "trash")
+                                                .foregroundColor(isSelected ? .white : Color.zionRed)
+                                                .font(.caption)
                                         }
-                                        .padding(.vertical, 4)
+                                        .padding(.vertical, 10)
+                                        .padding(.horizontal, 12)
+                                        .background(isSelected ? Color.zionOrange : Color.zionPanelLight)
+                                        .cornerRadius(8)
+                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.zionBorderSubtle, lineWidth: 1))
                                     }
                                 }
-                            } else {
-                                Text("Sin canciones")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
                             }
                         }
-                        .listRowBackground(cardBackground)
                     }
+                    .padding()
                 }
-                .scrollContentBackground(.hidden)
             }
         }
+        .background(Color.zionBackground)
         .onAppear {
-            dataStore.startListeningToSetlists()
+            dataStore.startListening()
         }
         .onDisappear {
             dataStore.stopListening()
         }
-        .preferredColorScheme(.dark)
     }
 }
