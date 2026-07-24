@@ -41,7 +41,16 @@ workflows:
           if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
             echo "=== App.app encontrado en: $APP_DIR ==="
 
-            # Inyectar binario si Xcode no lo colocó dentro de App.app por falta de firma
+            # PASO CRÍTICO: Garantizar que public/ (index.html, JS, CSS) se copie dentro del bundle .app
+            echo "=== Empaquetando web assets en $APP_DIR/public ==="
+            mkdir -p "$APP_DIR/public"
+            if [ -d "App/public" ]; then
+              cp -R App/public/* "$APP_DIR/public/"
+            elif [ -d "../../dist" ]; then
+              cp -R ../../dist/* "$APP_DIR/public/"
+            fi
+
+            # Inyectar binario ejecutable si Xcode no lo colocó dentro de App.app por falta de firma
             if [ ! -f "$APP_DIR/App" ]; then
               echo "=== Buscando binario ejecutable para inyectar ==="
               BINARY=$(find build_ios -type f -name "App" ! -path "*.app/*" 2>/dev/null | while read f; do
@@ -67,6 +76,11 @@ workflows:
                 fi
               done
             fi
+
+            echo "=== Verificando contenido de App.app ==="
+            ls -lah "$APP_DIR/"
+            echo "=== Verificando assets web en App.app/public ==="
+            ls -lah "$APP_DIR/public/"
 
             rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
             mkdir -p build_ios/Payload
