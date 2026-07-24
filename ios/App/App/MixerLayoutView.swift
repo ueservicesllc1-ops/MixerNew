@@ -26,47 +26,66 @@ struct MixerLayoutView: View {
                 .padding()
                 .background(Color.Zion.cardDark)
                 
-                // Mixer Grid Placeholder
+                // Mixer Grid
                 ScrollView(.horizontal, showsIndicators: true) {
                     HStack(spacing: 12) {
-                        ForEach(0..<8) { i in
-                            VStack {
-                                Text("Track \(i+1)")
-                                    .foregroundColor(.white)
-                                    .font(.caption)
-                                Spacer()
-                                Rectangle()
-                                    .fill(Color.Zion.primaryCyan.opacity(0.3))
-                                    .frame(width: 40)
+                        if AudioEngineViewModel.shared.loadedTracks.isEmpty {
+                            Text("Selecciona una canción del setlist para comenzar.")
+                                .foregroundColor(Color.Zion.textSecondary)
+                                .padding(.top, 50)
+                        } else {
+                            ForEach(AudioEngineViewModel.shared.loadedTracks) { track in
+                                MixerChannelView(track: track)
                             }
-                            .frame(width: 100)
-                            .padding(.vertical)
-                            .background(Color.Zion.cardDark)
-                            .cornerRadius(12)
                         }
                     }
                     .padding()
                 }
                 .background(Color.Zion.backgroundDark)
                 
-                // Bottom Playback Bar Placeholder
-                HStack {
-                    Button(action: {}) {
-                        Image(systemName: "play.fill")
+                // Bottom Playback Bar
+                HStack(spacing: 20) {
+                    let engine = AudioEngineViewModel.shared
+                    
+                    Button(action: {
+                        if engine.isPlaying {
+                            engine.pause()
+                        } else {
+                            engine.play()
+                        }
+                    }) {
+                        Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
                             .font(.title)
                             .foregroundColor(.white)
-                            .padding()
-                            .background(Color.Zion.primaryCyan)
+                            .frame(width: 50, height: 50)
+                            .background(engine.isPlaying ? Color.Zion.warningYellow : Color.Zion.primaryCyan)
                             .clipShape(Circle())
                     }
                     
-                    Slider(value: .constant(0.3))
-                        .accentColor(Color.Zion.primaryCyan)
-                        .padding(.horizontal)
+                    Button(action: {
+                        engine.stop()
+                    }) {
+                        Image(systemName: "stop.fill")
+                            .font(.title2)
+                            .foregroundColor(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.Zion.dangerRed)
+                            .clipShape(Circle())
+                    }
                     
-                    Text("01:23 / 04:00")
+                    let timeBinding = Binding<Double>(
+                        get: { engine.currentTime },
+                        set: { engine.seek(to: $0) }
+                    )
+                    
+                    Slider(value: timeBinding, in: 0...max(engine.duration, 1))
+                        .accentColor(Color.Zion.primaryCyan)
+                    
+                    Text(String(format: "%02d:%02d / %02d:%02d",
+                                Int(engine.currentTime) / 60, Int(engine.currentTime) % 60,
+                                Int(engine.duration) / 60, Int(engine.duration) % 60))
                         .foregroundColor(Color.Zion.textSecondary)
-                        .font(.caption)
+                        .font(.caption.monospacedDigit())
                 }
                 .padding()
                 .background(Color.Zion.cardDark)

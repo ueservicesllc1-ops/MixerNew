@@ -1,0 +1,56 @@
+import SwiftUI
+
+struct VerticalFader: View {
+    @Binding var value: Float // 0.0 to 1.2
+    var trackId: String
+    
+    let height: CGFloat = 200
+    let width: CGFloat = 40
+    let faderMax: Float = 1.2
+    
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottom) {
+                // Background Track
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.Zion.faderTrackDark)
+                    .frame(width: width, height: height)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.Zion.borderSubtleDark, lineWidth: 1)
+                    )
+                
+                // Fill (Optional: to show volume level below thumb)
+                let fillHeight = CGFloat(min(max(value / faderMax, 0), 1)) * height
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.Zion.faderFill.opacity(0.2))
+                    .frame(width: width, height: fillHeight)
+                
+                // Thumb
+                let thumbHeight: CGFloat = 30
+                let yOffset = height - fillHeight - (thumbHeight / 2) + (thumbHeight / 2 * CGFloat(value / faderMax))
+                
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.gray)
+                    .frame(width: width + 10, height: thumbHeight)
+                    .shadow(radius: 3)
+                    .overlay(
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(height: 2)
+                    )
+                    .offset(y: -CGFloat(min(max(value / faderMax, 0), 1)) * height + thumbHeight / 2)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { gesture in
+                                let dragY = height - gesture.location.y
+                                let newValue = Float(dragY / height) * faderMax
+                                self.value = max(0.0, min(faderMax, newValue))
+                            }
+                    )
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center)
+        }
+        .frame(width: width + 10, height: height)
+    }
+}

@@ -21,16 +21,32 @@ struct SetlistsView: View {
             } else {
                 List {
                     ForEach(dataStore.setlists) { setlist in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(setlist.name)
-                                .font(.headline)
-                                .foregroundColor(.white)
-                            
-                            Text("\(setlist.songs?.count ?? 0) canciones")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
+                        Section(header: Text(setlist.name).foregroundColor(.white).font(.headline)) {
+                            if let songs = setlist.songs, !songs.isEmpty {
+                                ForEach(songs) { song in
+                                    Button(action: {
+                                        if let tracks = song.tracks {
+                                            // Load tracks to AudioEngine
+                                            AudioEngineViewModel.shared.loadTracks(tracks)
+                                        }
+                                    }) {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(song.name)
+                                                .font(.subheadline)
+                                                .foregroundColor(Color.Zion.primaryCyan)
+                                            Text(song.artist ?? "Desconocido")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.vertical, 4)
+                                    }
+                                }
+                            } else {
+                                Text("Sin canciones")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
                         }
-                        .padding(.vertical, 8)
                         .listRowBackground(cardBackground)
                     }
                 }
