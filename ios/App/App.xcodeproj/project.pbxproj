@@ -23,6 +23,7 @@
 		DDCBC02D15B047D7848FEEA9 /* MixerLayoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A1E084913C45418073D14D /* MixerLayoutView.swift */; };
 		886A65C7650D40019B05677B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABB20BB8083E4BDF8BF9259D /* Theme.swift */; };
 		B47CCB883A424EE390FBF443 /* VerticalFader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */; };
+		7A1B2C3D4E5F678901234567 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B1C2D3E4F56789012345678 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +46,7 @@
 		97A1E084913C45418073D14D /* MixerLayoutView.swift */ = {isa = PBXFileReference; name = "MixerLayoutView.swift"; path = "MixerLayoutView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		ABB20BB8083E4BDF8BF9259D /* Theme.swift */ = {isa = PBXFileReference; name = "Theme.swift"; path = "Theme.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */ = {isa = PBXFileReference; name = "VerticalFader.swift"; path = "VerticalFader.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		8B1C2D3E4F56789012345678 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +85,7 @@
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
+				8B1C2D3E4F56789012345678 /* GoogleService-Info.plist */,
 				CA964DE5C06A433C96B1A3BA /* MainView.swift */,
 				01CA3B761C5E4F208FF97D44 /* AuthViewModel.swift */,
 				BCDD0D646191433DA64DAE84 /* LoginView.swift */,
@@ -163,6 +166,7 @@
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
+				7A1B2C3D4E5F678901234567 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
