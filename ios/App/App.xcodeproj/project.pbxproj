@@ -19,6 +19,8 @@
 		A82EF42160864475B718CB66 /* NextGenMixerPlugin.m in Sources */ = {isa = PBXBuildFile; fileRef = 1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */; };
 		B760BF66FC73456793916D41 /* ZionAudioPlayerCapacitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */; };
 		2390F0BF2BF7425FBE881A55 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA964DE5C06A433C96B1A3BA /* MainView.swift */; };
+		904E05AE28004A00A2B74124 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01CA3B761C5E4F208FF97D44 /* AuthViewModel.swift */; };
+		2B1DDF553A694292841DB6E7 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDD0D646191433DA64DAE84 /* LoginView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +38,8 @@
 		1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */ = {isa = PBXFileReference; name = "NextGenMixerPlugin.m"; path = "NextGenMixerPlugin.m"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; explicitFileType = undefined; includeInIndex = 0; };
 		E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */ = {isa = PBXFileReference; name = "ZionAudioPlayerCapacitor.swift"; path = "ZionAudioPlayerCapacitor.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		CA964DE5C06A433C96B1A3BA /* MainView.swift */ = {isa = PBXFileReference; name = "MainView.swift"; path = "MainView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		01CA3B761C5E4F208FF97D44 /* AuthViewModel.swift */ = {isa = PBXFileReference; name = "AuthViewModel.swift"; path = "AuthViewModel.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		BCDD0D646191433DA64DAE84 /* LoginView.swift */ = {isa = PBXFileReference; name = "LoginView.swift"; path = "LoginView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +86,8 @@
 				1474489362514CF9B76BDD23 /* NextGenMixerPlugin.m */,
 				E788BBE556A74CF5859C0884 /* ZionAudioPlayerCapacitor.swift */,
 				CA964DE5C06A433C96B1A3BA /* MainView.swift */,
+				01CA3B761C5E4F208FF97D44 /* AuthViewModel.swift */,
+				BCDD0D646191433DA64DAE84 /* LoginView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -172,6 +178,8 @@
 				A82EF42160864475B718CB66 /* NextGenMixerPlugin.m in Sources */,
 				B760BF66FC73456793916D41 /* ZionAudioPlayerCapacitor.swift in Sources */,
 				2390F0BF2BF7425FBE881A55 /* MainView.swift in Sources */,
+				904E05AE28004A00A2B74124 /* AuthViewModel.swift in Sources */,
+				2B1DDF553A694292841DB6E7 /* LoginView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

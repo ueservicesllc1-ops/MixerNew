@@ -34,6 +34,9 @@
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.0",
+    "@capacitor-firebase/authentication": "^8.3.0",
+    "@capacitor-firebase/firestore": "^8.3.0",
+    "@capacitor-firebase/storage": "^8.3.0",
     "@capacitor/android": "^8.1.0",
     "@capacitor/cli": "^8.1.0",
     "@capacitor/core": "^8.1.0",
