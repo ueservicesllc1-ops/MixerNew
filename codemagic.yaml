@@ -10,39 +10,58 @@ workflows:
         script: |
           cd ZionStageApple
 
-          # Paso 1: Generar el paquete de archivo oficial (xcodebuild archive)
+          # Paso 1: Intentar xcodebuild archive con firma Ad-Hoc
           xcodebuild archive -project ZionStageApple.xcodeproj \
                              -scheme ZionStageApple \
                              -destination 'generic/platform=iOS' \
                              -archivePath build_ios/ZionStageApple.xcarchive \
                              -configuration Release \
                              IPHONEOS_DEPLOYMENT_TARGET=15.0 \
-                             CODE_SIGN_IDENTITY="" \
+                             CODE_SIGN_IDENTITY="-" \
                              CODE_SIGNING_REQUIRED=NO \
-                             CODE_SIGNING_ALLOWED=NO
+                             CODE_SIGNING_ALLOWED=YES \
+                             AD_HOC_CODE_SIGNING_ALLOWED=YES || true
 
-          # Paso 2: Ruta oficial del .app empaquetado dentro del archive
-          APP_DIR="build_ios/ZionStageApple.xcarchive/Products/Applications/ZionStageApple.app"
+          # Buscar dinámicamente la carpeta .app producida por Xcode
+          APP_DIR=$(find build_ios -name "ZionStageApple.app" -type d 2>/dev/null | head -1)
 
-          echo "======================================="
-          echo "=== DIAGNÓSTICO DEL ARCHIVE IOS ==="
-          echo "======================================="
-
-          if [ -d "$APP_DIR" ]; then
-            echo "=== Contenido del .app compilado en Archive ==="
-            ls -lah "$APP_DIR/"
-            du -sh "$APP_DIR"
-          else
-            echo "!!! ERROR CRÍTICO: No se generó el .app en el Archive !!!"
+          # Paso 2: Si archive no produjo el .app, ejecutar xcodebuild build como fallback
+          if [ -z "$APP_DIR" ]; then
+            echo "=== Archive omitido, ejecutando xcodebuild build como fallback ==="
+            xcodebuild build -project ZionStageApple.xcodeproj \
+                       -scheme ZionStageApple \
+                       -sdk iphoneos \
+                       -configuration Release \
+                       -derivedDataPath build_ios \
+                       IPHONEOS_DEPLOYMENT_TARGET=15.0 \
+                       CODE_SIGN_IDENTITY="-" \
+                       CODE_SIGNING_REQUIRED=NO \
+                       CODE_SIGNING_ALLOWED=YES \
+                       AD_HOC_CODE_SIGNING_ALLOWED=YES || true
+            APP_DIR=$(find build_ios -name "ZionStageApple.app" -type d 2>/dev/null | head -1)
           fi
 
-          # Paso 3: Crear el archivo .ipa comprimiendo el Payload
-          mkdir -p build_ios/Payload
-          cp -R "$APP_DIR" build_ios/Payload/
-          cd build_ios && zip -r ZionStageApple.ipa Payload
+          echo "======================================="
+          echo "=== DIAGNÓSTICO DEL BUNDLE IOS ==="
+          echo "======================================="
 
-          echo "=== Tamaño final del IPA de iOS ==="
-          ls -lah ZionStageApple.ipa
+          if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
+            echo "=== .app encontrado en: $APP_DIR ==="
+            ls -lah "$APP_DIR/"
+            du -sh "$APP_DIR"
+
+            # Paso 3: Empaquetar Payload e IPA
+            rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
+            mkdir -p build_ios/Payload
+            cp -R "$APP_DIR" build_ios/Payload/
+            cd build_ios && zip -r ZionStageApple.ipa Payload
+
+            echo "=== Tamaño final del IPA de iOS ==="
+            ls -lah ZionStageApple.ipa
+          else
+            echo "!!! ERROR CRÍTICO: No se pudo localizar la carpeta .app !!!"
+            exit 1
+          fi
 
       - name: Build macOS App
         script: |
