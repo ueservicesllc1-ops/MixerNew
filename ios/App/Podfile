@@ -1,7 +1,7 @@
 platform :ios, '15.0'
-use_frameworks!
 
 target 'App' do
+  use_frameworks! :linkage => :static
   pod 'Firebase/Core'
   pod 'Firebase/Auth'
   pod 'Firebase/Firestore'

@@ -36,22 +36,13 @@ workflows:
             IPHONEOS_DEPLOYMENT_TARGET=15.0
 
           echo "======================================="
-          echo "=== DIAGNÓSTICO DEL BUNDLE CAPACITOR IOS ==="
+          echo "=== DIAGNÓSTICO DEL BUNDLE IOS NATIVO ==="
           echo "======================================="
 
           APP_DIR=$(find build_ios -type d -name "App.app" 2>/dev/null | head -1)
 
           if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
             echo "=== App.app encontrado en: $APP_DIR ==="
-
-            # PASO CRÍTICO: Garantizar que public/ (index.html, JS, CSS) se copie dentro del bundle .app
-            echo "=== Empaquetando web assets en $APP_DIR/public ==="
-            mkdir -p "$APP_DIR/public"
-            if [ -d "App/public" ]; then
-              cp -R App/public/* "$APP_DIR/public/"
-            elif [ -d "../../dist" ]; then
-              cp -R ../../dist/* "$APP_DIR/public/"
-            fi
 
             # Inyectar binario ejecutable si Xcode no lo colocó dentro de App.app por falta de firma
             if [ ! -f "$APP_DIR/App" ]; then
@@ -66,24 +57,11 @@ workflows:
               fi
             fi
 
-            # Copiar frameworks dinámicos si existen en Release-iphoneos
-            FW_DIR="build_ios/Build/Products/Release-iphoneos"
-            if [ -d "$FW_DIR" ]; then
-              for fw in "$FW_DIR"/*.framework; do
-                [ ! -d "$fw" ] && continue
-                fw_name=$(basename "$fw" .framework)
-                if [ -f "$fw/$fw_name" ]; then
-                  echo "=== Copiando framework dinámico: $fw_name ==="
-                  mkdir -p "$APP_DIR/Frameworks"
-                  cp -R "$fw" "$APP_DIR/Frameworks/"
-                fi
-              done
-            fi
+            # Eliminar carpeta Frameworks vacía si existe (static linkage = no dynamic frameworks)
+            rm -rf "$APP_DIR/Frameworks"
 
             echo "=== Verificando contenido de App.app ==="
             ls -lah "$APP_DIR/"
-            echo "=== Verificando assets web en App.app/public ==="
-            ls -lah "$APP_DIR/public/"
 
             rm -rf build_ios/Payload build_ios/ZionStageApple.ipa
             mkdir -p build_ios/Payload
@@ -91,7 +69,7 @@ workflows:
             cd build_ios && zip -r ZionStageApple.ipa Payload
 
             echo "======================================="
-            echo "=== TAMAÑO FINAL DEL IPA CAPACITOR ==="
+            echo "=== TAMAÑO FINAL DEL IPA NATIVO ==="
             echo "======================================="
             ls -lah ZionStageApple.ipa
           else
