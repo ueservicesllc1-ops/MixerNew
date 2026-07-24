@@ -12,12 +12,13 @@ import FirebaseCore
 @main
 struct ZionStageApp: App {
 
-    // FirebaseService como ObservedObject: el singleton ya existe, solo observamos sus cambios.
-    @ObservedObject private var firebase = FirebaseService.shared
+    @StateObject private var firebase: FirebaseService
 
     init() {
-        // Configurar Firebase con GoogleService-Info.plist embebido en el bundle
-        FirebaseApp.configure()
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+        _firebase = StateObject(wrappedValue: FirebaseService.shared)
     }
 
     var body: some Scene {

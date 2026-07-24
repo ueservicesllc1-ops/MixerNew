@@ -28,7 +28,7 @@ public class FirebaseService: ObservableObject {
     @Published public var isLoadingGlobal: Bool = false
 
     // MARK: - Internals
-    private let db = Firestore.firestore()
+    private lazy var db = Firestore.firestore()
     private var authStateHandle: AuthStateDidChangeListenerHandle?
     private var unsubSongs: ListenerRegistration?
     private var unsubGlobal: ListenerRegistration?
