@@ -23,6 +23,7 @@
 		2B1DDF553A694292841DB6E7 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCDD0D646191433DA64DAE84 /* LoginView.swift */; };
 		06C14F0F744449F1869C9F36 /* DataStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD1579DF14E44F8A0E9C483 /* DataStore.swift */; };
 		FE87939F35854759B1C6E650 /* SetlistsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B45480545B0D438AB40B78E1 /* SetlistsView.swift */; };
+		2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		BCDD0D646191433DA64DAE84 /* LoginView.swift */ = {isa = PBXFileReference; name = "LoginView.swift"; path = "LoginView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		FFD1579DF14E44F8A0E9C483 /* DataStore.swift */ = {isa = PBXFileReference; name = "DataStore.swift"; path = "DataStore.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		B45480545B0D438AB40B78E1 /* SetlistsView.swift */ = {isa = PBXFileReference; name = "SetlistsView.swift"; path = "SetlistsView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */ = {isa = PBXFileReference; name = "DownloadManager.swift"; path = "DownloadManager.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -94,6 +96,7 @@
 				BCDD0D646191433DA64DAE84 /* LoginView.swift */,
 				FFD1579DF14E44F8A0E9C483 /* DataStore.swift */,
 				B45480545B0D438AB40B78E1 /* SetlistsView.swift */,
+				1C5F637EBBC0475EB6A82456 /* DownloadManager.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -188,6 +191,7 @@
 				2B1DDF553A694292841DB6E7 /* LoginView.swift in Sources */,
 				06C14F0F744449F1869C9F36 /* DataStore.swift in Sources */,
 				FE87939F35854759B1C6E650 /* SetlistsView.swift in Sources */,
+				2202B53BFB974D08B9422F23 /* DownloadManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
