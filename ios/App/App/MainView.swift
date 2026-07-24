@@ -5,20 +5,21 @@ struct MainView: View {
     
     var body: some View {
         if authViewModel.isAuthenticated {
-            VStack {
-                Text("Bienvenido, \(authViewModel.currentUser?.name ?? "Usuario")")
-                    .font(.largeTitle)
-                    .foregroundColor(.white)
-                
-                Button("Cerrar Sesión") {
-                    authViewModel.logout()
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Bienvenido, \(authViewModel.currentUser?.name ?? "Usuario")")
+                        .foregroundColor(.white)
+                    Spacer()
+                    Button("Cerrar Sesión") {
+                        authViewModel.logout()
+                    }
+                    .foregroundColor(.red)
                 }
                 .padding()
-                .background(Color.red)
-                .foregroundColor(.white)
-                .cornerRadius(8)
+                .background(Color(red: 0.1, green: 0.1, blue: 0.15))
+                
+                SetlistsView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(red: 0.05, green: 0.05, blue: 0.08).edgesIgnoringSafeArea(.all))
         } else {
             LoginView(authViewModel: authViewModel)
