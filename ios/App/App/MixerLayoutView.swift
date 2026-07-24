@@ -79,7 +79,7 @@ struct MixerLayoutView: View {
                 // Profile
                 HStack(spacing: 12) {
                     Text("Luis Uchubanda").font(.caption).foregroundColor(Color.zionTextSecondary)
-                    Button(action: { authViewModel.signOut() }) {
+                    Button(action: { authViewModel.logout() }) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(Color.zionTextSecondary)
                     }

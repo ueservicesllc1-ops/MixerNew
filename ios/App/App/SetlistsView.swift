@@ -37,6 +37,11 @@ struct SetlistsView: View {
                         ForEach(dataStore.setlists) { setlist in
                             if let songs = setlist.songs, !songs.isEmpty {
                                 ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                                    let songNumber = String(index + 1)
+                                    let artistText = song.artist ?? "Desconocido"
+                                    let keyText = song.key ?? "C"
+                                    let bpmText = song.bpm != nil ? "\(Int(song.bpm!))" : "120"
+                                    let subtitle = "\(artistText) • \(keyText) • \(bpmText) BPM"
                                     let isSelected = AudioEngineViewModel.shared.loadedTracks.first?.id.contains(song.id) ?? false
                                     
                                     Button(action: {
@@ -45,7 +50,7 @@ struct SetlistsView: View {
                                         }
                                     }) {
                                         HStack {
-                                            Text("\(index + 1)")
+                                            Text(songNumber)
                                                 .font(.caption)
                                                 .foregroundColor(isSelected ? .white : Color.zionTextSecondary)
                                                 .frame(width: 20)
@@ -54,7 +59,7 @@ struct SetlistsView: View {
                                                 Text(song.name)
                                                     .font(.system(size: 14, weight: .bold))
                                                     .foregroundColor(isSelected ? .white : Color.zionTextPrimary)
-                                                Text("\(song.artist ?? "Desconocido") • \(song.key ?? "C") • \(song.bpm ?? 120) BPM")
+                                                Text(subtitle)
                                                     .font(.system(size: 11))
                                                     .foregroundColor(isSelected ? .white.opacity(0.8) : Color.zionTextSecondary)
                                             }

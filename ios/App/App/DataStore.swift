@@ -13,6 +13,7 @@ struct Song: Identifiable, Codable {
     var id: String
     var name: String
     var artist: String?
+    var key: String?
     var tracks: [SongTrack]?
     var bpm: Double?
 }
