@@ -10,16 +10,14 @@ struct SettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Ajustes de la Aplicación")
-                    .font(.title2)
-                    .bold()
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundColor(Color.zionTextPrimary)
                     .padding(.bottom, 5)
                 
                 // Account Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("CUENTA Y PERFIL")
-                        .font(.caption)
-                        .bold()
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color.zionTextSecondary)
                     
                     HStack {
@@ -40,9 +38,8 @@ struct SettingsView: View {
                             HStack {
                                 Image(systemName: "rectangle.portrait.and.arrow.right")
                                 Text("Cerrar Sesión")
+                                    .font(.system(size: 12, weight: .bold))
                             }
-                            .font(.caption)
-                            .bold()
                             .foregroundColor(.white)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
@@ -58,8 +55,7 @@ struct SettingsView: View {
                 // Audio Engine Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("MOTOR DE AUDIO NATIVO (AVFoundation)")
-                        .font(.caption)
-                        .bold()
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color.zionTextSecondary)
                     
                     VStack(spacing: 12) {
@@ -89,8 +85,7 @@ struct SettingsView: View {
                 // Preferences Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("PREFERENCIAS DE MEZCLA Y LETRAS")
-                        .font(.caption)
-                        .bold()
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color.zionTextSecondary)
                     
                     VStack(spacing: 12) {
@@ -109,8 +104,7 @@ struct SettingsView: View {
                 // About Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("ACERCA DE")
-                        .font(.caption)
-                        .bold()
+                        .font(.system(size: 12, weight: .bold))
                         .foregroundColor(Color.zionTextSecondary)
                     
                     HStack {
