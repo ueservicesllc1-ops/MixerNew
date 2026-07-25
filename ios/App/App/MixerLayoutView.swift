@@ -51,6 +51,8 @@ struct MixerLayoutView: View {
                     Button(action: { engine.isPlaying ? engine.pause() : engine.play() }) {
                         Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
                     }
+                    .disabled(engine.loadedTracks.isEmpty || engine.isLoading)
+                    .opacity((engine.loadedTracks.isEmpty || engine.isLoading) ? 0.4 : 1.0)
                     Button(action: { engine.stop() }) { Image(systemName: "stop.fill") }
                     Button(action: {}) { Image(systemName: "forward.end.fill") }
                 }
@@ -167,7 +169,7 @@ struct MixerLayoutView: View {
             
             // 2. Waveform Timeline
             WaveformTimelineView()
-                .frame(height: 50)
+                .frame(height: 70)
                 .padding(.vertical, 6)
             
             // 3. Tab Bar

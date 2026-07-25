@@ -239,8 +239,13 @@ class AudioEngineViewModel: ObservableObject {
 
         file.framePosition = 0
 
+        // Auto-gain normalization: scale peak array to 1.0 maximum amplitude
+        let maxPeak = peaks.max() ?? 0.001
+        let scale = maxPeak > 0 ? (1.0 / maxPeak) : 1.0
+        let normalizedPeaks = peaks.map { min(Float(1.0), $0 * scale) }
+
         DispatchQueue.main.async {
-            self.waveformPeaks = peaks
+            self.waveformPeaks = normalizedPeaks
         }
     }
 
@@ -432,11 +437,6 @@ class AudioEngineViewModel: ObservableObject {
             self.vuLevels = [:]
         }
         
-        engine.stop()
-        do {
-            try engine.start()
-        } catch {
-            print("[AudioEngine] Restart error: \(error.localizedDescription)")
-        }
+        // Keep engine running continuously for near-instant song switching (no stop/start latency)
     }
 }
