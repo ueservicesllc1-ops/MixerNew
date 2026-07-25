@@ -32,12 +32,15 @@ class DataStore: ObservableObject {
     private var listener: ListenerRegistration?
     
     func startListeningToSetlists() {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { 
+            self.isLoading = false
+            return 
+        }
         self.isLoading = true
         
+        // Firestore field in Zion Stage is 'userId'
         let query = db.collection("setlists")
-            .whereField("uid", isEqualTo: uid)
-            .order(by: "createdAt", descending: true)
+            .whereField("userId", isEqualTo: uid)
         
         listener = query.addSnapshotListener { [weak self] snapshot, error in
             guard let self = self else { return }
@@ -58,19 +61,20 @@ class DataStore: ObservableObject {
                 if let songsArray = data["songs"] as? [[String: Any]] {
                     for sData in songsArray {
                         let sId = sData["id"] as? String ?? UUID().uuidString
-                        let sName = sData["name"] as? String ?? "Canción"
+                        let sName = sData["name"] as? String ?? (sData["title"] as? String ?? "Canción")
                         let sArtist = sData["artist"] as? String
+                        let sKey = sData["key"] as? String
                         
                         var parsedTracks: [SongTrack] = []
                         if let tracksArray = sData["tracks"] as? [[String: Any]] {
                             for tData in tracksArray {
                                 let tId = tData["id"] as? String ?? UUID().uuidString
-                                let tPath = tData["path"] as? String ?? ""
-                                let tName = tData["name"] as? String
+                                let tPath = tData["path"] as? String ?? (tData["url"] as? String ?? "")
+                                let tName = tData["name"] as? String ?? (tData["title"] as? String ?? "")
                                 parsedTracks.append(SongTrack(id: tId, path: tPath, name: tName))
                             }
                         }
-                        parsedSongs.append(Song(id: sId, name: sName, artist: sArtist, tracks: parsedTracks, bpm: sData["bpm"] as? Double))
+                        parsedSongs.append(Song(id: sId, name: sName, artist: sArtist, key: sKey, tracks: parsedTracks, bpm: sData["bpm"] as? Double))
                     }
                 }
                 

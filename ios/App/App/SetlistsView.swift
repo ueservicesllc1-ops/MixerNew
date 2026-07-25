@@ -20,7 +20,7 @@ struct SetlistsView: View {
             .background(Color.zionPanel)
             
             // List
-            if dataStore.setlists.isEmpty {
+            if dataStore.isLoading {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -28,6 +28,21 @@ struct SetlistsView: View {
                     Text("Cargando Setlists...")
                         .foregroundColor(Color.zionTextSecondary)
                         .padding(.top, 10)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else if dataStore.setlists.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "music.note.house")
+                        .font(.system(size: 40))
+                        .foregroundColor(Color.zionTextSecondary)
+                    Text("No tienes setlists guardados")
+                        .font(.headline)
+                        .foregroundColor(Color.zionTextPrimary)
+                    Text("Crea o selecciona un setlist para reproducir")
+                        .font(.subheadline)
+                        .foregroundColor(Color.zionTextSecondary)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
