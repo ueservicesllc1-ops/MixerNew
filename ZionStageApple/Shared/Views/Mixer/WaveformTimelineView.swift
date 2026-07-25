@@ -10,6 +10,7 @@ import SwiftUI
 
 public struct WaveformTimelineView: View {
     @ObservedObject public var player: ZionAudioPlayer
+    @State private var dragTime: Double? = nil
 
     public init(player: ZionAudioPlayer) {
         self.player = player
@@ -28,7 +29,7 @@ public struct WaveformTimelineView: View {
             return ("-", "-")
         }
         let sortedMarkers = song.markers.sorted { $0.time < $1.time }
-        let time = player.currentTime
+        let time = dragTime ?? player.currentTime
 
         var currentLabel = "INTRO"
         var nextLabel = "-"
@@ -110,7 +111,8 @@ public struct WaveformTimelineView: View {
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
-                let progressPercent = CGFloat(player.duration > 0 ? player.currentTime / player.duration : 0)
+                let activeTime = dragTime ?? player.currentTime
+                let progressPercent = CGFloat(player.duration > 0 ? activeTime / player.duration : 0)
 
                 ZStack(alignment: .leading) {
                     // Fondo Waveform
@@ -211,7 +213,13 @@ public struct WaveformTimelineView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             let percent = max(0, min(1, value.location.x / width))
-                            player.seek(to: Double(percent) * player.duration)
+                            dragTime = Double(percent) * player.duration
+                        }
+                        .onEnded { value in
+                            if let finalTime = dragTime {
+                                player.seek(to: finalTime)
+                            }
+                            dragTime = nil
                         }
                 )
             }

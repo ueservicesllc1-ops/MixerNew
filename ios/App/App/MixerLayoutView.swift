@@ -238,6 +238,7 @@ struct MixerLayoutView: View {
 // MARK: - Interactive Waveform Timeline View
 struct WaveformTimelineView: View {
     @ObservedObject var engine = AudioEngineViewModel.shared
+    @State private var dragTime: Double? = nil
     
     private func formatTime(_ seconds: Double) -> String {
         guard !seconds.isNaN && seconds >= 0 else { return "00:00" }
@@ -251,7 +252,9 @@ struct WaveformTimelineView: View {
             GeometryReader { geo in
                 let width = geo.size.width
                 let height = geo.size.height
-                let progressPercent = CGFloat(engine.duration > 0 ? engine.currentTime / engine.duration : 0)
+                
+                let activeTime = dragTime ?? engine.currentTime
+                let progressPercent = CGFloat(engine.duration > 0 ? activeTime / engine.duration : 0)
                 
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 6)
@@ -305,7 +308,13 @@ struct WaveformTimelineView: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
                             let percent = max(0, min(1, value.location.x / width))
-                            engine.seek(to: Double(percent) * engine.duration)
+                            dragTime = Double(percent) * engine.duration
+                        }
+                        .onEnded { value in
+                            if let finalTime = dragTime {
+                                engine.seek(to: finalTime)
+                            }
+                            dragTime = nil
                         }
                 )
             }
