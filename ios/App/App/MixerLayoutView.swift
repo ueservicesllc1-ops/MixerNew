@@ -78,13 +78,17 @@ struct MixerLayoutView: View {
                 
                 // Profile
                 HStack(spacing: 12) {
-                    Text("Luis Uchubanda").font(.caption).foregroundColor(Color.zionTextSecondary)
+                    Text(authViewModel.currentUser?.name ?? "Usuario").font(.caption).foregroundColor(Color.zionTextSecondary)
                     Button(action: { authViewModel.logout() }) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(Color.zionTextSecondary)
                     }
-                    Image(systemName: "arrow.triangle.2.circlepath").foregroundColor(Color.zionTextSecondary)
-                    Image(systemName: "gearshape").foregroundColor(Color.zionTextSecondary)
+                    Button(action: {}) {
+                        Image(systemName: "arrow.triangle.2.circlepath").foregroundColor(Color.zionTextSecondary)
+                    }
+                    Button(action: { selectedTab = 7 }) {
+                        Image(systemName: "gearshape").foregroundColor(selectedTab == 7 ? Color.zionCyan : Color.zionTextSecondary)
+                    }
                 }
             }
             .padding()
@@ -119,10 +123,12 @@ struct MixerLayoutView: View {
             
             // 4. Main Content Area
             HStack(spacing: 8) {
-                // Left: Mixer or Lyrics
+                // Left: Mixer, Lyrics or Settings
                 VStack {
                     if selectedTab == 4 {
                         LyricsView()
+                    } else if selectedTab == 7 {
+                        SettingsView(authViewModel: authViewModel)
                     } else {
                         ScrollView(.horizontal, showsIndicators: true) {
                             HStack(spacing: 8) {
