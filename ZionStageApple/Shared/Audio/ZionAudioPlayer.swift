@@ -182,12 +182,39 @@ public class ZionAudioPlayer: ObservableObject {
         waveformPeaks = []
         seekPosition = 0.0
         isLooping = false
+        duration = song.duration ?? 0.0
 
         let criticalTracks = song.tracks.filter {
             $0.name != "__PreviewMix" && !$0.url.isEmpty
         }
 
         guard !criticalTracks.isEmpty else { return }
+
+        // Verificar si faltan pistas por descargar
+        let missingTracks = criticalTracks.filter {
+            !OfflineStorageManager.shared.isTrackDownloaded(songId: song.id, trackName: $0.name)
+        }
+
+        if !missingTracks.isEmpty {
+            DispatchQueue.main.async {
+                self.isLoading = true
+                self.loadProgress = 0
+                self.loadLabel = "Descargando pistas..."
+            }
+
+            DownloadManager.shared.downloadAllTracks(for: song) { [weak self] success in
+                guard let self = self else { return }
+                if success {
+                    self.loadSong(song)
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.loadLabel = "Error al descargar pistas"
+                    }
+                }
+            }
+            return
+        }
 
         DispatchQueue.main.async {
             self.isLoading = true
@@ -267,6 +294,13 @@ public class ZionAudioPlayer: ObservableObject {
                 }
             }
 
+            // Ensure engine is running before scheduling audio
+            if !self.engine.isRunning {
+                do { try self.engine.start() } catch {
+                    print("[ZionAudioPlayer] Engine start error: \(error.localizedDescription)")
+                }
+            }
+
             scheduleAllFromPosition(0)
 
             DispatchQueue.main.async {
@@ -277,42 +311,42 @@ public class ZionAudioPlayer: ObservableObject {
         }
     }
 
-    // MARK: - Waveform Peaks reales
+    // MARK: - Waveform Peaks reales (Chunked Memory-Safe)
     private func generateWaveformPeaks(from file: AVAudioFile) async {
-        let displayWidth = 800
-        guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: file.processingFormat,
-            frameCapacity: AVAudioFrameCount(file.length)
-        ) else { return }
+        let displayWidth = 400
+        let totalFrames = file.length
+        guard totalFrames > 0 else { return }
 
-        do {
-            file.framePosition = 0
-            try file.read(into: buffer)
-        } catch { return }
+        let step = max(1, totalFrames / Int64(displayWidth))
+        let chunkSize: AVAudioFrameCount = 2048
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkSize) else { return }
 
-        guard let channelData = buffer.floatChannelData else { return }
-        let frameCount = Int(buffer.frameLength)
-        guard frameCount > 0 else { return }
-
-        let step = max(1, frameCount / displayWidth)
         var peaks = [Float](repeating: 0, count: displayWidth)
-        let data = channelData[0]
 
         for i in 0..<displayWidth {
-            var maxVal: Float = 0
-            let start = i * step
-            let end = min(start + step, frameCount)
-            for j in start..<end {
-                maxVal = max(maxVal, abs(data[j]))
+            let targetFrame = Int64(i) * step
+            file.framePosition = min(targetFrame, max(0, totalFrames - Int64(chunkSize)))
+            do {
+                try file.read(into: buffer, frameCount: chunkSize)
+                if let channelData = buffer.floatChannelData {
+                    let data = channelData[0]
+                    var maxVal: Float = 0
+                    let count = Int(buffer.frameLength)
+                    for j in 0..<count {
+                        maxVal = max(maxVal, abs(data[j]))
+                    }
+                    peaks[i] = maxVal
+                }
+            } catch {
+                // Omitir errores de lectura en bordes de archivo
             }
-            peaks[i] = maxVal
         }
+
+        file.framePosition = 0
 
         DispatchQueue.main.async {
             self.waveformPeaks = peaks
         }
-
-        file.framePosition = 0
     }
 
     private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
@@ -520,7 +554,8 @@ public class ZionAudioPlayer: ObservableObject {
 
     // MARK: - Limpieza
     private func detachAllNodes() {
-        for (name, stemMixer) in stemMixerNodes {
+        stopProgressTimer()
+        for (_, stemMixer) in stemMixerNodes {
             stemMixer.removeTap(onBus: 0)
         }
         for playerNode in playerNodes.values {
@@ -537,13 +572,18 @@ public class ZionAudioPlayer: ObservableObject {
         stemMixerNodes.removeAll()
         timePitchNodes.removeAll()
         audioFiles.removeAll()
-        stemVolumes.removeAll()
-        mutedStems.removeAll()
         soloedStem = nil
         DispatchQueue.main.async {
-            self.duration = 0
             self.currentTime = 0
             self.vuLevels = [:]
+        }
+
+        // Restart engine so new nodes can be attached cleanly
+        engine.stop()
+        do {
+            try engine.start()
+        } catch {
+            print("[ZionAudioPlayer] Engine restart error: \(error.localizedDescription)")
         }
     }
 }

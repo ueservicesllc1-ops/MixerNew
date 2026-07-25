@@ -3,12 +3,10 @@
 //  ZionStageApple
 //
 //  Tira de canal multitrack nativa en SwiftUI.
-//  Diseño visual exacto de la aplicación Android:
-//  - Fondo Slate 900 (#0f172a) / Special track Slate 800 (#1e293b)
-//  - Borde sutil o de color del stem (Naranja #f97316 para Click/Guía, Cían #13b5b6 para instrumentos)
-//  - Fader vertical con capuchón antiderrapante y medidor LED VU de 24 segmentos
-//  - Botones Mute (Rojo) y Solo (Amarillo)
-//  - Control de Panorama L / R
+//  Réplica 1:1 exacta de ChannelStrip de React / Android (Mixer.jsx):
+//  - Color pill badge por rol de pista (Click/Guía Rojo #b91c1c, Batería #00bcd4, Guitarras #ffb142, Voces #34ace0, Bajo #706fd3)
+//  - Fader vertical con escala dB (+6, 0, -5, -10, -20, -40, -∞) y Medidor VU LED de 32 leds
+//  - Botones de ruteo L / M / S / R (L: Izquierda/Monitores, M: Mute, S: Solo, R: Derecha/FOH)
 //
 
 import SwiftUI
@@ -23,9 +21,10 @@ public struct ChannelStripView: View {
     @ObservedObject private var player = ZionAudioPlayer.shared
 
     @State private var volume: Float
-    @State private var pan: Float
     @State private var isMuted: Bool
     @State private var isSolo: Bool
+    @State private var routeL: Bool
+    @State private var routeR: Bool
 
     public init(
         stem: Stem,
@@ -39,140 +38,110 @@ public struct ChannelStripView: View {
         self.onMuteToggle = onMuteToggle
         self.onSoloToggle = onSoloToggle
         self.onPanChange = onPanChange
+        
+        let isClickGuide = stem.name.lowercased().contains("click") ||
+                           stem.name.lowercased().contains("guia") ||
+                           stem.name.lowercased().contains("guide") ||
+                           stem.role.lowercased().contains("click") ||
+                           stem.role.lowercased().contains("guide")
+
         self._volume = State(initialValue: stem.volume)
-        self._pan = State(initialValue: stem.pan)
         self._isMuted = State(initialValue: stem.isMuted)
         self._isSolo = State(initialValue: stem.isSolo)
+        self._routeL = State(initialValue: isClickGuide ? true : (stem.pan <= 0.0))
+        self._routeR = State(initialValue: isClickGuide ? false : (stem.pan >= 0.0))
     }
 
-    // Marca si es pista especial (Click / Guía)
-    private var isSpecialTrack: Bool {
-        let name = stem.name.lowercased()
-        let role = stem.role.lowercased()
-        return name.contains("click") || name.contains("guia") || name.contains("guide") || role.contains("click") || role.contains("guide")
+    private var isClickGuideStem: Bool {
+        let n = stem.name.lowercased()
+        let r = stem.role.lowercased()
+        return n.contains("click") || n.contains("guia") || n.contains("guide") || r.contains("click") || r.contains("guide")
     }
 
-    // Color característico del stem
     private var stemColor: Color {
-        let nameLower = stem.name.lowercased()
-        let roleLower = stem.role.lowercased()
-        if nameLower.contains("click") || roleLower.contains("click") {
-            return Color(red: 0.95, green: 0.25, blue: 0.25) // Rojo Click
+        let n = stem.name.lowercased()
+        let r = stem.role.lowercased()
+        if isClickGuideStem { return Color(red: 0.73, green: 0.11, blue: 0.11) } // Rojo #b91c1c
+        if n.contains("bat") || n.contains("drum") || n.contains("perc") || r.contains("drums") {
+            return Color(red: 0.0, green: 0.74, blue: 0.83) // #00bcd4
         }
-        if nameLower.contains("guia") || nameLower.contains("guide") || roleLower.contains("guide") {
-            return Color(red: 0.97, green: 0.45, blue: 0.09) // Naranja Guía #f97316
+        if n.contains("guit") || n.contains("git") || r.contains("guitar") {
+            return Color(red: 1.0, green: 0.69, blue: 0.26) // #ffb142
         }
-        if nameLower.contains("voz") || nameLower.contains("vocal") || roleLower.contains("vocal") {
-            return Color(red: 0.13, green: 0.77, blue: 0.36) // Verde Voces
+        if n.contains("vox") || n.contains("voz") || r.contains("vocal") {
+            return Color(red: 0.20, green: 0.67, blue: 0.88) // #34ace0
         }
-        if nameLower.contains("bateria") || nameLower.contains("drum") || roleLower.contains("drums") {
-            return Color(red: 0.95, green: 0.6, blue: 0.15) // Naranja Batería
+        if n.contains("bass") || n.contains("bajo") || r.contains("bass") {
+            return Color(red: 0.44, green: 0.44, blue: 0.83) // #706fd3
         }
-        if nameLower.contains("bajo") || nameLower.contains("bass") || roleLower.contains("bass") {
-            return Color(red: 0.23, green: 0.51, blue: 0.96) // Azul Bajo
-        }
-        if nameLower.contains("guitar") || nameLower.contains("guit") || roleLower.contains("guitar") {
-            return Color(red: 0.07, green: 0.71, blue: 0.71) // Cían Guitarras #13b5b6
-        }
-        if nameLower.contains("key") || nameLower.contains("tecl") || nameLower.contains("synth") {
-            return Color(red: 0.66, green: 0.33, blue: 0.97) // Púrpura Teclados
-        }
-        return Color(red: 0.58, green: 0.64, blue: 0.72) // Slate 400
+        return Color(red: 0.0, green: 0.82, blue: 0.83) // #00d2d3
     }
 
-    // Nivel dB actual en escala de -60 a 0 dB desde el motor
     private var currentDB: Float {
         guard !isMuted, player.isPlaying else { return -60.0 }
         return player.vuLevels[stem.id] ?? -60.0
     }
 
-    private var isClipping: Bool {
-        currentDB >= -0.5
-    }
-
     public var body: some View {
         VStack(spacing: 8) {
-            // Nombre del Stem (Cabecera estilo Android)
-            HStack(spacing: 4) {
+            // Cabecera: Color Pill + Nombre del Stem
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(stemColor)
+                    .frame(width: 14, height: 8)
+                    .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.white.opacity(0.3), lineWidth: 0.5))
+
                 Text(stem.name)
-                    .font(.system(size: 11, weight: .bold, design: .default))
-                    .foregroundColor(isSpecialTrack ? Color(red: 0.97, green: 0.45, blue: 0.09) : Color(red: 0.9, green: 0.95, blue: 1.0))
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(isClickGuideStem ? Color(red: 0.97, green: 0.45, blue: 0.09) : .white)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                
-                if isClipping {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: .red, radius: 3)
-                }
+
+                Spacer(minLength: 0)
             }
-            .frame(width: 82, height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSpecialTrack ? Color(red: 0.97, green: 0.45, blue: 0.09).opacity(0.18) : stemColor.opacity(0.15))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSpecialTrack ? Color(red: 0.97, green: 0.45, blue: 0.09).opacity(0.6) : stemColor.opacity(0.3), lineWidth: 1)
-                    )
-            )
+            .padding(.horizontal, 4)
 
-            // Botones Mute y Solo (Estilo Consola Pro)
-            HStack(spacing: 6) {
-                // Botón MUTE
-                Button(action: {
-                    isMuted.toggle()
-                    onMuteToggle(isMuted)
-                }) {
-                    Text("M")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 36, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isMuted ? Color(red: 0.93, green: 0.27, blue: 0.27) : Color(red: 0.12, green: 0.16, blue: 0.25))
-                                .shadow(color: isMuted ? Color.red.opacity(0.5) : Color.clear, radius: 4)
-                        )
-                        .foregroundColor(isMuted ? .white : Color(red: 0.6, green: 0.65, blue: 0.75))
+            // Fader Stack: Escala dB + Medidor LED VU + Slider Fader
+            HStack(spacing: 4) {
+                // Escala de dB (+6, 0, -5, -10, -20, -40, -∞)
+                VStack(alignment: .trailing, spacing: 0) {
+                    Text("+6").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
+                    Spacer()
+                    Text("0").font(.system(size: 7, weight: .bold)).foregroundColor(Color(red: 0.0, green: 0.82, blue: 0.83))
+                    Spacer()
+                    Text("-5").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
+                    Spacer()
+                    Text("-10").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
+                    Spacer()
+                    Text("-20").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
+                    Spacer()
+                    Text("-40").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
+                    Spacer()
+                    Text("-∞").font(.system(size: 7, weight: .bold)).foregroundColor(.gray)
                 }
+                .frame(width: 16, height: 160)
 
-                // Botón SOLO
-                Button(action: {
-                    isSolo.toggle()
-                    onSoloToggle(isSolo)
-                }) {
-                    Text("S")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 36, height: 28)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(isSolo ? Color(red: 0.96, green: 0.62, blue: 0.04) : Color(red: 0.12, green: 0.16, blue: 0.25))
-                                .shadow(color: isSolo ? Color.yellow.opacity(0.5) : Color.clear, radius: 4)
-                        )
-                        .foregroundColor(isSolo ? .black : Color(red: 0.6, green: 0.65, blue: 0.75))
-                }
-            }
-
-            // VU Meter LED + Slider Fader Vertical
-            HStack(spacing: 6) {
-                // Medidor LED Vertical de 24 leds
-                VStack(spacing: 2) {
-                    ForEach((0..<24).reversed(), id: \.self) { index in
-                        let ledDB = -60.0 + (Float(index) * (60.0 / 24.0))
+                // Medidor VU LED Vertical de 32 segmentos
+                VStack(spacing: 1.5) {
+                    ForEach((0..<32).reversed(), id: \.self) { index in
+                        let ledDB = Float(-60.0) + (Float(index) * Float(2.0625))
                         let isActive = currentDB >= ledDB
-                        let ledColor: Color = index >= 21 ? .red : (index >= 16 ? .yellow : Color(red: 0.07, green: 0.71, blue: 0.71))
+                        let ledColor: Color = index >= 28 ? Color(red: 0.96, green: 0.12, blue: 0.12) :
+                                             (index >= 22 ? Color(red: 0.98, green: 0.75, blue: 0.14) : Color(red: 0.0, green: 0.82, blue: 0.83))
 
                         Rectangle()
                             .fill(isActive ? ledColor : Color.white.opacity(0.06))
-                            .frame(width: 5, height: 6)
-                            .cornerRadius(1)
+                            .frame(width: 6, height: 3.5)
+                            .cornerRadius(0.5)
                     }
                 }
+                .frame(height: 160)
 
-                // Slider Fader Vertical con indicador de porcentaje
+                // Slider Fader Vertical
                 VStack(spacing: 4) {
                     Text("\(Int(volume * 100))%")
-                        .font(.system(size: 10, design: .monospaced).weight(.bold))
-                        .foregroundColor(Color(red: 0.7, green: 0.75, blue: 0.85))
+                        .font(.system(size: 9, design: .monospaced).weight(.bold))
+                        .foregroundColor(stemColor)
 
                     Slider(value: Binding(
                         get: { Double(volume) },
@@ -183,47 +152,95 @@ public struct ChannelStripView: View {
                     ), in: 0.0...1.2)
                     .rotationEffect(.degrees(-90))
                     .accentColor(stemColor)
-                    .frame(width: 155, height: 36)
+                    .frame(width: 140, height: 36)
                 }
             }
-            .frame(height: 175)
+            .frame(height: 170)
 
-            // Balance Panning L / R
-            VStack(spacing: 2) {
-                Text(pan == 0 ? "CENTER" : (pan < 0 ? "L \(Int(abs(pan) * 100))%" : "R \(Int(pan * 100))%"))
-                    .font(.system(size: 9, design: .monospaced).weight(.bold))
-                    .foregroundColor(Color(red: 0.5, green: 0.6, blue: 0.7))
-
-                HStack(spacing: 2) {
+            // Grupo de Botones de Ruteo y Mute/Solo: [L] [M] [S] [R]
+            HStack(spacing: 4) {
+                // Botón L (Left)
+                Button(action: toggleL) {
                     Text("L")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Color(red: 0.5, green: 0.6, blue: 0.7))
-
-                    Slider(value: Binding(
-                        get: { Double(pan) },
-                        set: { newValue in
-                            pan = Float(newValue)
-                            onPanChange(pan)
-                        }
-                    ), in: -1.0...1.0)
-                    .accentColor(Color(red: 0.07, green: 0.71, blue: 0.71))
-
-                    Text("R")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundColor(Color(red: 0.5, green: 0.6, blue: 0.7))
+                        .font(.system(size: 11, weight: .black))
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(routeL ? Color.cyan : Color(red: 0.12, green: 0.16, blue: 0.25))
+                        )
+                        .foregroundColor(routeL ? .black : Color.gray)
                 }
-                .frame(width: 80)
+
+                // Botón M (Mute)
+                Button(action: {
+                    isMuted.toggle()
+                    onMuteToggle(isMuted)
+                }) {
+                    Text("M")
+                        .font(.system(size: 11, weight: .black))
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(isMuted ? Color.red : Color(red: 0.12, green: 0.16, blue: 0.25))
+                        )
+                        .foregroundColor(isMuted ? .white : Color.gray)
+                }
+
+                // Botón S (Solo)
+                Button(action: {
+                    isSolo.toggle()
+                    onSoloToggle(isSolo)
+                }) {
+                    Text("S")
+                        .font(.system(size: 11, weight: .black))
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(isSolo ? Color.yellow : Color(red: 0.12, green: 0.16, blue: 0.25))
+                        )
+                        .foregroundColor(isSolo ? .black : Color.gray)
+                }
+
+                // Botón R (Right)
+                Button(action: toggleR) {
+                    Text("R")
+                        .font(.system(size: 11, weight: .black))
+                        .frame(width: 26, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(routeR ? Color.cyan : Color(red: 0.12, green: 0.16, blue: 0.25))
+                        )
+                        .foregroundColor(routeR ? .black : Color.gray)
+                }
             }
         }
         .padding(8)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isSpecialTrack ? Color(red: 0.12, green: 0.16, blue: 0.23) : Color(red: 0.06, green: 0.09, blue: 0.16))
-                .shadow(color: Color.black.opacity(0.4), radius: 6)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(red: 0.08, green: 0.10, blue: 0.16))
+                .shadow(color: Color.black.opacity(0.4), radius: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSpecialTrack ? Color(red: 0.97, green: 0.45, blue: 0.09).opacity(0.5) : Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isClickGuideStem ? Color(red: 0.73, green: 0.11, blue: 0.11).opacity(0.6) : Color.white.opacity(0.08), lineWidth: 1)
         )
     }
+
+    private func toggleL() {
+        routeL.toggle()
+        updatePan()
+    }
+
+    private func toggleR() {
+        routeR.toggle()
+        updatePan()
+    }
+
+    private func updatePan() {
+        var pan: Float = 0.0
+        if routeL && !routeR { pan = -1.0 }
+        else if routeR && !routeL { pan = 1.0 }
+        onPanChange(pan)
+    }
 }
+

@@ -139,6 +139,17 @@ public struct WaveformTimelineView: View {
                             ),
                             lineWidth: max(1, width / CGFloat(player.waveformPeaks.count))
                         )
+                    } else if player.isLoading {
+                        // Estado de Carga / Descarga de Stems
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .cyan))
+                                .scaleEffect(0.8)
+                            Text(player.loadLabel.isEmpty ? "Descargando pistas y generando forma de onda..." : player.loadLabel)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.cyan.opacity(0.8))
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
 
                     // Overlay de Progreso Transcurrido
@@ -159,25 +170,31 @@ public struct WaveformTimelineView: View {
                             )
                     }
 
-                    // Marcadores de Sección (Vertical Flags)
+                    // Marcadores de Sección (Banderas interactivas)
                     if let song = player.currentSong {
                         ForEach(song.markers) { marker in
                             let posX = CGFloat(player.duration > 0 ? marker.time / player.duration : 0) * width
                             VStack(spacing: 0) {
                                 Rectangle()
-                                    .fill(Color.yellow.opacity(0.8))
+                                    .fill(Color.yellow.opacity(0.85))
                                     .frame(width: 1.5, height: height)
                             }
                             .offset(x: posX)
                             .overlay(
-                                Text(marker.label)
-                                    .font(.system(size: 8, weight: .bold))
-                                    .foregroundColor(.black)
-                                    .padding(.horizontal, 3)
-                                    .padding(.vertical, 1)
-                                    .background(Color.yellow)
-                                    .cornerRadius(3)
-                                    .offset(x: posX, y: -height / 2 + 6)
+                                Button(action: {
+                                    player.seek(to: marker.time)
+                                }) {
+                                    Text(marker.label)
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.black)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 2)
+                                        .background(Color.yellow)
+                                        .cornerRadius(4)
+                                        .shadow(color: .black.opacity(0.3), radius: 2)
+                                }
+                                .buttonStyle(.plain)
+                                .offset(x: posX, y: -height / 2 + 8)
                             )
                         }
                     }

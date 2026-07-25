@@ -15,6 +15,11 @@ class AudioEngineViewModel: ObservableObject {
     
     // For tracking which tracks are currently loaded
     @Published var loadedTracks: [SongTrack] = []
+    
+    // Waveform Peaks
+    @Published var waveformPeaks: [Float] = []
+    @Published var isLoading: Bool = false
+    @Published var loadLabel: String = ""
 
     // MARK: - Mixer Properties
     @Published var masterVolume: Float = 1.0 {
@@ -80,6 +85,33 @@ class AudioEngineViewModel: ObservableObject {
 
         guard !tracks.isEmpty else { return }
 
+        // Check if tracks are downloaded
+        let missing = tracks.filter { !DownloadManager.shared.isTrackDownloaded($0) }
+        if !missing.isEmpty {
+            DispatchQueue.main.async {
+                self.isLoading = true
+                self.loadLabel = "Descargando stems..."
+            }
+            DownloadManager.shared.downloadAllTracks(for: tracks) { [weak self] success in
+                guard let self = self else { return }
+                if success {
+                    self.loadTracks(tracks)
+                } else {
+                    DispatchQueue.main.async {
+                        self.isLoading = false
+                        self.loadLabel = "Error al descargar"
+                    }
+                }
+            }
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.isLoading = true
+            self.loadLabel = "Preparando pistas..."
+            self.waveformPeaks = []
+        }
+
         var maxDuration: Double = 0
         
         DispatchQueue.main.async {
@@ -91,13 +123,8 @@ class AudioEngineViewModel: ObservableObject {
         }
 
         for track in tracks {
-            let localURL = DownloadManager.shared.getLocalURL(for: track.path)
+            let localURL = DownloadManager.shared.getLocalURL(for: track)
             
-            if !FileManager.default.fileExists(atPath: localURL.path) {
-                print("[AudioEngine] Track file not found at: \(localURL.path)")
-                continue
-            }
-
             do {
                 let audioFile = try AVAudioFile(forReading: localURL)
                 let playerNode = AVAudioPlayerNode()
@@ -121,6 +148,11 @@ class AudioEngineViewModel: ObservableObject {
                 
                 stemMixer.outputVolume = 1.0
 
+                // Auto Pan: Click/Guide -> izquierda (-1), resto -> derecha (+1)
+                let nameLow = (track.name ?? "").lowercased()
+                let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia")
+                stemMixer.pan = isClickGuide ? -1.0 : 1.0
+                
                 // Setup VU meter tap
                 let stemId = track.id
                 stemMixer.installTap(onBus: 0, bufferSize: 1024, format: audioFile.processingFormat) { [weak self] buffer, _ in
@@ -142,16 +174,67 @@ class AudioEngineViewModel: ObservableObject {
                 if fileDuration > maxDuration {
                     maxDuration = fileDuration
                 }
+                
+                if waveformPeaks.isEmpty {
+                    Task {
+                        await generateWaveformPeaks(from: audioFile)
+                    }
+                }
 
             } catch {
                 print("[AudioEngine] Error opening \(track.path): \(error.localizedDescription)")
             }
         }
         
+        // Ensure engine is running before scheduling segment
+        if !engine.isRunning {
+            try? engine.start()
+        }
+        
+        scheduleAllFromPosition(0)
+        
         DispatchQueue.main.async {
             self.duration = maxDuration
+            self.isLoading = false
+            self.loadLabel = ""
         }
-        scheduleAllFromPosition(0)
+    }
+
+    private func generateWaveformPeaks(from file: AVAudioFile) async {
+        let displayWidth = 400
+        let totalFrames = file.length
+        guard totalFrames > 0 else { return }
+
+        let step = max(1, totalFrames / Int64(displayWidth))
+        let chunkSize: AVAudioFrameCount = 2048
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkSize) else { return }
+
+        var peaks = [Float](repeating: 0, count: displayWidth)
+
+        for i in 0..<displayWidth {
+            let targetFrame = Int64(i) * step
+            file.framePosition = min(targetFrame, max(0, totalFrames - Int64(chunkSize)))
+            do {
+                try file.read(into: buffer, frameCount: chunkSize)
+                if let channelData = buffer.floatChannelData {
+                    let data = channelData[0]
+                    var maxVal: Float = 0
+                    let count = Int(buffer.frameLength)
+                    for j in 0..<count {
+                        maxVal = max(maxVal, abs(data[j]))
+                    }
+                    peaks[i] = maxVal
+                }
+            } catch {
+                // Ignore border read errors
+            }
+        }
+
+        file.framePosition = 0
+
+        DispatchQueue.main.async {
+            self.waveformPeaks = peaks
+        }
     }
 
     private func calculateRMS(buffer: AVAudioPCMBuffer) -> Float {
@@ -328,7 +411,13 @@ class AudioEngineViewModel: ObservableObject {
             self.duration = 0
             self.currentTime = 0
             self.vuLevels = [:]
-            self.loadedTracks = []
+        }
+        
+        engine.stop()
+        do {
+            try engine.start()
+        } catch {
+            print("[AudioEngine] Restart error: \(error.localizedDescription)")
         }
     }
 }

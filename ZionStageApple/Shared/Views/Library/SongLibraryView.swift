@@ -22,14 +22,20 @@ public struct SongLibraryView: View {
     @State private var songToAdd: Song? = nil
     @State private var downloadStatusMsg: String? = nil
 
-    enum LibraryTab { case mine, global }
+    enum LibraryTab { case mine, setlist, global }
 
     public init() {}
 
     private var displayedSongs: [Song] {
-        let base = libraryTab == .mine
-            ? firebase.librarySongs
-            : firebase.globalSongs.filter { !$0.tracks.isEmpty }
+        let base: [Song]
+        switch libraryTab {
+        case .mine:
+            base = firebase.librarySongs
+        case .setlist:
+            base = selectedSetlist?.songs ?? []
+        case .global:
+            base = firebase.globalSongs.filter { !$0.tracks.isEmpty }
+        }
 
         guard !searchQuery.isEmpty else { return base }
         let q = searchQuery.lowercased()
@@ -44,7 +50,7 @@ public struct SongLibraryView: View {
             // Header
             headerView
 
-            // Tabs: Mi librería / Global
+            // Tabs: Mi librería / Setlist / Global
             tabSelector
 
             // Barra de búsqueda
@@ -100,22 +106,22 @@ public struct SongLibraryView: View {
 
             Spacer()
 
-            // Botón setlist
+            // Botón + Setlist
             Button(action: { showSetlistSheet = true }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "list.bullet.rectangle")
+                HStack(spacing: 4) {
+                    Image(systemName: "plus.circle.fill")
                         .font(.system(size: 14))
-                    Text(selectedSetlist?.name ?? "Setlist")
-                        .font(.system(size: 13, weight: .medium))
+                    Text(selectedSetlist != nil ? "Setlist: \(selectedSetlist!.name)" : "+ Setlist")
+                        .font(.system(size: 12, weight: .bold))
                         .lineLimit(1)
                 }
                 .foregroundColor(.cyan)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.cyan.opacity(0.1))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.3), lineWidth: 1))
+                        .fill(Color.cyan.opacity(0.15))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.cyan.opacity(0.4), lineWidth: 1))
                 )
             }
         }
@@ -127,6 +133,9 @@ public struct SongLibraryView: View {
     private var tabSelector: some View {
         HStack(spacing: 0) {
             tabButton(title: "🎵 Mi Librería", count: firebase.librarySongs.count, tab: .mine)
+            if let setlist = selectedSetlist {
+                tabButton(title: "📋 Setlist", count: setlist.songs.count, tab: .setlist)
+            }
             tabButton(title: "🌐 Global", count: firebase.globalSongs.filter { !$0.tracks.isEmpty }.count, tab: .global)
         }
         .padding(.horizontal, 16)
@@ -136,16 +145,16 @@ public struct SongLibraryView: View {
     private func tabButton(title: String, count: Int, tab: LibraryTab) -> some View {
         Button(action: { libraryTab = tab }) {
             Text("\(title) (\(count))")
-                .font(.system(size: 13, weight: libraryTab == tab ? .bold : .regular))
+                .font(.system(size: 12, weight: libraryTab == tab ? .bold : .regular))
                 .foregroundColor(libraryTab == tab ? .black : .gray)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
                         .fill(libraryTab == tab ? Color.cyan : Color(white: 0.12))
                 )
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 2)
     }
 
     // MARK: - Search Bar
@@ -205,77 +214,70 @@ public struct SongLibraryView: View {
         }
         let isDownloading = downloader.progress?.songId == song.id
 
-        return HStack(spacing: 12) {
-            // Indicador de canción activa
-            RoundedRectangle(cornerRadius: 2)
-                .fill(isActive ? Color.cyan : Color.clear)
-                .frame(width: 3, height: 44)
+        return Button(action: { loadSong(song) }) {
+            HStack(spacing: 12) {
+                // Indicador de canción activa
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isActive ? Color.cyan : Color.clear)
+                    .frame(width: 3, height: 44)
 
-            // Info de la canción
-            VStack(alignment: .leading, spacing: 4) {
-                Text(song.name)
-                    .font(.system(size: 15, weight: isActive ? .bold : .medium))
-                    .foregroundColor(isActive ? .cyan : .white)
-                    .lineLimit(1)
+                // Info de la canción
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(song.name)
+                        .font(.system(size: 15, weight: isActive ? .bold : .medium))
+                        .foregroundColor(isActive ? .cyan : .white)
+                        .lineLimit(1)
 
-                HStack(spacing: 8) {
-                    if !song.artist.isEmpty {
-                        Text(song.artist)
-                            .font(.system(size: 12))
-                            .foregroundColor(.gray)
+                    HStack(spacing: 8) {
+                        if !song.artist.isEmpty {
+                            Text(song.artist)
+                                .font(.system(size: 12))
+                                .foregroundColor(.gray)
+                        }
+                        // Badges
+                        if let tempo = song.tempo, tempo > 0 {
+                            badge(text: "\(Int(tempo)) BPM", color: .orange)
+                        }
+                        if let key = song.key, !key.isEmpty {
+                            badge(text: key, color: .cyan)
+                        }
+                        if !song.tracks.isEmpty {
+                            badge(text: "\(song.tracks.filter { $0.name != "__PreviewMix" }.count) stems", color: .purple)
+                        }
                     }
-                    // Badges
-                    if let tempo = song.tempo, tempo > 0 {
-                        badge(text: "\(Int(tempo)) BPM", color: .orange)
-                    }
-                    if let key = song.key, !key.isEmpty {
-                        badge(text: key, color: .cyan)
-                    }
-                    if !song.tracks.isEmpty {
-                        badge(text: "\(song.tracks.filter { $0.name != "__PreviewMix" }.count) stems", color: .purple)
+
+                    if isDownloading, let prog = downloader.progress {
+                        HStack(spacing: 6) {
+                            ProgressView(value: prog.overallFraction)
+                                .progressViewStyle(.linear)
+                                .tint(.cyan)
+                                .frame(width: 100)
+                            Text(prog.label)
+                                .font(.system(size: 10))
+                                .foregroundColor(.cyan)
+                        }
                     }
                 }
 
-                if isDownloading, let prog = downloader.progress {
-                    HStack(spacing: 6) {
-                        ProgressView(value: prog.overallFraction)
-                            .progressViewStyle(.linear)
-                            .tint(.cyan)
-                            .frame(width: 100)
-                        Text(prog.label)
-                            .font(.system(size: 10))
-                            .foregroundColor(.cyan)
-                    }
-                }
-            }
+                Spacer()
 
-            Spacer()
-
-            // Botones de acción
-            VStack(spacing: 6) {
-                // Cargar canción
-                Button(action: { loadSong(song) }) {
-                    Image(systemName: isActive ? "play.circle.fill" : "play.circle")
-                        .font(.system(size: 26))
-                        .foregroundColor(isActive ? .cyan : .gray)
-                }
-
-                // Descargar / Agregar a setlist
-                if !isDownloaded && !isDownloading {
-                    Button(action: { downloadAndAddToSetlist(song) }) {
-                        Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 20))
-                            .foregroundColor(.green)
-                    }
+                // Estado visual
+                if isActive {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 18))
+                        .foregroundColor(.cyan)
                 } else if isDownloaded {
-                    Button(action: { addToActiveSetlist(song) }) {
-                        Image(systemName: "plus.circle")
-                            .font(.system(size: 20))
-                            .foregroundColor(.green)
-                    }
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.green.opacity(0.6))
+                } else if !isDownloading {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(.gray.opacity(0.4))
                 }
             }
         }
+        .buttonStyle(.plain)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(
@@ -319,7 +321,7 @@ public struct SongLibraryView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.gray.opacity(0.3))
             Text(searchQuery.isEmpty
-                ? (libraryTab == .mine ? "Tu librería está vacía" : "No hay canciones globales")
+                ? (libraryTab == .mine ? "Tu librería está vacía" : (libraryTab == .setlist ? "El setlist está vacío" : "No hay canciones globales"))
                 : "No se encontraron resultados para \"\(searchQuery)\"")
                 .font(.subheadline)
                 .foregroundColor(.gray)
@@ -337,35 +339,14 @@ public struct SongLibraryView: View {
 
     // MARK: - Acciones
     private func loadSong(_ song: Song) {
-        // Verificar que los stems estén descargados
-        let notDownloaded = song.tracks.filter {
-            $0.name != "__PreviewMix" &&
-            !DownloadManager.shared.isTrackDownloaded(songId: song.id, trackName: $0.name)
-        }
-
-        if notDownloaded.isEmpty {
-            player.loadSong(song)
-        } else {
-            // Descargar primero, luego cargar
-            downloadAndAddToSetlist(song)
-        }
+        player.loadSong(song)
     }
 
     private func downloadAndAddToSetlist(_ song: Song) {
-        guard selectedSetlist != nil else {
-            // Si no hay setlist, descargar igual y cargar directo
-            downloader.downloadAllTracks(for: song) { success in
-                if success { self.player.loadSong(song) }
-            }
-            return
+        if let setlist = selectedSetlist {
+            self.addToActiveSetlist(song)
         }
-
-        downloader.downloadAllTracks(for: song) { success in
-            if success {
-                self.addToActiveSetlist(song)
-                self.player.loadSong(song)
-            }
-        }
+        player.loadSong(song)
     }
 
     private func addToActiveSetlist(_ song: Song) {

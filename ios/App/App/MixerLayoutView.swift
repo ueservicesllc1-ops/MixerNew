@@ -94,13 +94,10 @@ struct MixerLayoutView: View {
             .padding()
             .background(Color.zionPanel)
             
-            // 2. Waveform Placeholder
-            Rectangle()
-                .fill(Color.zionPanelLight)
-                .frame(height: 60)
-                .overlay(
-                    Text("Onda Guardada (Waveform)").foregroundColor(Color.zionTextSecondary).font(.caption)
-                )
+            // 2. Waveform Timeline
+            WaveformTimelineView()
+                .frame(height: 50)
+                .padding(.vertical, 6)
             
             // 3. Tab Bar
             HStack(spacing: 4) {
@@ -130,19 +127,25 @@ struct MixerLayoutView: View {
                     } else if selectedTab == 7 {
                         SettingsView(authViewModel: authViewModel)
                     } else {
-                        ScrollView(.horizontal, showsIndicators: true) {
-                            HStack(spacing: 8) {
-                                if AudioEngineViewModel.shared.loadedTracks.isEmpty {
-                                    Text("Selecciona una canción del setlist para comenzar.")
-                                        .foregroundColor(Color.zionTextSecondary)
-                                        .padding(.top, 50)
-                                } else {
+                        if AudioEngineViewModel.shared.loadedTracks.isEmpty {
+                            VStack {
+                                Spacer()
+                                Text("Selecciona una canción del setlist para comenzar.")
+                                    .foregroundColor(Color.zionTextSecondary)
+                                Spacer()
+                            }
+                        } else {
+                            ScrollView(.vertical, showsIndicators: true) {
+                                LazyVGrid(
+                                    columns: [GridItem(.adaptive(minimum: 110, maximum: 150), spacing: 8)],
+                                    spacing: 8
+                                ) {
                                     ForEach(AudioEngineViewModel.shared.loadedTracks) { track in
                                         MixerChannelView(track: track)
                                     }
                                 }
+                                .padding(8)
                             }
-                            .padding(8)
                         }
                     }
                 }
@@ -156,5 +159,84 @@ struct MixerLayoutView: View {
             .background(Color.zionBackground)
         }
         .background(Color.zionBackground)
+    }
+}
+
+// MARK: - Interactive Waveform Timeline View
+struct WaveformTimelineView: View {
+    @ObservedObject var engine = AudioEngineViewModel.shared
+    
+    private func formatTime(_ seconds: Double) -> String {
+        guard !seconds.isNaN && seconds >= 0 else { return "00:00" }
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "%02d:%02d", mins, secs)
+    }
+
+    var body: some View {
+        VStack(spacing: 4) {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let height = geo.size.height
+                let progressPercent = CGFloat(engine.duration > 0 ? engine.currentTime / engine.duration : 0)
+                
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.zionPanelLight)
+                    
+                    if !engine.waveformPeaks.isEmpty {
+                        Path { path in
+                            let peaks = engine.waveformPeaks
+                            let step = width / CGFloat(peaks.count)
+                            let midY = height / 2
+                            
+                            for (i, peak) in peaks.enumerated() {
+                                let x = CGFloat(i) * step
+                                let barHeight = max(2, CGFloat(peak) * height * 0.8)
+                                path.move(to: CGPoint(x: x, y: midY - barHeight / 2))
+                                path.addLine(to: CGPoint(x: x, y: midY + barHeight / 2))
+                            }
+                        }
+                        .stroke(Color.zionCyan.opacity(0.6), lineWidth: 1.5)
+                    } else if engine.isLoading {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                .scaleEffect(0.8)
+                            Text(engine.loadLabel)
+                                .font(.caption)
+                                .foregroundColor(Color.zionCyan)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                    } else {
+                        Text("Ninguna canción cargada")
+                            .font(.caption)
+                            .foregroundColor(Color.zionTextSecondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
+                    
+                    // Progress Fill
+                    Rectangle()
+                        .fill(Color.zionCyan.opacity(0.15))
+                        .frame(width: max(0, min(width, progressPercent * width)))
+                    
+                    // Playhead
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 2, height: height)
+                        .shadow(color: Color.zionCyan, radius: 4)
+                        .offset(x: max(0, min(width - 2, progressPercent * width)))
+                }
+                .cornerRadius(6)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let percent = max(0, min(1, value.location.x / width))
+                            engine.seek(to: Double(percent) * engine.duration)
+                        }
+                )
+            }
+        }
+        .padding(.horizontal)
     }
 }

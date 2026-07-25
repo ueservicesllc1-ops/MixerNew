@@ -18,7 +18,11 @@ public struct MainView: View {
 
     @State private var isPerformanceModeActive: Bool = false
     @State private var isRightDrawerOpen: Bool = false
+    @State private var isSettingsOpen: Bool = false
     @State private var bottomPanel: BottomPanel? = nil
+    @State private var showSetlistManager: Bool = false
+    @State private var showCreateSetlistSheet: Bool = false
+    @State private var newSetlistName: String = ""
     
     @State private var activeLyrics: String? = nil
     @State private var activeChords: String? = nil
@@ -46,7 +50,7 @@ public struct MainView: View {
                 // Layout Principal: Consola + Panel Derecho
                 ZStack(alignment: .bottom) {
                     VStack(spacing: 0) {
-                        // Barra Superior con Botón de Catálogo/Setlist (Derecha) y Escenario
+                        // Barra Superior con Botones
                         topNavigationBar
 
                         // Consola de Mezcla Multitrack Principal
@@ -155,7 +159,9 @@ public struct MainView: View {
             .sheet(isPresented: $isPerformanceModeActive) {
                 PerformanceModeView(player: player, onClose: { isPerformanceModeActive = false })
             }
-            #endif
+            .sheet(isPresented: $isSettingsOpen) {
+                SettingsView()
+            }
             .onChange(of: player.currentSong?.id) { songId in
                 loadTextContent(songId: songId)
             }
@@ -177,6 +183,19 @@ public struct MainView: View {
             }
 
             Spacer()
+
+            // Botón Ajustes (Gear)
+            Button(action: { isSettingsOpen = true }) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(red: 0.6, green: 0.7, blue: 0.8))
+                    .padding(8)
+                    .background(
+                        Circle()
+                            .fill(Color(red: 0.12, green: 0.16, blue: 0.24))
+                            .overlay(Circle().stroke(Color.white.opacity(0.1), lineWidth: 1))
+                    )
+            }
 
             // Botón Modo Escenario (Performance)
             Button(action: { isPerformanceModeActive = true }) {
@@ -213,7 +232,9 @@ public struct MainView: View {
                 .padding(.vertical, 6)
                 .background(
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color(red: 0.12, green: 0.16, blue: 0.24))
+                        .fill(isRightDrawerOpen
+                            ? Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.3)
+                            : Color(red: 0.12, green: 0.16, blue: 0.24))
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.4), lineWidth: 1)
@@ -224,6 +245,111 @@ public struct MainView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(Color(red: 0.05, green: 0.06, blue: 0.10))
+    }
+
+    // MARK: - Setlist Manager Sheet
+    private var setlistManagerSheet: some View {
+        NavigationView {
+            List {
+                // Crear nuevo setlist
+                Button(action: {
+                    showSetlistManager = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        showCreateSetlistSheet = true
+                    }
+                }) {
+                    Label("Crear nuevo setlist", systemImage: "plus.circle.fill")
+                        .foregroundColor(.cyan)
+                }
+
+                // Setlists existentes
+                ForEach(firebase.setlists) { setlist in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(setlist.name)
+                                .foregroundColor(.white)
+                                .font(.system(size: 15, weight: .medium))
+                            Text("\(setlist.songs.count) canciones")
+                                .foregroundColor(.gray)
+                                .font(.caption)
+                        }
+                        Spacer()
+                    }
+                }
+                .onDelete { idx in
+                    idx.forEach { i in
+                        let setlist = firebase.setlists[i]
+                        firebase.deleteSetlist(id: setlist.id) { _ in }
+                    }
+                }
+
+                if firebase.setlists.isEmpty {
+                    Text("No tienes setlists. Crea uno para organizar tu repertorio.")
+                        .foregroundColor(.gray)
+                        .font(.caption)
+                }
+            }
+            #if os(iOS)
+            .listStyle(.insetGrouped)
+            #else
+            .listStyle(.inset)
+            #endif
+            .navigationTitle("Mis Setlists")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cerrar") { showSetlistManager = false }
+                        .foregroundColor(.cyan)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Create Setlist Sheet
+    private var createSetlistSheet: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                TextField("Nombre del setlist...", text: $newSetlistName)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 16))
+                    .padding()
+
+                Button(action: {
+                    let name = newSetlistName.trimmingCharacters(in: .whitespaces)
+                    guard !name.isEmpty else { return }
+                    firebase.createSetlist(name: name) { _ in
+                        self.newSetlistName = ""
+                        self.showCreateSetlistSheet = false
+                    }
+                }) {
+                    Text("Crear Setlist")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.cyan)
+                        .cornerRadius(12)
+                }
+                .padding(.horizontal)
+                .disabled(newSetlistName.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                Spacer()
+            }
+            .navigationTitle("Nuevo Setlist")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { showCreateSetlistSheet = false }
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Panel Header Inferior

@@ -132,7 +132,11 @@ public class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDele
                     targetURLString = normalizedUrl
                     localDestURL = OfflineStorageManager.shared.trackURL(songId: song.id, trackName: track.name, extension: "flac")
                 } else {
-                    targetURLString = "\(proxyBase)/api/download?url=\(track.url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? track.url)"
+                    if track.url.lowercased().hasPrefix("http") {
+                        targetURLString = track.url
+                    } else {
+                        targetURLString = "\(proxyBase)/api/download?url=\(track.url.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? track.url)"
+                    }
                     localDestURL = OfflineStorageManager.shared.trackURL(songId: song.id, trackName: track.name, extension: "mp3")
                 }
 

@@ -50,13 +50,16 @@ public struct MixerView: View {
             // Cabecera Cyber/Android con Badges y Pitch/Tempo
             CyberHeaderView(player: player)
 
-            // Visualizador de Forma de Onda (Waveform Canvas)
-            WaveformCanvasView(player: player)
+            // Visualizador de Forma de Onda Real (Waveform Timeline con Marcadores)
+            WaveformTimelineView(player: player)
 
-            // Consola de Tiras de Canales (Stems)
+            // Consola de Tiras de Canales (Stems) — Grid Adaptable Vertical
             if let song = player.currentSong, !song.stems.isEmpty {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    HStack(spacing: 10) {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVGrid(
+                        columns: [GridItem(.adaptive(minimum: 125, maximum: 170), spacing: 8)],
+                        spacing: 8
+                    ) {
                         ForEach(sortedStems) { stem in
                             ChannelStripView(
                                 stem: stem,
@@ -75,7 +78,7 @@ public struct MixerView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                 }
             } else {
