@@ -2,7 +2,18 @@ import SwiftUI
 
 struct MixerLayoutView: View {
     @ObservedObject var authViewModel: AuthViewModel
-    @State private var selectedTab: Int = 4 // 4 is Lyrics, 0 is Lista... we will just use a simple switcher
+    @ObservedObject var engine = AudioEngineViewModel.shared
+    @State private var selectedTab: Int = 0 // Default to Mixer tab (0) so faders show immediately
+    
+    private func getShiftedKey(baseKey: String?, shift: Float) -> String {
+        let keys = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        let cleanKey = baseKey?.replacingOccurrences(of: "m", with: "").trimmingCharacters(in: .whitespacesAndNewlines) ?? "C"
+        guard let index = keys.firstIndex(of: cleanKey.uppercased()) else { return baseKey ?? "C" }
+        let shiftSteps = Int(round(shift))
+        let newIndex = (index + shiftSteps + keys.count * 120) % keys.count
+        let isMinor = baseKey?.contains("m") ?? false
+        return keys[newIndex] + (isMinor ? "m" : "")
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -19,10 +30,13 @@ struct MixerLayoutView: View {
                 // Master Fader
                 HStack {
                     Text("MASTER").font(.caption2).bold().foregroundColor(.white)
-                    Slider(value: .constant(1.0))
-                        .accentColor(Color.zionCyan)
-                        .frame(width: 100)
-                    Text("100%").font(.caption2).foregroundColor(Color.zionCyan)
+                    Slider(value: Binding(
+                        get: { Double(engine.masterVolume) },
+                        set: { engine.masterVolume = Float($0) }
+                    ), in: 0.0...1.0)
+                    .accentColor(Color.zionCyan)
+                    .frame(width: 100)
+                    Text("\(Int(engine.masterVolume * 100))%").font(.caption2).foregroundColor(Color.zionCyan)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -32,7 +46,6 @@ struct MixerLayoutView: View {
                 Spacer()
                 
                 // Playback Controls
-                let engine = AudioEngineViewModel.shared
                 HStack(spacing: 12) {
                     Button(action: { engine.seek(to: 0) }) { Image(systemName: "backward.end.fill") }
                     Button(action: { engine.isPlaying ? engine.pause() : engine.play() }) {
@@ -55,24 +68,82 @@ struct MixerLayoutView: View {
                     .background(Color.zionPanelLight)
                     .cornerRadius(6)
                 
-                // BPM & Key
+                // BPM & Key Controls
                 HStack(spacing: 12) {
-                    HStack {
-                        Text("-").foregroundColor(.gray)
-                        Text("148.0 BPM").foregroundColor(.white)
-                        Text("+").foregroundColor(.gray)
+                    // BPM
+                    let baseBpm = engine.currentSong?.bpm ?? 120.0
+                    let currentBpm = baseBpm * Double(engine.tempoRatio)
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            engine.tempoRatio = max(0.5, engine.tempoRatio - 0.01)
+                        }) {
+                            Text("-")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color.zionCyan)
+                                .frame(width: 24, height: 24)
+                                .background(Color.zionPanel)
+                                .cornerRadius(4)
+                        }
+                        
+                        Text(String(format: "%.1f BPM", currentBpm))
+                            .font(.system(size: 11, weight: .bold).monospacedDigit())
+                            .foregroundColor(.white)
+                            .frame(width: 80, alignment: .center)
+                        
+                        Button(action: {
+                            engine.tempoRatio = min(2.0, engine.tempoRatio + 0.01)
+                        }) {
+                            Text("+")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color.zionCyan)
+                                .frame(width: 24, height: 24)
+                                .background(Color.zionPanel)
+                                .cornerRadius(4)
+                        }
                     }
-                    HStack {
-                        Text("-").foregroundColor(.gray)
-                        Text("F").foregroundColor(.white)
-                        Text("+").foregroundColor(.gray)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color.zionPanelLight)
+                    .cornerRadius(6)
+                    
+                    // Key
+                    let baseKey = engine.currentSong?.key ?? "C"
+                    let shiftedKey = getShiftedKey(baseKey: baseKey, shift: engine.pitchSemitones)
+                    HStack(spacing: 6) {
+                        Button(action: {
+                            engine.pitchSemitones = max(-12.0, engine.pitchSemitones - 1.0)
+                        }) {
+                            Text("-")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color.zionCyan)
+                                .frame(width: 24, height: 24)
+                                .background(Color.zionPanel)
+                                .cornerRadius(4)
+                        }
+                        
+                        let shiftInt = Int(round(engine.pitchSemitones))
+                        let shiftText = shiftInt == 0 ? "" : (shiftInt > 0 ? " (+\(shiftInt))" : " (\(shiftInt))")
+                        Text("\(shiftedKey)\(shiftText)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 60, alignment: .center)
+                        
+                        Button(action: {
+                            engine.pitchSemitones = min(12.0, engine.pitchSemitones + 1.0)
+                        }) {
+                            Text("+")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color.zionCyan)
+                                .frame(width: 24, height: 24)
+                                .background(Color.zionPanel)
+                                .cornerRadius(4)
+                        }
                     }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(Color.zionPanelLight)
+                    .cornerRadius(6)
                 }
-                .font(.caption)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.zionPanelLight)
-                .cornerRadius(6)
                 
                 Spacer()
                 

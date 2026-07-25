@@ -61,6 +61,7 @@ struct SetlistsView: View {
                                     
                                     Button(action: {
                                         if let tracks = song.tracks {
+                                            AudioEngineViewModel.shared.currentSong = song
                                             AudioEngineViewModel.shared.loadTracks(tracks)
                                         }
                                     }) {
