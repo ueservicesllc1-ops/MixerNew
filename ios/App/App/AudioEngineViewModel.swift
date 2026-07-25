@@ -149,10 +149,10 @@ class AudioEngineViewModel: ObservableObject {
                 
                 stemMixer.outputVolume = 1.0
 
-                // Auto Pan: Click/Guide -> izquierda (-1), resto -> derecha (+1)
+                // Auto Pan: Click/Guide/Cue -> derecha (+1.0), resto -> izquierda (-1.0)
                 let nameLow = (track.name ?? "").lowercased()
-                let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia")
-                stemMixer.pan = isClickGuide ? -1.0 : 1.0
+                let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue")
+                stemMixer.pan = isClickGuide ? 1.0 : -1.0
                 
                 // Setup VU meter tap
                 let stemId = track.id

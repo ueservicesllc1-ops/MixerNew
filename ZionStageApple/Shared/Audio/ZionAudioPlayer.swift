@@ -253,8 +253,8 @@ public class ZionAudioPlayer: ObservableObject {
 
                     // Pan automático: Click/Guide -> izquierda (-1), resto -> derecha (+1)
                     let nameLow = track.name.lowercased()
-                    let isClickOrGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia")
-                    stemMixer.pan = isClickOrGuide ? -1.0 : 1.0
+                    let isClickOrGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue")
+                    stemMixer.pan = isClickOrGuide ? 1.0 : -1.0
 
                     // Tap VU meter por stem individual
                     let stemId = "\(song.id)_\(track.name)"

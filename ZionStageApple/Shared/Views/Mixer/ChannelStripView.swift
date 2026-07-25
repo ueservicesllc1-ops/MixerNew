@@ -48,8 +48,8 @@ public struct ChannelStripView: View {
         self._volume = State(initialValue: stem.volume)
         self._isMuted = State(initialValue: stem.isMuted)
         self._isSolo = State(initialValue: stem.isSolo)
-        self._routeL = State(initialValue: isClickGuide ? true : (stem.pan <= 0.0))
-        self._routeR = State(initialValue: isClickGuide ? false : (stem.pan >= 0.0))
+        self._routeL = State(initialValue: isClickGuide ? false : (stem.pan <= 0.1))
+        self._routeR = State(initialValue: isClickGuide ? true : (stem.pan >= -0.1))
     }
 
     private var isClickGuideStem: Bool {
