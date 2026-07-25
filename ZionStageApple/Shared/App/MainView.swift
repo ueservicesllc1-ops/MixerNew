@@ -141,6 +141,13 @@ public struct MainView: View {
 
                             // Vista de Catálogo y Setlists
                             SongLibraryView()
+                                .frame(maxHeight: .infinity)
+                            
+                            Divider().background(Color(red: 0.07, green: 0.71, blue: 0.71).opacity(0.3))
+                            
+                            // Pads Ambientales colocados debajo de la librería (como en Android)
+                            PadEngineView()
+                                .frame(height: 380)
                         }
                         .frame(width: 360)
                         .background(Color(red: 0.06, green: 0.08, blue: 0.14))
