@@ -88,72 +88,141 @@ class DownloadManager: ObservableObject {
         }
         
         downloadQueue.sync {
-            // If already downloading this URL, append the completion handler and return
             if activeTasks[path] != nil {
                 completionHandlers[path, default: []].append(completion)
                 return
             }
             
-            // Register first completion handler
             completionHandlers[path] = [completion]
             
-            guard let url = getValidURL(from: path) else {
-                print("[DownloadManager] ERROR: Invalid URL path: '\(path)'")
-                executeCompletions(for: path, success: false)
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                guard let self = self else { return }
+                
+                let success = self.perform3TierDownload(track: track, filename: filename)
+                
+                self.downloadQueue.sync {
+                    self.activeTasks.removeValue(forKey: path)
+                }
+                
+                self.executeCompletions(for: path, success: success)
+            }
+        }
+    }
+    
+    private func perform3TierDownload(track: SongTrack, filename: String) -> Bool {
+        let rawPath = track.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPath.isEmpty else { return false }
+        
+        let proxyBase = "https://mixernew-production.up.railway.app"
+        let isB2Url = rawPath.contains("backblazeb2.com") || 
+                      rawPath.contains("bcg.cloud") || 
+                      rawPath.contains("b-cdn.net")
+        
+        // TIER 1: Try B2 Pre-Signed URL Fast Path (for B2 URLs)
+        if isB2Url && !rawPath.contains("/api/download?") {
+            if let encodedPath = rawPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+               let signedApiURL = URL(string: "\(proxyBase)/api/b2-signed-url?fileUrl=\(encodedPath)") {
+                
+                var signedReq = URLRequest(url: signedApiURL)
+                signedReq.timeoutInterval = 8
+                
+                let semaphore = DispatchSemaphore(value: 0)
+                var directDownloadURL: URL? = nil
+                
+                let signedTask = URLSession.shared.dataTask(with: signedReq) { [weak self] data, response, error in
+                    defer { semaphore.signal() }
+                    guard let self = self, let data = data, error == nil else { return }
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let signedUrlString = json["signedUrl"] as? String,
+                       let validSignedURL = self.getValidURL(from: signedUrlString) {
+                        directDownloadURL = validSignedURL
+                    }
+                }
+                signedTask.resume()
+                _ = semaphore.wait(timeout: .now() + 8.5)
+                
+                if let directURL = directDownloadURL {
+                    print("[DownloadManager] TIER 1: Trying B2 Signed URL for \(track.name ?? "")")
+                    if downloadFileToDisk(from: directURL, filename: filename) {
+                        return true
+                    }
+                }
+            }
+        }
+        
+        // TIER 2: Railway Proxy Download Endpoint (Handles B2 auth & CORS/ISP relay)
+        let proxiedPath = rawPath.contains("/api/download?url=") 
+            ? rawPath 
+            : "\(proxyBase)/api/download?url=\(rawPath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? rawPath)"
+        
+        if let proxyURL = getValidURL(from: proxiedPath) {
+            print("[DownloadManager] TIER 2: Trying Railway Proxy Download for \(track.name ?? "")")
+            if downloadFileToDisk(from: proxyURL, filename: filename) {
+                return true
+            }
+        }
+        
+        // TIER 3: Direct URL Download Fallback
+        if let directURL = getValidURL(from: rawPath) {
+            print("[DownloadManager] TIER 3: Trying Direct URL Download Fallback for \(track.name ?? "")")
+            if downloadFileToDisk(from: directURL, filename: filename) {
+                return true
+            }
+        }
+        
+        print("[DownloadManager] ERROR: All 3 download tiers failed for track \(track.name ?? "") (\(rawPath))")
+        return false
+    }
+    
+    private func downloadFileToDisk(from url: URL, filename: String) -> Bool {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 60
+        request.setValue("ZionStage/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+        
+        let semaphore = DispatchSemaphore(value: 0)
+        var success = false
+        
+        let task = URLSession.shared.downloadTask(with: request) { [weak self] tempLocalUrl, response, error in
+            defer { semaphore.signal() }
+            guard let self = self else { return }
+            
+            if let error = error {
+                print("[DownloadManager] Network error downloading from \(url.host ?? ""): \(error.localizedDescription)")
                 return
             }
             
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 60
-            request.setValue("ZionStage/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
-            
-            let task = URLSession.shared.downloadTask(with: request) { [weak self] tempLocalUrl, response, error in
-                guard let self = self else { return }
-                
-                var success = false
-                defer {
-                    self.downloadQueue.sync {
-                        self.activeTasks.removeValue(forKey: path)
-                    }
-                    self.executeCompletions(for: path, success: success)
-                }
-                
-                if let error = error {
-                    print("[DownloadManager] Download network error for track \(track.name ?? ""): \(error.localizedDescription)")
-                    return
-                }
-                
-                if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
-                    print("[DownloadManager] HTTP status \(httpResponse.statusCode) error for track \(track.name ?? "")")
-                    return
-                }
-                
-                guard let tempLocalUrl = tempLocalUrl else {
-                    print("[DownloadManager] Missing tempLocalUrl for track \(track.name ?? "")")
-                    return
-                }
-                
-                let finalUrl = self.documentsURL.appendingPathComponent(filename)
-                
-                do {
-                    if self.fileManager.fileExists(atPath: finalUrl.path) {
-                        try self.fileManager.removeItem(at: finalUrl)
-                    }
-                    try self.fileManager.moveItem(at: tempLocalUrl, to: finalUrl)
-                    
-                    DispatchQueue.main.async {
-                        self.downloadedFiles.insert(filename)
-                    }
-                    success = true
-                    print("[DownloadManager] Successfully downloaded \(filename)")
-                } catch {
-                    print("[DownloadManager] Error saving track file \(filename): \(error.localizedDescription)")
-                }
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+                print("[DownloadManager] HTTP status \(code) downloading from \(url.host ?? "")")
+                return
             }
             
-            activeTasks[path] = task
-            task.resume()
+            guard let tempLocalUrl = tempLocalUrl else {
+                print("[DownloadManager] Missing tempLocalUrl from \(url.host ?? "")")
+                return
+            }
+            
+            let finalUrl = self.documentsURL.appendingPathComponent(filename)
+            
+            do {
+                if self.fileManager.fileExists(atPath: finalUrl.path) {
+                    try self.fileManager.removeItem(at: finalUrl)
+                }
+                try self.fileManager.moveItem(at: tempLocalUrl, to: finalUrl)
+                
+                DispatchQueue.main.async {
+                    self.downloadedFiles.insert(filename)
+                }
+                success = true
+                print("[DownloadManager] Successfully saved track file \(filename)")
+            } catch {
+                print("[DownloadManager] Error saving file to disk \(filename): \(error.localizedDescription)")
+            }
         }
+        task.resume()
+        _ = semaphore.wait(timeout: .now() + 65.0)
+        
+        return success
     }
     
     private func executeCompletions(for path: String, success: Bool) {
