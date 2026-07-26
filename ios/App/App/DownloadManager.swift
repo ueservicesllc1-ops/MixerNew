@@ -32,6 +32,10 @@ class DownloadManager: ObservableObject {
         }
     }
     
+    private var activeTasks: [String: URLSessionDownloadTask] = [:]
+    private var completionHandlers: [String: [(Bool) -> Void]] = [:]
+    private let downloadQueue = DispatchQueue(label: "com.zionstage.downloadqueue")
+    
     // Stable filename based on SHA256 hash of URL path to guarantee length is well under the 255-character limit
     func getLocalFilename(for track: SongTrack) -> String {
         guard let data = track.path.data(using: .utf8) else {
@@ -59,6 +63,84 @@ class DownloadManager: ObservableObject {
     func isSongDownloaded(_ song: Song) -> Bool {
         guard let tracks = song.tracks, !tracks.isEmpty else { return false }
         return tracks.allSatisfy { isTrackDownloaded($0) }
+    }
+    
+    func downloadSingleTrack(_ track: SongTrack, completion: @escaping (Bool) -> Void) {
+        let path = track.path
+        let filename = getLocalFilename(for: track)
+        
+        if isTrackDownloaded(track) {
+            completion(true)
+            return
+        }
+        
+        downloadQueue.sync {
+            // If already downloading this URL, append the completion handler and return
+            if activeTasks[path] != nil {
+                completionHandlers[path, default: []].append(completion)
+                return
+            }
+            
+            // Register first completion handler
+            completionHandlers[path] = [completion]
+            
+            guard let url = URL(string: path) else {
+                executeCompletions(for: path, success: false)
+                return
+            }
+            
+            let task = URLSession.shared.downloadTask(with: url) { [weak self] tempLocalUrl, response, error in
+                guard let self = self else { return }
+                
+                var success = false
+                defer {
+                    self.downloadQueue.sync {
+                        self.activeTasks.removeValue(forKey: path)
+                    }
+                    self.executeCompletions(for: path, success: success)
+                }
+                
+                if error != nil {
+                    return
+                }
+                
+                guard let tempLocalUrl = tempLocalUrl else {
+                    return
+                }
+                
+                let finalUrl = self.documentsURL.appendingPathComponent(filename)
+                
+                do {
+                    if self.fileManager.fileExists(atPath: finalUrl.path) {
+                        try self.fileManager.removeItem(at: finalUrl)
+                    }
+                    try self.fileManager.moveItem(at: tempLocalUrl, to: finalUrl)
+                    
+                    DispatchQueue.main.async {
+                        self.downloadedFiles.insert(filename)
+                    }
+                    success = true
+                } catch {
+                    print("Error saving track file \(filename): \(error)")
+                }
+            }
+            
+            activeTasks[path] = task
+            task.resume()
+        }
+    }
+    
+    private func executeCompletions(for path: String, success: Bool) {
+        downloadQueue.sync {
+            if let handlers = completionHandlers[path] {
+                for handler in handlers {
+                    DispatchQueue.main.async {
+                        handler(success)
+                    }
+                }
+                completionHandlers.removeValue(forKey: path)
+            }
+        }
     }
     
     func downloadSongStems(song: Song) {
@@ -103,51 +185,17 @@ class DownloadManager: ObservableObject {
         let group = DispatchGroup()
         
         for track in missingTracks {
-            guard let url = URL(string: track.path) else { continue }
-            let filename = getLocalFilename(for: track)
-            
             group.enter()
-            
-            let task = URLSession.shared.downloadTask(with: url) { [weak self] tempLocalUrl, response, error in
-                guard let self = self else {
-                    group.leave()
-                    return
-                }
-                
-                if let error = error {
-                    print("Error downloading track \(track.name ?? ""): \(error)")
-                    hasError = true
-                    group.leave()
-                    return
-                }
-                
-                guard let tempLocalUrl = tempLocalUrl else {
-                    hasError = true
-                    group.leave()
-                    return
-                }
-                
-                let finalUrl = self.documentsURL.appendingPathComponent(filename)
-                
-                do {
-                    if self.fileManager.fileExists(atPath: finalUrl.path) {
-                        try self.fileManager.removeItem(at: finalUrl)
-                    }
-                    try self.fileManager.moveItem(at: tempLocalUrl, to: finalUrl)
-                    
-                    DispatchQueue.main.async {
-                        self.downloadedFiles.insert(filename)
-                        completedCount += 1
-                        self.overallProgress = Double(completedCount) / Double(totalCount)
-                    }
-                } catch {
-                    print("Error saving track file \(filename): \(error)")
+            downloadSingleTrack(track) { success in
+                if !success {
                     hasError = true
                 }
-                
+                completedCount += 1
+                DispatchQueue.main.async {
+                    self.overallProgress = Double(completedCount) / Double(totalCount)
+                }
                 group.leave()
             }
-            task.resume()
         }
         
         group.notify(queue: .main) {
