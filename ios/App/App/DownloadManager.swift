@@ -36,17 +36,30 @@ class DownloadManager: ObservableObject {
     private var completionHandlers: [String: [(Bool) -> Void]] = [:]
     private let downloadQueue = DispatchQueue(label: "com.zionstage.downloadqueue")
     
+    // Helper to safely parse URLs containing unencoded spaces or special characters
+    func getValidURL(from path: String) -> URL? {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed) {
+            return url
+        }
+        if let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+           let url = URL(string: encoded) {
+            return url
+        }
+        return nil
+    }
+    
     // Stable filename based on SHA256 hash of URL path to guarantee length is well under the 255-character limit
     func getLocalFilename(for track: SongTrack) -> String {
         guard let data = track.path.data(using: .utf8) else {
-            // Fallback to sanitized basic ID if encoding fails
             return "\(track.id).mp3"
         }
         let hash = SHA256.hash(data: data)
         let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
         
-        let ext = URL(string: track.path)?.pathExtension ?? "mp3"
-        let fileExt = ext.isEmpty ? "mp3" : ext
+        let validURL = getValidURL(from: track.path)
+        let ext = validURL?.pathExtension ?? "mp3"
+        let fileExt = (ext.isEmpty || ext.count > 5) ? "mp3" : ext
         return "\(hashString).\(fileExt)"
     }
     
@@ -84,12 +97,17 @@ class DownloadManager: ObservableObject {
             // Register first completion handler
             completionHandlers[path] = [completion]
             
-            guard let url = URL(string: path) else {
+            guard let url = getValidURL(from: path) else {
+                print("[DownloadManager] ERROR: Invalid URL path: '\(path)'")
                 executeCompletions(for: path, success: false)
                 return
             }
             
-            let task = URLSession.shared.downloadTask(with: url) { [weak self] tempLocalUrl, response, error in
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 60
+            request.setValue("ZionStage/1.0 (iOS)", forHTTPHeaderField: "User-Agent")
+            
+            let task = URLSession.shared.downloadTask(with: request) { [weak self] tempLocalUrl, response, error in
                 guard let self = self else { return }
                 
                 var success = false
@@ -100,11 +118,18 @@ class DownloadManager: ObservableObject {
                     self.executeCompletions(for: path, success: success)
                 }
                 
-                if error != nil {
+                if let error = error {
+                    print("[DownloadManager] Download network error for track \(track.name ?? ""): \(error.localizedDescription)")
+                    return
+                }
+                
+                if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+                    print("[DownloadManager] HTTP status \(httpResponse.statusCode) error for track \(track.name ?? "")")
                     return
                 }
                 
                 guard let tempLocalUrl = tempLocalUrl else {
+                    print("[DownloadManager] Missing tempLocalUrl for track \(track.name ?? "")")
                     return
                 }
                 
@@ -120,8 +145,9 @@ class DownloadManager: ObservableObject {
                         self.downloadedFiles.insert(filename)
                     }
                     success = true
+                    print("[DownloadManager] Successfully downloaded \(filename)")
                 } catch {
-                    print("Error saving track file \(filename): \(error)")
+                    print("[DownloadManager] Error saving track file \(filename): \(error.localizedDescription)")
                 }
             }
             
