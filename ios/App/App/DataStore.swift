@@ -80,6 +80,13 @@ class DataStore: ObservableObject {
                 
                 return Setlist(id: doc.documentID, name: name, songs: parsedSongs)
             }
+            
+            // Auto background-download the entire setlist as soon as it's fetched
+            if let firstSetlist = self.setlists.first {
+                DispatchQueue.main.async {
+                    DownloadManager.shared.downloadSetlist(setlist: firstSetlist)
+                }
+            }
         }
     }
     

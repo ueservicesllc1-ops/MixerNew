@@ -22,22 +22,20 @@ struct SetlistsView: View {
                    let songs = activeSetlist.songs, !songs.isEmpty {
                     
                     let allDownloaded = songs.allSatisfy { downloader.isSongDownloaded($0) }
+                    let anyDownloading = songs.contains { downloader.downloadingSongIds.contains($0.id) }
                     
-                    if !allDownloaded {
-                        Button(action: {
-                            downloader.downloadSetlist(setlist: activeSetlist)
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "icloud.and.arrow.down.fill")
-                                Text("Descargar Todo").font(.system(size: 10, weight: .bold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.zionCyan)
-                            .cornerRadius(6)
+                    if anyDownloading {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                .scaleEffect(0.6)
+                            Text("Sincronizando...").font(.system(size: 10, weight: .bold)).foregroundColor(Color.zionCyan)
                         }
-                    } else {
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.zionCyan.opacity(0.15))
+                        .cornerRadius(6)
+                    } else if allDownloaded {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.green)
@@ -132,15 +130,6 @@ struct SetlistsView: View {
                                                     Image(systemName: "checkmark.icloud.fill")
                                                         .foregroundColor(.green)
                                                         .font(.system(size: 12, weight: .bold))
-                                                } else {
-                                                    Button(action: {
-                                                        downloader.downloadSongStems(song: song)
-                                                    }) {
-                                                        Image(systemName: "icloud.and.arrow.down")
-                                                            .foregroundColor(Color.zionCyan)
-                                                            .font(.system(size: 12))
-                                                    }
-                                                    .buttonStyle(.plain)
                                                 }
                                             }
                                         }
