@@ -8,6 +8,9 @@ class DownloadManager: ObservableObject {
     @Published var isDownloadingAll: Bool = false
     @Published var overallProgress: Double = 0.0
     
+    // Track which songs are currently downloading in the background
+    @Published var downloadingSongIds: Set<String> = []
+    
     private let fileManager = FileManager.default
     private lazy var documentsURL: URL = {
         fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -28,10 +31,22 @@ class DownloadManager: ObservableObject {
         }
     }
     
+    // Stable filename based on sanitized path to survive app launches when UUID id is random
     func getLocalFilename(for track: SongTrack) -> String {
-        guard let url = URL(string: track.path) else { return "\(track.id).mp3" }
-        let ext = url.pathExtension.isEmpty ? "mp3" : url.pathExtension
-        return "\(track.id).\(ext)"
+        // Sanitize the URL path to make it a safe, stable local filename
+        let safeName = track.path
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "?", with: "_")
+            .replacingOccurrences(of: "&", with: "_")
+            .replacingOccurrences(of: "=", with: "_")
+            .replacingOccurrences(of: "%", with: "_")
+        
+        let ext = URL(string: track.path)?.pathExtension ?? "mp3"
+        let fileExt = ext.isEmpty ? "mp3" : ext
+        return "\(safeName).\(fileExt)"
     }
     
     func isTrackDownloaded(_ track: SongTrack) -> Bool {
@@ -43,6 +58,34 @@ class DownloadManager: ObservableObject {
     func getLocalURL(for track: SongTrack) -> URL {
         let filename = getLocalFilename(for: track)
         return documentsURL.appendingPathComponent(filename)
+    }
+    
+    func isSongDownloaded(_ song: Song) -> Bool {
+        guard let tracks = song.tracks, !tracks.isEmpty else { return false }
+        return tracks.allSatisfy { isTrackDownloaded($0) }
+    }
+    
+    func downloadSongStems(song: Song) {
+        guard let tracks = song.tracks, !tracks.isEmpty else { return }
+        let missing = tracks.filter { !isTrackDownloaded($0) }
+        guard !missing.isEmpty else { return }
+        
+        DispatchQueue.main.async {
+            self.downloadingSongIds.insert(song.id)
+        }
+        
+        downloadAllTracks(for: tracks) { [weak self] success in
+            DispatchQueue.main.async {
+                self?.downloadingSongIds.remove(song.id)
+            }
+        }
+    }
+    
+    func downloadSetlist(setlist: Setlist) {
+        guard let songs = setlist.songs else { return }
+        for song in songs {
+            downloadSongStems(song: song)
+        }
     }
     
     func downloadAllTracks(for tracks: [SongTrack], completion: @escaping (Bool) -> Void) {

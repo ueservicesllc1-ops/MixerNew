@@ -2,19 +2,53 @@ import SwiftUI
 
 struct SetlistsView: View {
     @StateObject private var dataStore = DataStore()
+    @ObservedObject var downloader = DownloadManager.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "music.note.list")
                     .foregroundColor(Color.zionCyan)
-                Text("Domingo")
-                    .font(.headline)
+                
+                Text(dataStore.setlists.first?.name ?? "Repertorio")
+                    .font(.subheadline.bold())
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                
                 Spacer()
-                Button("+Canciones") {}.font(.caption).foregroundColor(.purple)
-                Button("+Setlist") {}.font(.caption).foregroundColor(Color.zionCyan)
+                
+                if let activeSetlist = dataStore.setlists.first,
+                   let songs = activeSetlist.songs, !songs.isEmpty {
+                    
+                    let allDownloaded = songs.allSatisfy { downloader.isSongDownloaded($0) }
+                    
+                    if !allDownloaded {
+                        Button(action: {
+                            downloader.downloadSetlist(setlist: activeSetlist)
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "icloud.and.arrow.down.fill")
+                                Text("Descargar Todo").font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.zionCyan)
+                            .cornerRadius(6)
+                        }
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundColor(.green)
+                            Text("Listo Offline").font(.system(size: 10, weight: .bold)).foregroundColor(.green)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.15))
+                        .cornerRadius(6)
+                    }
+                }
             }
             .padding()
             .background(Color.zionPanel)
@@ -82,16 +116,33 @@ struct SetlistsView: View {
                                             
                                             Spacer()
                                             
-                                            if isSelected {
-                                                HStack(spacing: 4) {
-                                                    Circle().fill(Color.green).frame(width: 6, height: 6)
-                                                    Text("READY").font(.caption2).bold().foregroundColor(.green)
+                                            HStack(spacing: 8) {
+                                                if isSelected {
+                                                    HStack(spacing: 4) {
+                                                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                                                        Text("READY").font(.caption2).bold().foregroundColor(.green)
+                                                    }
+                                                }
+                                                
+                                                if downloader.downloadingSongIds.contains(song.id) {
+                                                    ProgressView()
+                                                        .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                                        .scaleEffect(0.8)
+                                                } else if downloader.isSongDownloaded(song) {
+                                                    Image(systemName: "checkmark.icloud.fill")
+                                                        .foregroundColor(.green)
+                                                        .font(.system(size: 12, weight: .bold))
+                                                } else {
+                                                    Button(action: {
+                                                        downloader.downloadSongStems(song: song)
+                                                    }) {
+                                                        Image(systemName: "icloud.and.arrow.down")
+                                                            .foregroundColor(Color.zionCyan)
+                                                            .font(.system(size: 12))
+                                                    }
+                                                    .buttonStyle(.plain)
                                                 }
                                             }
-                                            
-                                            Image(systemName: "trash")
-                                                .foregroundColor(isSelected ? .white : Color.zionRed)
-                                                .font(.caption)
                                         }
                                         .padding(.vertical, 10)
                                         .padding(.horizontal, 12)
