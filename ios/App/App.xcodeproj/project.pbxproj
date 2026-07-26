@@ -28,6 +28,8 @@
 		9C1B2C3D4E5F678901234599 /* ThemeManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C2D3E4F56789012345699 /* ThemeManager.swift */; };
 		9C1B2C3D4E5F6789012345AA /* ZionPadPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C2D3E4F567890123456AA /* ZionPadPlayer.swift */; };
 		9C1B2C3D4E5F6789012345BB /* PadEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C2D3E4F567890123456BB /* PadEngineView.swift */; };
+		9C1B2C3D4E5F6789012345CC /* LibraryDrawerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C2D3E4F567890123456CC /* LibraryDrawerSheet.swift */; };
+		9C1B2C3D4E5F6789012345DD /* SetlistsDrawerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C1C2D3E4F567890123456DD /* SetlistsDrawerSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,6 +57,8 @@
 		0C1C2D3E4F56789012345699 /* ThemeManager.swift */ = {isa = PBXFileReference; name = "ThemeManager.swift"; path = "ThemeManager.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		0C1C2D3E4F567890123456AA /* ZionPadPlayer.swift */ = {isa = PBXFileReference; name = "ZionPadPlayer.swift"; path = "ZionPadPlayer.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 		0C1C2D3E4F567890123456BB /* PadEngineView.swift */ = {isa = PBXFileReference; name = "PadEngineView.swift"; path = "PadEngineView.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		0C1C2D3E4F567890123456CC /* LibraryDrawerSheet.swift */ = {isa = PBXFileReference; name = "LibraryDrawerSheet.swift"; path = "LibraryDrawerSheet.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		0C1C2D3E4F567890123456DD /* SetlistsDrawerSheet.swift */ = {isa = PBXFileReference; name = "SetlistsDrawerSheet.swift"; path = "SetlistsDrawerSheet.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -106,6 +110,8 @@
 				97A1E084913C45418073D14D /* MixerLayoutView.swift */,
 				ABB20BB8083E4BDF8BF9259D /* Theme.swift */,
 				98684C7E5DDB48A98CD4C10F /* VerticalFader.swift */,
+				0C1C2D3E4F567890123456DD /* SetlistsDrawerSheet.swift */,
+				0C1C2D3E4F567890123456CC /* LibraryDrawerSheet.swift */,
 				0C1C2D3E4F567890123456BB /* PadEngineView.swift */,
 				0C1C2D3E4F567890123456AA /* ZionPadPlayer.swift */,
 				0C1C2D3E4F56789012345699 /* ThemeManager.swift */,
@@ -202,6 +208,8 @@
 				DDCBC02D15B047D7848FEEA9 /* MixerLayoutView.swift in Sources */,
 				886A65C7650D40019B05677B /* Theme.swift in Sources */,
 				B47CCB883A424EE390FBF443 /* VerticalFader.swift in Sources */,
+				9C1B2C3D4E5F6789012345DD /* SetlistsDrawerSheet.swift in Sources */,
+				9C1B2C3D4E5F6789012345CC /* LibraryDrawerSheet.swift in Sources */,
 				9C1B2C3D4E5F6789012345BB /* PadEngineView.swift in Sources */,
 				9C1B2C3D4E5F6789012345AA /* ZionPadPlayer.swift in Sources */,
 				9C1B2C3D4E5F678901234599 /* ThemeManager.swift in Sources */,

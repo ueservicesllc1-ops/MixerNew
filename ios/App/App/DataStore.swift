@@ -101,6 +101,24 @@ class DataStore: ObservableObject {
         db.collection("setlists").addDocument(data: newDoc)
     }
     
+    func addSongToSetlist(song: Song, setlistId: String? = nil) {
+        let targetId = setlistId ?? setlists.first?.id
+        guard let targetId = targetId else { return }
+        
+        let songDict: [String: Any] = [
+            "id": song.id,
+            "name": song.name,
+            "artist": song.artist ?? "",
+            "key": song.key ?? "C",
+            "bpm": song.bpm ?? 120.0,
+            "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "name": $0.name ?? ""] } ?? []
+        ]
+        
+        db.collection("setlists").document(targetId).updateData([
+            "songs": FieldValue.arrayUnion([songDict])
+        ])
+    }
+    
     func stopListening() {
         listener?.remove()
         listener = nil

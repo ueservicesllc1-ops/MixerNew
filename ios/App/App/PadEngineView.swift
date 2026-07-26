@@ -9,21 +9,42 @@ public struct PadEngineView: View {
 
     public var body: some View {
         VStack(spacing: 8) {
-            // Status bar
-            HStack {
+            // Status bar with Power ON/OFF Button
+            HStack(spacing: 8) {
+                // Power Toggle
+                Button(action: {
+                    if padPlayer.activeKey != nil {
+                        padPlayer.stop()
+                    } else {
+                        padPlayer.start(key: "C")
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "power")
+                            .font(.system(size: 10, weight: .bold))
+                        Text(padPlayer.activeKey != nil ? "OFF" : "POWER")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(padPlayer.activeKey != nil ? Color.zionRed : Color.zionCyan)
+                    .foregroundColor(padPlayer.activeKey != nil ? .white : .black)
+                    .cornerRadius(6)
+                }
+                
                 if let activeKey = padPlayer.activeKey {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Circle()
                             .fill(Color.zionCyan)
-                            .frame(width: 8, height: 8)
+                            .frame(width: 6, height: 6)
                             .shadow(color: .cyan, radius: 4)
-                        Text("Pad en \(activeKey)")
-                            .font(.system(size: 11, weight: .bold))
+                        Text("Sonando: \(activeKey)")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(Color.zionCyan)
                     }
                 } else {
                     Text("Pads Ambientales")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(Color.zionTextSecondary)
                 }
                 

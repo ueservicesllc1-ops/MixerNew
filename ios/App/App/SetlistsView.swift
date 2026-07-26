@@ -6,7 +6,8 @@ struct SetlistsView: View {
     @ObservedObject var themeManager = ThemeManager.shared
     
     var onOpenLibrary: (() -> Void)? = nil
-    @State private var showCreateSetlistAlert = false
+    @State private var showLibraryDrawer = false
+    @State private var showSetlistsDrawer = false
     @State private var newSetlistName = ""
     
     var body: some View {
@@ -41,9 +42,9 @@ struct SetlistsView: View {
                 
                 Spacer()
                 
-                // +Canciones and +Setlist Buttons
+                // +Canciones and +Setlist Side Drawer Buttons
                 Button(action: {
-                    onOpenLibrary?()
+                    showLibraryDrawer = true
                 }) {
                     Text("+Canciones")
                         .font(.system(size: 11, weight: .bold))
@@ -55,7 +56,7 @@ struct SetlistsView: View {
                 }
                 
                 Button(action: {
-                    showCreateSetlistAlert = true
+                    showSetlistsDrawer = true
                 }) {
                     Text("+Setlist")
                         .font(.system(size: 11, weight: .bold))
@@ -65,20 +66,17 @@ struct SetlistsView: View {
                         .background(Color.zionCyan.opacity(0.15))
                         .cornerRadius(6)
                 }
-                .alert("Crear Nuevo Setlist", isPresented: $showCreateSetlistAlert) {
-                    TextField("Nombre del repertorio", text: $newSetlistName)
-                    Button("Cancelar", role: .cancel) { newSetlistName = "" }
-                    Button("Crear") {
-                        let trimmed = newSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !trimmed.isEmpty {
-                            dataStore.createSetlist(name: trimmed)
-                            newSetlistName = ""
-                        }
-                    }
-                }
             }
             .padding()
             .background(Color.zionPanel)
+            .sheet(isPresented: $showLibraryDrawer) {
+                LibraryDrawerSheet(onAddSongToSetlist: { song in
+                    dataStore.addSongToSetlist(song: song)
+                })
+            }
+            .sheet(isPresented: $showSetlistsDrawer) {
+                SetlistsDrawerSheet(dataStore: dataStore)
+            }
             
             // List
             if dataStore.isLoading {
