@@ -131,7 +131,7 @@ public struct ChannelStripView: View {
 
                         Rectangle()
                             .fill(isActive ? ledColor : Color.white.opacity(0.06))
-                            .frame(width: 6, height: 3.5)
+                            .frame(width: 14, height: 3.5)
                             .cornerRadius(0.5)
                     }
                 }
@@ -158,14 +158,14 @@ public struct ChannelStripView: View {
             .frame(height: 170)
 
             // Grupo de Botones de Ruteo y Mute/Solo: [L] [M] [S] [R]
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 // Botón L (Left)
                 Button(action: toggleL) {
                     Text("L")
-                        .font(.system(size: 11, weight: .black))
-                        .frame(width: 26, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 32, height: 30)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill(routeL ? Color.cyan : Color(red: 0.12, green: 0.16, blue: 0.25))
                         )
                         .foregroundColor(routeL ? .black : Color.gray)
@@ -177,10 +177,10 @@ public struct ChannelStripView: View {
                     onMuteToggle(isMuted)
                 }) {
                     Text("M")
-                        .font(.system(size: 11, weight: .black))
-                        .frame(width: 26, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 32, height: 30)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill(isMuted ? Color.red : Color(red: 0.12, green: 0.16, blue: 0.25))
                         )
                         .foregroundColor(isMuted ? .white : Color.gray)
@@ -192,10 +192,10 @@ public struct ChannelStripView: View {
                     onSoloToggle(isSolo)
                 }) {
                     Text("S")
-                        .font(.system(size: 11, weight: .black))
-                        .frame(width: 26, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 32, height: 30)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill(isSolo ? Color.yellow : Color(red: 0.12, green: 0.16, blue: 0.25))
                         )
                         .foregroundColor(isSolo ? .black : Color.gray)
@@ -204,10 +204,10 @@ public struct ChannelStripView: View {
                 // Botón R (Right)
                 Button(action: toggleR) {
                     Text("R")
-                        .font(.system(size: 11, weight: .black))
-                        .frame(width: 26, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 32, height: 30)
                         .background(
-                            RoundedRectangle(cornerRadius: 5)
+                            RoundedRectangle(cornerRadius: 6)
                                 .fill(routeR ? Color.cyan : Color(red: 0.12, green: 0.16, blue: 0.25))
                         )
                         .foregroundColor(routeR ? .black : Color.gray)

@@ -68,7 +68,7 @@ struct MixerChannelView: View {
             }
             
             // L / M / S / R Buttons
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 let currentPan: Float = engine.stemPans[track.id] ?? (isClickGuide ? Float(-1.0) : Float(0.0))
                 let isL = currentPan <= Float(0.1)
                 let isR = currentPan >= Float(-0.1)
@@ -79,11 +79,11 @@ struct MixerChannelView: View {
                     engine.setTrackPan(id: track.id, pan: nextPan)
                 }) {
                     Text("L")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 25, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 30, height: 30)
                         .background(isL ? Color.zionCyan : Color.zionPanelLight)
                         .foregroundColor(isL ? .black : Color.zionTextSecondary)
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 }
                 
                 // M Button
@@ -92,11 +92,11 @@ struct MixerChannelView: View {
                     engine.setTrackMute(id: track.id, muted: !isMuted)
                 }) {
                     Text("M")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 25, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 30, height: 30)
                         .background(isMuted ? Color.zionRed : Color.zionPanelLight)
                         .foregroundColor(isMuted ? .white : Color.zionTextSecondary)
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 }
                 
                 // S Button
@@ -105,11 +105,11 @@ struct MixerChannelView: View {
                     engine.setTrackSolo(id: track.id, solo: !isSolo)
                 }) {
                     Text("S")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 25, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 30, height: 30)
                         .background(isSolo ? Color.zionYellow : Color.zionPanelLight)
                         .foregroundColor(isSolo ? .black : Color.zionTextSecondary)
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 }
                 
                 // R Button
@@ -118,16 +118,16 @@ struct MixerChannelView: View {
                     engine.setTrackPan(id: track.id, pan: nextPan)
                 }) {
                     Text("R")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 25, height: 26)
+                        .font(.system(size: 12, weight: .black))
+                        .frame(width: 30, height: 30)
                         .background(isR ? Color.zionCyan : Color.zionPanelLight)
                         .foregroundColor(isR ? .black : Color.zionTextSecondary)
-                        .cornerRadius(4)
+                        .cornerRadius(6)
                 }
             }
         }
         .padding(8)
-        .frame(width: 120)
+        .frame(width: 150)
         .background(Color.zionPanel)
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.zionBorderSubtle, lineWidth: 1))

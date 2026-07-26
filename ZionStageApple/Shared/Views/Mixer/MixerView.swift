@@ -57,8 +57,8 @@ public struct MixerView: View {
             if let song = player.currentSong, !song.stems.isEmpty {
                 ScrollView(.vertical, showsIndicators: true) {
                     LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 125, maximum: 170), spacing: 8)],
-                        spacing: 8
+                        columns: [GridItem(.adaptive(minimum: 150, maximum: 190), spacing: 10)],
+                        spacing: 10
                     ) {
                         ForEach(sortedStems) { stem in
                             ChannelStripView(

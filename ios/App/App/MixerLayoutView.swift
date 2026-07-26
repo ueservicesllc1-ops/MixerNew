@@ -210,8 +210,8 @@ struct MixerLayoutView: View {
                         } else {
                             ScrollView(.vertical, showsIndicators: true) {
                                 LazyVGrid(
-                                    columns: [GridItem(.adaptive(minimum: 110, maximum: 150), spacing: 8)],
-                                    spacing: 8
+                                    columns: [GridItem(.adaptive(minimum: 140, maximum: 180), spacing: 10)],
+                                    spacing: 10
                                 ) {
                                     ForEach(AudioEngineViewModel.shared.loadedTracks) { track in
                                         MixerChannelView(track: track)

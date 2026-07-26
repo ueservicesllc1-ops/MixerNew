@@ -6,7 +6,7 @@ struct VerticalFader: View {
     var trackColor: Color = Color.zionCyan
     @ObservedObject var engine = AudioEngineViewModel.shared
     
-    let width: CGFloat = 10
+    let width: CGFloat = 18
     let faderMax: Float = 1.2
     
     private var currentDB: Float {
@@ -21,11 +21,11 @@ struct VerticalFader: View {
             
             ZStack(alignment: .bottom) {
                 // Background Track (Decibel slider groove)
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(Color(red: 0.12, green: 0.16, blue: 0.24))
                     .frame(width: width, height: height)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 6)
                             .stroke(Color.white.opacity(0.1), lineWidth: 1)
                     )
                 
@@ -45,13 +45,13 @@ struct VerticalFader: View {
                 
                 // Fill up to volume level (Mixer.jsx fader-color-fill)
                 let fillHeight = progress * height
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(trackColor.opacity(0.35))
                     .frame(width: width, height: fillHeight)
                 
                 // Fader Thumb / Knob (capuchón del fader)
                 let thumbHeight: CGFloat = 20
-                let thumbWidth: CGFloat = 34
+                let thumbWidth: CGFloat = 50
                 
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(red: 0.08, green: 0.10, blue: 0.16))
@@ -79,6 +79,6 @@ struct VerticalFader: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 40)
+        .frame(width: 60)
     }
 }
