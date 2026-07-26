@@ -10,25 +10,46 @@ struct MixerChannelView: View {
         return n.contains("click") || n.contains("cue") || n.contains("guide") || n.contains("guia")
     }
     
-    // Determine color based on track name matching React Mixer.jsx
+    @State private var customColorIndex: Int = -1
+    
+    let stagePresetColors: [Color] = [
+        Color(hex: "#4a5568"), // Gris Claro
+        Color(hex: "#ef4444"), // Rojo (Click/Cue)
+        Color(hex: "#00bcd4"), // Cian
+        Color(hex: "#f59e0b"), // Dorado
+        Color(hex: "#673ab7"), // Púrpura
+        Color(hex: "#ff7043")  // Naranja
+    ]
+    
+    // Determine color: Red for Click/Cue, Light Gray for others by default, or user selected LED color
     var trackColor: Color {
-        let n = (track.name ?? "").lowercased()
-        if isClickGuide { return Color(red: 0.73, green: 0.11, blue: 0.11) } // Rojo #b91c1c
-        if n.contains("bat") || n.contains("drum") || n.contains("perc") { return Color(red: 0.0, green: 0.74, blue: 0.83) } // #00bcd4
-        if n.contains("guit") || n.contains("git") { return Color(red: 1.0, green: 0.69, blue: 0.26) } // #ffb142
-        if n.contains("vox") || n.contains("voz") { return Color(red: 0.20, green: 0.67, blue: 0.88) } // #34ace0
-        if n.contains("bass") || n.contains("bajo") { return Color(red: 0.44, green: 0.44, blue: 0.83) } // #706fd3
-        return Color(red: 0.0, green: 0.82, blue: 0.83) // #00d2d3
+        if customColorIndex >= 0 && customColorIndex < stagePresetColors.count {
+            return stagePresetColors[customColorIndex]
+        }
+        if isClickGuide {
+            return Color(hex: "#ef4444") // Rojo por defecto para Click / Cue
+        }
+        return Color(hex: "#4a5568") // Gris claro por defecto para los demás
     }
     
     var body: some View {
         VStack(alignment: .center, spacing: 12) {
             
-            // Header: Colored dot + Name
+            // Header: Tappable LED dot + Track Name
             HStack(spacing: 6) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(trackColor)
-                    .frame(width: 12, height: 8)
+                Button(action: {
+                    if customColorIndex == -1 {
+                        customColorIndex = isClickGuide ? 0 : 2
+                    } else {
+                        customColorIndex = (customColorIndex + 1) % stagePresetColors.count
+                    }
+                }) {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(trackColor)
+                        .frame(width: 14, height: 10)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.white.opacity(0.4), lineWidth: 1))
+                }
+                .buttonStyle(PlainButtonStyle())
                 
                 Text((track.name ?? "TRACK").uppercased())
                     .font(.system(size: 11, weight: .bold))

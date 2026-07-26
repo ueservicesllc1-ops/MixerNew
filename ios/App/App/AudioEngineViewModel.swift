@@ -34,7 +34,15 @@ class AudioEngineViewModel: ObservableObject {
     @Published var pitchSemitones: Float = 0.0 {
         didSet {
             let cents = pitchSemitones * 100.0
-            timePitchNodes.values.forEach { $0.pitch = cents }
+            for (trackId, timePitchNode) in timePitchNodes {
+                if let track = loadedTracks.first(where: { $0.id == trackId }) {
+                    let nameLow = (track.name ?? "").lowercased()
+                    let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue")
+                    timePitchNode.pitch = isClickGuide ? 0.0 : cents
+                } else {
+                    timePitchNode.pitch = cents
+                }
+            }
         }
     }
     
@@ -110,7 +118,8 @@ class AudioEngineViewModel: ObservableObject {
         DispatchQueue.main.async {
             self.isLoading = true
             self.loadLabel = "Preparando pistas..."
-            self.waveformPeaks = []
+            self.tempoRatio = 1.0
+            self.pitchSemitones = 0.0
         }
 
         var maxDuration: Double = 0
@@ -131,8 +140,12 @@ class AudioEngineViewModel: ObservableObject {
                 let playerNode = AVAudioPlayerNode()
                 let stemMixer = AVAudioMixerNode()
                 let timePitch = AVAudioUnitTimePitch()
+                
+                let nameLow = (track.name ?? "").lowercased()
+                let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue")
+                
                 timePitch.rate = tempoRatio
-                timePitch.pitch = pitchSemitones * 100.0
+                timePitch.pitch = isClickGuide ? 0.0 : (pitchSemitones * 100.0)
 
                 engine.attach(playerNode)
                 engine.attach(stemMixer)
@@ -144,14 +157,10 @@ class AudioEngineViewModel: ObservableObject {
 
                 DispatchQueue.main.async {
                     self.stemVolumes[track.id] = 1.0
-                    self.stemPans[track.id] = 0.0
+                    self.stemPans[track.id] = isClickGuide ? 1.0 : -1.0
                 }
                 
                 stemMixer.outputVolume = 1.0
-
-                // Auto Pan: Click/Guide/Cue -> derecha (+1.0), resto -> izquierda (-1.0)
-                let nameLow = (track.name ?? "").lowercased()
-                let isClickGuide = nameLow.contains("click") || nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue")
                 stemMixer.pan = isClickGuide ? 1.0 : -1.0
                 
                 // Setup VU meter tap
@@ -181,7 +190,7 @@ class AudioEngineViewModel: ObservableObject {
             }
         }
         
-        // Find a representative track for waveform (preferably not click/guide)
+        // Find representative track for waveform
         let waveformTrack = tracks.first { 
             let name = ($0.name ?? "").lowercased()
             return !name.contains("click") && !name.contains("guide") && !name.contains("guia") && !name.contains("cues")
@@ -189,11 +198,8 @@ class AudioEngineViewModel: ObservableObject {
         
         if let repTrack = waveformTrack {
             let repURL = DownloadManager.shared.getLocalURL(for: repTrack)
-            Task.detached(priority: .utility) { [weak self] in
-                guard let self = self else { return }
-                if let peakFile = try? AVAudioFile(forReading: repURL) {
-                    await self.generateWaveformPeaks(from: peakFile)
-                }
+            if let peakFile = try? AVAudioFile(forReading: repURL) {
+                generateWaveformPeaksSync(from: peakFile)
             }
         }
         
@@ -210,7 +216,7 @@ class AudioEngineViewModel: ObservableObject {
         }
     }
 
-    private func generateWaveformPeaks(from file: AVAudioFile) async {
+    private func generateWaveformPeaksSync(from file: AVAudioFile) {
         let displayWidth = 400
         let totalFrames = file.length
         guard totalFrames > 0 else { return }
@@ -240,7 +246,6 @@ class AudioEngineViewModel: ObservableObject {
             }
         }
 
-        // Auto-gain normalization: scale peak array to 1.0 maximum amplitude
         let maxPeak = peaks.max() ?? 0.001
         let scale = maxPeak > 0 ? (1.0 / maxPeak) : 1.0
         let normalizedPeaks = peaks.map { min(Float(1.0), $0 * scale) }
@@ -292,8 +297,21 @@ class AudioEngineViewModel: ObservableObject {
             try? engine.start()
         }
 
+        // 30ms sample-accurate delay ensures all nodes start on exact same sample frame
+        let sampleRate = engine.mainMixerNode.outputFormat(forBus: 0).sampleRate
+        let delaySeconds: Double = 0.03
+        let startAVTime: AVAudioTime
+        
+        if let lastRenderTime = engine.mainMixerNode.lastRenderTime, lastRenderTime.isSampleTimeValid {
+            let startSampleTime = lastRenderTime.sampleTime + AVAudioFramePosition(delaySeconds * sampleRate)
+            startAVTime = AVAudioTime(sampleTime: startSampleTime, atRate: sampleRate)
+        } else {
+            let now = AVAudioTime(hostTime: mach_absolute_time())
+            startAVTime = now
+        }
+
         for playerNode in playerNodes.values {
-            playerNode.play()
+            playerNode.play(at: startAVTime)
         }
         isPlaying = true
         startProgressTimer()
