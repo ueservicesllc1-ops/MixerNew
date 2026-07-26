@@ -53,28 +53,28 @@ public struct PadEngineView: View {
                 // Octave Selector (-1, 0, +1)
                 HStack(spacing: 4) {
                     Button(action: { padPlayer.setOctave(-1) }) {
-                        Text("-1 Oct")
-                            .font(.system(size: 9, weight: .bold))
+                        Text("-1")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == -1 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(padPlayer.pitchOffset == -1 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)
                     }
                     Button(action: { padPlayer.setOctave(0) }) {
-                        Text("Norm")
-                            .font(.system(size: 9, weight: .bold))
+                        Text("0")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == 0 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(padPlayer.pitchOffset == 0 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)
                     }
                     Button(action: { padPlayer.setOctave(1) }) {
-                        Text("+1 Oct")
-                            .font(.system(size: 9, weight: .bold))
+                        Text("+1")
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == 1 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 3)
                             .background(padPlayer.pitchOffset == 1 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)

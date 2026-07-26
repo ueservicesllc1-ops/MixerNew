@@ -92,7 +92,14 @@ class AudioEngineViewModel: ObservableObject {
         detachAllNodes()
         seekPosition = 0.0
 
-        guard !tracks.isEmpty else { return }
+        guard !tracks.isEmpty else {
+            DispatchQueue.main.async {
+                self.loadedTracks.removeAll()
+                self.isLoading = false
+                self.loadLabel = "Canción sin pistas"
+            }
+            return
+        }
 
         // Sort tracks so Click / Guia / Guide / Cue are ALWAYS FIRST
         let sortedTracks = tracks.sorted { a, b in

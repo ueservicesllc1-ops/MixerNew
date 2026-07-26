@@ -126,6 +126,41 @@ class DataStore: ObservableObject {
         let targetId = setlistId ?? activeSetlistId ?? setlists.first?.id
         guard let targetId = targetId else { return }
         
+        if song.tracks == nil || song.tracks?.isEmpty == true {
+            db.collection("songs").document(song.id).getDocument { [weak self] docSnap, error in
+                if let docSnap = docSnap, docSnap.exists, let data = docSnap.data() {
+                    let fullSong = self?.parseSongFromDict(id: docSnap.documentID, data: data) ?? song
+                    self?.performAddSongToSetlist(song: fullSong, targetId: targetId)
+                } else {
+                    self?.performAddSongToSetlist(song: song, targetId: targetId)
+                }
+            }
+        } else {
+            performAddSongToSetlist(song: song, targetId: targetId)
+        }
+    }
+    
+    private func parseSongFromDict(id: String, data: [String: Any]) -> Song {
+        let sName = data["name"] as? String ?? (data["title"] as? String ?? "Canción")
+        let sArtist = data["artist"] as? String
+        let sKey = data["key"] as? String
+        let sBpm = data["bpm"] as? Double ?? (data["tempo"] as? Double)
+        
+        var parsedTracks: [SongTrack] = []
+        let rawTracks = (data["tracks"] as? [[String: Any]]) ?? (data["stems"] as? [[String: Any]]) ?? (data["audioFiles"] as? [[String: Any]]) ?? []
+        
+        for tData in rawTracks {
+            let tId = tData["id"] as? String ?? UUID().uuidString
+            let tPath = tData["path"] as? String ?? (tData["url"] as? String ?? (tData["fileUrl"] as? String ?? ""))
+            let tName = tData["name"] as? String ?? (tData["title"] as? String ?? (tData["type"] as? String ?? "Track"))
+            if !tPath.isEmpty {
+                parsedTracks.append(SongTrack(id: tId, path: tPath, name: tName))
+            }
+        }
+        return Song(id: id, name: sName, artist: sArtist, key: sKey, tracks: parsedTracks, bpm: sBpm)
+    }
+    
+    private func performAddSongToSetlist(song: Song, targetId: String) {
         let songDict: [String: Any] = [
             "id": song.id,
             "name": song.name,
@@ -145,7 +180,6 @@ class DataStore: ObservableObject {
             }
         }
         
-        // Immediately update local setlist state so song appears right away!
         DispatchQueue.main.async {
             if let idx = self.setlists.firstIndex(where: { $0.id == targetId }) {
                 var updatedSongs = self.setlists[idx].songs ?? []
@@ -162,12 +196,24 @@ class DataStore: ObservableObject {
         listener = nil
     }
     
-    func fetchLyrics(for songId: String, completion: @escaping (String?) -> Void) {
-        db.collection("lyrics").whereField("songId", isEqualTo: songId).getDocuments { snapshot, error in
+    func fetchLyrics(for songId: String, completion: @escaping (String?, String?) -> Void) {
+        db.collection("lyrics").whereField("songId", isEqualTo: songId).getDocuments { [weak self] snapshot, error in
             if let doc = snapshot?.documents.first {
-                completion(doc.data()["content"] as? String)
-            } else {
-                completion(nil)
+                let data = doc.data()
+                let lyrics = data["lyrics"] as? String ?? (data["content"] as? String ?? (data["text"] as? String))
+                let chords = data["chords"] as? String ?? (data["chordsText"] as? String)
+                completion(lyrics, chords)
+                return
+            }
+            
+            self?.db.collection("lyrics").document(songId).getDocument { docSnap, _ in
+                if let docSnap = docSnap, docSnap.exists, let data = docSnap.data() {
+                    let lyrics = data["lyrics"] as? String ?? (data["content"] as? String ?? (data["text"] as? String))
+                    let chords = data["chords"] as? String ?? (data["chordsText"] as? String)
+                    completion(lyrics, chords)
+                } else {
+                    completion(nil, nil)
+                }
             }
         }
     }

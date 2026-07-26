@@ -231,7 +231,9 @@ struct MixerLayoutView: View {
                 // Left: Mixer, Lyrics or Settings
                 VStack {
                     if selectedTab == 4 {
-                        LyricsView()
+                        LyricsView(mode: .lyrics)
+                    } else if selectedTab == 5 {
+                        LyricsView(mode: .chords)
                     } else if selectedTab == 7 {
                         SettingsView(authViewModel: authViewModel)
                     } else {
