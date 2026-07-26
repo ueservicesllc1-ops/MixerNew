@@ -64,7 +64,9 @@ struct SetlistsDrawerSheet: View {
                     LazyVStack(spacing: 8) {
                         ForEach(dataStore.setlists) { setlist in
                             let songCount = setlist.songs?.count ?? 0
+                            let isSelected = dataStore.activeSetlistId == setlist.id
                             Button(action: {
+                                dataStore.activeSetlistId = setlist.id
                                 onSelectSetlist?(setlist)
                                 presentationMode.wrappedValue.dismiss()
                             }) {
@@ -72,7 +74,7 @@ struct SetlistsDrawerSheet: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(setlist.name)
                                             .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(Color.zionTextPrimary)
+                                            .foregroundColor(isSelected ? Color.zionCyan : Color.zionTextPrimary)
                                         Text("\(songCount) canciones en este repertorio")
                                             .font(.system(size: 11))
                                             .foregroundColor(Color.zionTextSecondary)
@@ -80,13 +82,18 @@ struct SetlistsDrawerSheet: View {
                                     
                                     Spacer()
                                     
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(Color.zionTextSecondary)
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(Color.zionCyan)
+                                    } else {
+                                        Image(systemName: "chevron.right")
+                                            .foregroundColor(Color.zionTextSecondary)
+                                    }
                                 }
                                 .padding(12)
-                                .background(Color.zionPanel)
+                                .background(isSelected ? Color.zionPanelLight : Color.zionPanel)
                                 .cornerRadius(8)
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.zionBorderSubtle, lineWidth: 1))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.zionCyan : Color.zionBorderSubtle, lineWidth: 1))
                             }
                         }
                     }

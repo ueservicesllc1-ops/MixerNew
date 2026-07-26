@@ -17,13 +17,13 @@ struct SetlistsView: View {
                 Image(systemName: "music.note.list")
                     .foregroundColor(Color.zionCyan)
                 
-                Text(dataStore.setlists.first?.name ?? "Repertorio")
+                Text(dataStore.activeSetlist?.name ?? "Repertorio")
                     .font(.subheadline.bold())
                     .foregroundColor(Color.zionTextPrimary)
                     .lineLimit(1)
                 
                 // Show automatic sync status
-                if let activeSetlist = dataStore.setlists.first,
+                if let activeSetlist = dataStore.activeSetlist,
                    let songs = activeSetlist.songs, !songs.isEmpty {
                     
                     let anyDownloading = songs.contains { downloader.downloadingSongIds.contains($0.id) }
@@ -108,9 +108,9 @@ struct SetlistsView: View {
             } else {
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(dataStore.setlists) { setlist in
-                            if let songs = setlist.songs, !songs.isEmpty {
-                                ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
+                        if let activeSetlist = dataStore.activeSetlist,
+                           let songs = activeSetlist.songs, !songs.isEmpty {
+                            ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
                                     let songNumber = String(index + 1)
                                     let artistText = song.artist ?? "Desconocido"
                                     let keyText = song.key ?? "C"
@@ -174,14 +174,29 @@ struct SetlistsView: View {
                                                         .font(.system(size: 10))
                                                         .foregroundColor(Color.zionTextSecondary)
                                                 }
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(Color.zionCyan)
+                                                }
+                                            } else if downloadedTracks == totalTracks && totalTracks > 0 {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: "checkmark.icloud.fill")
+                                                        .foregroundColor(.green)
+                                                        .font(.system(size: 11, weight: .bold))
+                                                    Text("\(totalTracks)/\(totalTracks)")
+                                                        .font(.system(size: 10, weight: .bold))
+                                                        .foregroundColor(.green)
+                                                }
+                                            } else {
+                                                Text("\(downloadedTracks)/\(totalTracks)")
+                                                    .font(.system(size: 10))
+                                                    .foregroundColor(Color.zionTextSecondary)
                                             }
                                         }
-                                        .padding(.vertical, 10)
-                                        .padding(.horizontal, 12)
-                                        .background(isSelected ? Color.zionOrange : Color.zionPanelLight)
-                                        .cornerRadius(8)
-                                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.zionBorderSubtle, lineWidth: 1))
                                     }
+                                    .padding(.vertical, 10)
+                                    .padding(.horizontal, 12)
+                                    .background(isSelected ? Color.zionOrange : Color.zionPanelLight)
+                                    .cornerRadius(8)
                                 }
                             }
                         }

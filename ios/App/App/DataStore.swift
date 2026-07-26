@@ -26,7 +26,15 @@ struct Setlist: Identifiable, Codable {
 
 class DataStore: ObservableObject {
     @Published var setlists: [Setlist] = []
+    @Published var activeSetlistId: String? = nil
     @Published var isLoading: Bool = false
+    
+    var activeSetlist: Setlist? {
+        if let id = activeSetlistId, let found = setlists.first(where: { $0.id == id }) {
+            return found
+        }
+        return setlists.first
+    }
     
     private let db = Firestore.firestore()
     private var listener: ListenerRegistration?
@@ -81,10 +89,15 @@ class DataStore: ObservableObject {
                 return Setlist(id: doc.documentID, name: name, songs: parsedSongs)
             }
             
-            // Auto background-download the entire setlist as soon as it's fetched
-            if let firstSetlist = self.setlists.first {
+            // Auto select first setlist if none selected
+            if self.activeSetlistId == nil, let first = self.setlists.first {
+                self.activeSetlistId = first.id
+            }
+            
+            // Auto background-download the active setlist
+            if let targetSetlist = self.activeSetlist {
                 DispatchQueue.main.async {
-                    DownloadManager.shared.downloadSetlist(setlist: firstSetlist)
+                    DownloadManager.shared.downloadSetlist(setlist: targetSetlist)
                 }
             }
         }
@@ -92,17 +105,25 @@ class DataStore: ObservableObject {
     
     func createSetlist(name: String) {
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        let docRef = db.collection("setlists").document()
+        let newId = docRef.documentID
         let newDoc: [String: Any] = [
             "name": name,
             "userId": uid,
             "songs": [],
             "createdAt": FieldValue.serverTimestamp()
         ]
-        db.collection("setlists").addDocument(data: newDoc)
+        docRef.setData(newDoc) { [weak self] error in
+            if error == nil {
+                DispatchQueue.main.async {
+                    self?.activeSetlistId = newId
+                }
+            }
+        }
     }
     
     func addSongToSetlist(song: Song, setlistId: String? = nil) {
-        let targetId = setlistId ?? setlists.first?.id
+        let targetId = setlistId ?? activeSetlistId ?? setlists.first?.id
         guard let targetId = targetId else { return }
         
         let songDict: [String: Any] = [
@@ -116,7 +137,24 @@ class DataStore: ObservableObject {
         
         db.collection("setlists").document(targetId).updateData([
             "songs": FieldValue.arrayUnion([songDict])
-        ])
+        ]) { [weak self] error in
+            if error != nil {
+                self?.db.collection("setlists").document(targetId).setData([
+                    "songs": FieldValue.arrayUnion([songDict])
+                ], merge: true)
+            }
+        }
+        
+        // Immediately update local setlist state so song appears right away!
+        DispatchQueue.main.async {
+            if let idx = self.setlists.firstIndex(where: { $0.id == targetId }) {
+                var updatedSongs = self.setlists[idx].songs ?? []
+                if !updatedSongs.contains(where: { $0.id == song.id }) {
+                    updatedSongs.append(song)
+                    self.setlists[idx].songs = updatedSongs
+                }
+            }
+        }
     }
     
     func stopListening() {
