@@ -264,7 +264,7 @@ struct MixerLayoutView: View {
                 
                 // Right: Setlist (fixed) with callback to open Library
                 SetlistsView(onOpenLibrary: { selectedTab = 1 })
-                    .frame(width: 320)
+                    .frame(width: 360)
             }
             .background(Color.zionBackground)
         }

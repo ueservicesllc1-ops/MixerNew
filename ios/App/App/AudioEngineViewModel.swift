@@ -317,21 +317,8 @@ class AudioEngineViewModel: ObservableObject {
             try? engine.start()
         }
 
-        // 30ms sample-accurate delay ensures all nodes start on exact same sample frame
-        let sampleRate = engine.mainMixerNode.outputFormat(forBus: 0).sampleRate
-        let delaySeconds: Double = 0.03
-        let startAVTime: AVAudioTime
-        
-        if let lastRenderTime = engine.mainMixerNode.lastRenderTime, lastRenderTime.isSampleTimeValid {
-            let startSampleTime = lastRenderTime.sampleTime + AVAudioFramePosition(delaySeconds * sampleRate)
-            startAVTime = AVAudioTime(sampleTime: startSampleTime, atRate: sampleRate)
-        } else {
-            let now = AVAudioTime(hostTime: mach_absolute_time())
-            startAVTime = now
-        }
-
         for playerNode in playerNodes.values {
-            playerNode.play(at: startAVTime)
+            playerNode.play()
         }
         isPlaying = true
         startProgressTimer()

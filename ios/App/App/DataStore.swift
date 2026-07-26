@@ -180,6 +180,9 @@ class DataStore: ObservableObject {
             }
         }
         
+        // Trigger background download of stems immediately!
+        DownloadManager.shared.downloadSongStems(song: song)
+        
         DispatchQueue.main.async {
             if let idx = self.setlists.firstIndex(where: { $0.id == targetId }) {
                 var updatedSongs = self.setlists[idx].songs ?? []
@@ -187,6 +190,35 @@ class DataStore: ObservableObject {
                     updatedSongs.append(song)
                     self.setlists[idx].songs = updatedSongs
                 }
+            }
+        }
+    }
+    
+    func removeSongFromSetlist(songId: String, setlistId: String? = nil) {
+        let targetId = setlistId ?? activeSetlistId ?? setlists.first?.id
+        guard let targetId = targetId else { return }
+        
+        if let idx = setlists.firstIndex(where: { $0.id == targetId }),
+           var songs = setlists[idx].songs {
+            
+            if let songIdx = songs.firstIndex(where: { $0.id == songId }) {
+                songs.remove(at: songIdx)
+                setlists[idx].songs = songs
+                
+                let updatedSongsDict = songs.map { song -> [String: Any] in
+                    [
+                        "id": song.id,
+                        "name": song.name,
+                        "artist": song.artist ?? "",
+                        "key": song.key ?? "C",
+                        "bpm": song.bpm ?? 120.0,
+                        "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "name": $0.name ?? ""] } ?? []
+                    ]
+                }
+                
+                db.collection("setlists").document(targetId).updateData([
+                    "songs": updatedSongsDict
+                ])
             }
         }
     }
