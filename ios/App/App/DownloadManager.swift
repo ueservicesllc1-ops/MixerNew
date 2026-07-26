@@ -159,13 +159,49 @@ class DownloadManager: ObservableObject {
         }
     }
     
+    // Download the entire setlist sequentially: one song at a time, and one track at a time.
     func downloadSetlist(setlist: Setlist) {
-        guard let songs = setlist.songs else { return }
-        for song in songs {
-            downloadSongStems(song: song)
+        guard let songs = setlist.songs, !songs.isEmpty else { return }
+        
+        func downloadSongNext(index: Int) {
+            guard index < songs.count else {
+                print("[DownloadManager] Completed downloading entire setlist!")
+                return
+            }
+            
+            let song = songs[index]
+            guard let tracks = song.tracks, !tracks.isEmpty else {
+                downloadSongNext(index: index + 1)
+                return
+            }
+            
+            let missing = tracks.filter { !isTrackDownloaded($0) }
+            guard !missing.isEmpty else {
+                // Song already fully cached, move to next song
+                downloadSongNext(index: index + 1)
+                return
+            }
+            
+            DispatchQueue.main.async {
+                self.downloadingSongIds.insert(song.id)
+            }
+            
+            downloadAllTracks(for: tracks) { [weak self] success in
+                guard let self = self else { return }
+                DispatchQueue.main.async {
+                    self.downloadingSongIds.remove(song.id)
+                }
+                
+                // Trigger the next song sequentially
+                downloadSongNext(index: index + 1)
+            }
         }
+        
+        // Start downloading from first song in setlist
+        downloadSongNext(index: 0)
     }
     
+    // Download tracks sequentially (one by one) inside the song to avoid network congestion
     func downloadAllTracks(for tracks: [SongTrack], completion: @escaping (Bool) -> Void) {
         let missingTracks = tracks.filter { !isTrackDownloaded($0) }
         guard !missingTracks.isEmpty else {
@@ -182,10 +218,17 @@ class DownloadManager: ObservableObject {
         var completedCount = 0
         var hasError = false
         
-        let group = DispatchGroup()
-        
-        for track in missingTracks {
-            group.enter()
+        func downloadTrackNext(index: Int) {
+            guard index < missingTracks.count else {
+                // Completed all tracks for this song
+                DispatchQueue.main.async {
+                    self.isDownloadingAll = false
+                    completion(!hasError)
+                }
+                return
+            }
+            
+            let track = missingTracks[index]
             downloadSingleTrack(track) { success in
                 if !success {
                     hasError = true
@@ -194,13 +237,13 @@ class DownloadManager: ObservableObject {
                 DispatchQueue.main.async {
                     self.overallProgress = Double(completedCount) / Double(totalCount)
                 }
-                group.leave()
+                
+                // Trigger the next track sequentially
+                downloadTrackNext(index: index + 1)
             }
         }
         
-        group.notify(queue: .main) {
-            self.isDownloadingAll = false
-            completion(!hasError)
-        }
+        // Start downloading the first track
+        downloadTrackNext(index: 0)
     }
 }
