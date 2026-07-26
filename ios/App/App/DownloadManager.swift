@@ -51,8 +51,7 @@ class DownloadManager: ObservableObject {
     
     func isTrackDownloaded(_ track: SongTrack) -> Bool {
         let filename = getLocalFilename(for: track)
-        let fileURL = documentsURL.appendingPathComponent(filename)
-        return fileManager.fileExists(atPath: fileURL.path)
+        return downloadedFiles.contains(filename)
     }
     
     func getLocalURL(for track: SongTrack) -> URL {

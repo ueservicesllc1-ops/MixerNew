@@ -90,6 +90,8 @@ struct SetlistsView: View {
                                     let bpmText = song.bpm != nil ? "\(Int(song.bpm!))" : "120"
                                     let subtitle = "\(artistText) • \(keyText) • \(bpmText) BPM"
                                     let isSelected = AudioEngineViewModel.shared.loadedTracks.first?.id.contains(song.id) ?? false
+                                    let totalTracks = song.tracks?.count ?? 0
+                                    let downloadedTracks = song.tracks?.filter { downloader.isTrackDownloaded($0) }.count ?? 0
                                     
                                     Button(action: {
                                         if let tracks = song.tracks {
@@ -123,13 +125,27 @@ struct SetlistsView: View {
                                                 }
                                                 
                                                 if downloader.downloadingSongIds.contains(song.id) {
-                                                    ProgressView()
-                                                        .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
-                                                        .scaleEffect(0.8)
-                                                } else if downloader.isSongDownloaded(song) {
-                                                    Image(systemName: "checkmark.icloud.fill")
-                                                        .foregroundColor(.green)
-                                                        .font(.system(size: 12, weight: .bold))
+                                                    HStack(spacing: 4) {
+                                                        ProgressView()
+                                                            .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                                            .scaleEffect(0.7)
+                                                        Text("\(downloadedTracks)/\(totalTracks)")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                            .foregroundColor(Color.zionCyan)
+                                                    }
+                                                } else if downloadedTracks == totalTracks && totalTracks > 0 {
+                                                    HStack(spacing: 4) {
+                                                        Image(systemName: "checkmark.icloud.fill")
+                                                            .foregroundColor(.green)
+                                                            .font(.system(size: 11, weight: .bold))
+                                                        Text("\(totalTracks)/\(totalTracks)")
+                                                            .font(.system(size: 10, weight: .bold))
+                                                            .foregroundColor(.green)
+                                                    }
+                                                } else {
+                                                    Text("\(downloadedTracks)/\(totalTracks)")
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(Color.zionTextSecondary)
                                                 }
                                             }
                                         }
