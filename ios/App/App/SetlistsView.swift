@@ -145,25 +145,14 @@ struct SetlistsView: View {
                                             Spacer()
                                             
                                             HStack(spacing: 6) {
-                                                if isSelected {
-                                                    HStack(spacing: 4) {
-                                                        Circle().fill(Color.zionCyan).frame(width: 6, height: 6)
-                                                        Text("CARGADA").font(.system(size: 9, weight: .bold)).foregroundColor(Color.zionCyan)
-                                                    }
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Color.zionCyan.opacity(0.2))
-                                                    .cornerRadius(4)
-                                                }
-                                                
                                                 if downloader.downloadingSongIds.contains(song.id) {
                                                     HStack(spacing: 4) {
                                                         ProgressView()
-                                                            .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                                            .progressViewStyle(CircularProgressViewStyle(tint: downloadedTracks == 0 ? .red : Color.zionCyan))
                                                             .scaleEffect(0.6)
                                                         Text("\(downloadedTracks)/\(totalTracks)")
-                                                            .font(.system(size: 10, weight: .bold))
-                                                            .foregroundColor(Color.zionCyan)
+                                                            .font(.system(size: 11, weight: .bold))
+                                                            .foregroundColor(downloadedTracks == 0 ? .red : Color.zionCyan)
                                                     }
                                                 } else if downloadedTracks == totalTracks && totalTracks > 0 {
                                                     HStack(spacing: 4) {
@@ -171,13 +160,13 @@ struct SetlistsView: View {
                                                             .foregroundColor(.green)
                                                             .font(.system(size: 11, weight: .bold))
                                                         Text("\(totalTracks)/\(totalTracks)")
-                                                            .font(.system(size: 10, weight: .bold))
+                                                            .font(.system(size: 11, weight: .bold))
                                                             .foregroundColor(.green)
                                                     }
                                                 } else {
                                                     Text("\(downloadedTracks)/\(totalTracks)")
-                                                        .font(.system(size: 10))
-                                                        .foregroundColor(Color.zionTextSecondary)
+                                                        .font(.system(size: 11, weight: .bold))
+                                                        .foregroundColor(downloadedTracks == 0 ? .red : Color.zionTextSecondary)
                                                 }
                                             }
                                         }

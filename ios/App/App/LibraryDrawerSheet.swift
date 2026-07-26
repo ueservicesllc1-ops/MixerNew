@@ -180,16 +180,32 @@ struct LibraryDrawerSheet: View {
                 
                 // 2. Fetch Global VIP Songs ("global")
                 self.db.collection("songs")
-                    .limit(to: 300)
+                    .limit(to: 400)
                     .getDocuments { globalSnap, _ in
                         self.isLoading = false
                         if let gDocs = globalSnap?.documents {
                             let allParsed = gDocs.compactMap { self.parseSong(doc: $0) }
-                            // Filter for songs marked isGlobal or forSale or containing tracks
+                            
+                            // Include catalog songs: marked isGlobal, forSale, or owned by others/admin
                             self.globalSongs = allParsed.filter { song in
-                                let isGlob = (gDocs.first(where: { $0.documentID == song.id })?.data()["isGlobal"] as? Bool) ?? false
-                                let forSale = (gDocs.first(where: { $0.documentID == song.id })?.data()["forSale"] as? Bool) ?? false
-                                return (isGlob || forSale) && (song.tracks?.isEmpty == false)
+                                if let docData = gDocs.first(where: { $0.documentID == song.id })?.data() {
+                                    let songUserId = docData["userId"] as? String
+                                    let isGlob = (docData["isGlobal"] as? Bool) ?? (docData["isGlobal"] as? String == "true")
+                                    let forSale = (docData["forSale"] as? Bool) ?? (docData["forSale"] as? String == "true")
+                                    
+                                    // If explicitly marked global/forSale or created by admin/others
+                                    if isGlob || forSale || (songUserId != nil && songUserId != uid) {
+                                        return true
+                                    }
+                                }
+                                return false
+                            }
+                            
+                            // Fallback if filter returned empty: show all parsed catalog songs not in mySongs
+                            if self.globalSongs.isEmpty {
+                                self.globalSongs = allParsed.filter { gSong in
+                                    !self.mySongs.contains(where: { $0.id == gSong.id })
+                                }
                             }
                         }
                     }
