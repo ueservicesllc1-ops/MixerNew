@@ -33,6 +33,8 @@ workflows:
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             IPHONEOS_DEPLOYMENT_TARGET=15.0
 
           echo "======================================="
