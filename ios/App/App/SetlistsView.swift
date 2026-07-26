@@ -16,37 +16,29 @@ struct SetlistsView: View {
                     .foregroundColor(.white)
                     .lineLimit(1)
                 
-                Spacer()
-                
+                // Show automatic sync status
                 if let activeSetlist = dataStore.setlists.first,
                    let songs = activeSetlist.songs, !songs.isEmpty {
                     
-                    let allDownloaded = songs.allSatisfy { downloader.isSongDownloaded($0) }
                     let anyDownloading = songs.contains { downloader.downloadingSongIds.contains($0.id) }
+                    let allDownloaded = songs.allSatisfy { downloader.isSongDownloaded($0) }
                     
                     if anyDownloading {
-                        HStack(spacing: 6) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
-                                .scaleEffect(0.6)
-                            Text("Sincronizando...").font(.system(size: 10, weight: .bold)).foregroundColor(Color.zionCyan)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.zionCyan.opacity(0.15))
-                        .cornerRadius(6)
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                            .scaleEffect(0.6)
                     } else if allDownloaded {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundColor(.green)
-                            Text("Listo Offline").font(.system(size: 10, weight: .bold)).foregroundColor(.green)
-                        }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.15))
-                        .cornerRadius(6)
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(.green)
+                            .font(.system(size: 11))
                     }
                 }
+                
+                Spacer()
+                
+                // Restore the +Canciones and +Setlist buttons
+                Button("+Canciones") {}.font(.caption).foregroundColor(.purple)
+                Button("+Setlist") {}.font(.caption).foregroundColor(Color.zionCyan)
             }
             .padding()
             .background(Color.zionPanel)

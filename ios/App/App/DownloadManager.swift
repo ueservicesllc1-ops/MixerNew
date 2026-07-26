@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 class DownloadManager: ObservableObject {
     static let shared = DownloadManager()
@@ -31,22 +32,18 @@ class DownloadManager: ObservableObject {
         }
     }
     
-    // Stable filename based on sanitized path to survive app launches when UUID id is random
+    // Stable filename based on SHA256 hash of URL path to guarantee length is well under the 255-character limit
     func getLocalFilename(for track: SongTrack) -> String {
-        // Sanitize the URL path to make it a safe, stable local filename
-        let safeName = track.path
-            .replacingOccurrences(of: "https://", with: "")
-            .replacingOccurrences(of: "http://", with: "")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: ":", with: "_")
-            .replacingOccurrences(of: "?", with: "_")
-            .replacingOccurrences(of: "&", with: "_")
-            .replacingOccurrences(of: "=", with: "_")
-            .replacingOccurrences(of: "%", with: "_")
+        guard let data = track.path.data(using: .utf8) else {
+            // Fallback to sanitized basic ID if encoding fails
+            return "\(track.id).mp3"
+        }
+        let hash = SHA256.hash(data: data)
+        let hashString = hash.compactMap { String(format: "%02x", $0) }.joined()
         
         let ext = URL(string: track.path)?.pathExtension ?? "mp3"
         let fileExt = ext.isEmpty ? "mp3" : ext
-        return "\(safeName).\(fileExt)"
+        return "\(hashString).\(fileExt)"
     }
     
     func isTrackDownloaded(_ track: SongTrack) -> Bool {
