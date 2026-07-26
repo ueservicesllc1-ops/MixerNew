@@ -111,69 +111,52 @@ struct SetlistsView: View {
                         if let activeSetlist = dataStore.activeSetlist,
                            let songs = activeSetlist.songs, !songs.isEmpty {
                             ForEach(Array(songs.enumerated()), id: \.element.id) { index, song in
-                                    let songNumber = String(index + 1)
-                                    let artistText = song.artist ?? "Desconocido"
-                                    let keyText = song.key ?? "C"
-                                    let bpmText = song.bpm != nil ? "\(Int(song.bpm!))" : "120"
-                                    let subtitle = "\(artistText) • \(keyText) • \(bpmText) BPM"
-                                    let isSelected = AudioEngineViewModel.shared.loadedTracks.first?.id.contains(song.id) ?? false
-                                    let totalTracks = song.tracks?.count ?? 0
-                                    let downloadedTracks = song.tracks?.filter { downloader.isTrackDownloaded($0) }.count ?? 0
-                                    
-                                    Button(action: {
-                                        if let tracks = song.tracks {
-                                            AudioEngineViewModel.shared.currentSong = song
-                                            AudioEngineViewModel.shared.loadTracks(tracks)
+                                let songNumber = String(index + 1)
+                                let artistText = song.artist ?? "Desconocido"
+                                let keyText = song.key ?? "C"
+                                let bpmText = song.bpm != nil ? "\(Int(song.bpm!))" : "120"
+                                let subtitle = "\(artistText) • \(keyText) • \(bpmText) BPM"
+                                let isSelected = AudioEngineViewModel.shared.loadedTracks.first?.id.contains(song.id) ?? false
+                                let totalTracks = song.tracks?.count ?? 0
+                                let downloadedTracks = song.tracks?.filter { downloader.isTrackDownloaded($0) }.count ?? 0
+                                
+                                Button(action: {
+                                    if let tracks = song.tracks {
+                                        AudioEngineViewModel.shared.currentSong = song
+                                        AudioEngineViewModel.shared.loadTracks(tracks)
+                                    }
+                                }) {
+                                    HStack {
+                                        Text(songNumber)
+                                            .font(.caption)
+                                            .foregroundColor(isSelected ? .white : Color.zionTextSecondary)
+                                            .frame(width: 20)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(song.name)
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(isSelected ? .white : Color.zionTextPrimary)
+                                            Text(subtitle)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(isSelected ? .white.opacity(0.8) : Color.zionTextSecondary)
                                         }
-                                    }) {
-                                        HStack {
-                                            Text(songNumber)
-                                                .font(.caption)
-                                                .foregroundColor(isSelected ? .white : Color.zionTextSecondary)
-                                                .frame(width: 20)
-                                            
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(song.name)
-                                                    .font(.system(size: 14, weight: .bold))
-                                                    .foregroundColor(isSelected ? .white : Color.zionTextPrimary)
-                                                Text(subtitle)
-                                                    .font(.system(size: 11))
-                                                    .foregroundColor(isSelected ? .white.opacity(0.8) : Color.zionTextSecondary)
+                                        
+                                        Spacer()
+                                        
+                                        HStack(spacing: 8) {
+                                            if isSelected {
+                                                HStack(spacing: 4) {
+                                                    Circle().fill(Color.green).frame(width: 6, height: 6)
+                                                    Text("READY").font(.caption2).bold().foregroundColor(.green)
+                                                }
                                             }
                                             
-                                            Spacer()
-                                            
-                                            HStack(spacing: 8) {
-                                                if isSelected {
-                                                    HStack(spacing: 4) {
-                                                        Circle().fill(Color.green).frame(width: 6, height: 6)
-                                                        Text("READY").font(.caption2).bold().foregroundColor(.green)
-                                                    }
-                                                }
-                                                
-                                                if downloader.downloadingSongIds.contains(song.id) {
-                                                    HStack(spacing: 4) {
-                                                        ProgressView()
-                                                            .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
-                                                            .scaleEffect(0.7)
-                                                        Text("\(downloadedTracks)/\(totalTracks)")
-                                                            .font(.system(size: 10, weight: .bold))
-                                                            .foregroundColor(Color.zionCyan)
-                                                    }
-                                                } else if downloadedTracks == totalTracks && totalTracks > 0 {
-                                                    HStack(spacing: 4) {
-                                                        Image(systemName: "checkmark.icloud.fill")
-                                                            .foregroundColor(.green)
-                                                            .font(.system(size: 11, weight: .bold))
-                                                        Text("\(totalTracks)/\(totalTracks)")
-                                                            .font(.system(size: 10, weight: .bold))
-                                                            .foregroundColor(.green)
-                                                    }
-                                                } else {
+                                            if downloader.downloadingSongIds.contains(song.id) {
+                                                HStack(spacing: 4) {
+                                                    ProgressView()
+                                                        .progressViewStyle(CircularProgressViewStyle(tint: Color.zionCyan))
+                                                        .scaleEffect(0.7)
                                                     Text("\(downloadedTracks)/\(totalTracks)")
-                                                        .font(.system(size: 10))
-                                                        .foregroundColor(Color.zionTextSecondary)
-                                                }
                                                         .font(.system(size: 10, weight: .bold))
                                                         .foregroundColor(Color.zionCyan)
                                                 }
@@ -197,6 +180,7 @@ struct SetlistsView: View {
                                     .padding(.horizontal, 12)
                                     .background(isSelected ? Color.zionOrange : Color.zionPanelLight)
                                     .cornerRadius(8)
+                                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.zionBorderSubtle, lineWidth: 1))
                                 }
                             }
                         }
