@@ -1,15 +1,15 @@
 import SwiftUI
 
 extension Color {
-    static let zionBackground = Color(hex: "#0b0f19")
-    static let zionPanel = Color(hex: "#151b2b")
-    static let zionPanelLight = Color(hex: "#1e2638")
+    static var zionBackground: Color { ThemeManager.shared.background }
+    static var zionPanel: Color { ThemeManager.shared.panel }
+    static var zionPanelLight: Color { ThemeManager.shared.panelLight }
     
-    static let zionBorderSubtle = Color.white.opacity(0.1)
-    static let zionButtonDark = Color(hex: "#1a2235")
-    static let zionButtonHover = Color(hex: "#252f48")
-    static let zionTextPrimary = Color.white
-    static let zionTextSecondary = Color(hex: "#8b949e")
+    static var zionBorderSubtle: Color { ThemeManager.shared.borderSubtle }
+    static var zionButtonDark: Color { ThemeManager.shared.panelLight }
+    static var zionButtonHover: Color { ThemeManager.shared.panelLight.opacity(0.8) }
+    static var zionTextPrimary: Color { ThemeManager.shared.textPrimary }
+    static var zionTextSecondary: Color { ThemeManager.shared.textSecondary }
     
     static let zionCyan = Color(hex: "#00bcd4")
     static let zionFaderThumb = Color(hex: "#2c3e50")

@@ -3,6 +3,7 @@ import SwiftUI
 struct SetlistsView: View {
     @StateObject private var dataStore = DataStore()
     @ObservedObject var downloader = DownloadManager.shared
+    @ObservedObject var themeManager = ThemeManager.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

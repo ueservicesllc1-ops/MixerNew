@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var authViewModel: AuthViewModel
+    @ObservedObject var themeManager = ThemeManager.shared
     @State private var enableAutoScroll: Bool = true
     @State private var bufferSize: String = "512 samples"
     @State private var audioOutput: String = "Salida Principal (Default)"
@@ -91,6 +92,14 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         Toggle(isOn: $enableAutoScroll) {
                             Text("Desplazamiento Automático de Letras")
+                                .foregroundColor(Color.zionTextPrimary)
+                        }
+                        .toggleStyle(SwitchToggleStyle(tint: Color.zionCyan))
+                        
+                        Divider().background(Color.zionBorderSubtle)
+                        
+                        Toggle(isOn: $themeManager.darkMode) {
+                            Text("Modo Nocturno (Tema Oscuro)")
                                 .foregroundColor(Color.zionTextPrimary)
                         }
                         .toggleStyle(SwitchToggleStyle(tint: Color.zionCyan))

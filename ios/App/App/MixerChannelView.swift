@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MixerChannelView: View {
     @ObservedObject var engine = AudioEngineViewModel.shared
+    @ObservedObject var themeManager = ThemeManager.shared
     var track: SongTrack
     
     var isClickGuide: Bool {

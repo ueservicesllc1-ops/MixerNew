@@ -3,6 +3,7 @@ import SwiftUI
 struct MixerLayoutView: View {
     @ObservedObject var authViewModel: AuthViewModel
     @ObservedObject var engine = AudioEngineViewModel.shared
+    @ObservedObject var themeManager = ThemeManager.shared
     @State private var selectedTab: Int = 0 // Default to Mixer tab (0) so faders show immediately
     
     private func getShiftedKey(baseKey: String?, shift: Float) -> String {
