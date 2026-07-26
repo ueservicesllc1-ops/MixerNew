@@ -175,17 +175,22 @@ struct LibraryDrawerSheet: View {
             .whereField("userId", isEqualTo: uid)
             .getDocuments { snapshot, error in
                 if let docs = snapshot?.documents {
-                    self.mySongs = docs.compactMap { parseSong(doc: $0) }
+                    self.mySongs = docs.compactMap { self.parseSong(doc: $0) }
                 }
                 
                 // 2. Fetch Global VIP Songs ("global")
                 self.db.collection("songs")
-                    .whereField("isGlobal", isEqualTo: true)
-                    .limit(to: 200)
+                    .limit(to: 300)
                     .getDocuments { globalSnap, _ in
                         self.isLoading = false
                         if let gDocs = globalSnap?.documents {
-                            self.globalSongs = gDocs.compactMap { parseSong(doc: $0) }
+                            let allParsed = gDocs.compactMap { self.parseSong(doc: $0) }
+                            // Filter for songs marked isGlobal or forSale or containing tracks
+                            self.globalSongs = allParsed.filter { song in
+                                let isGlob = (gDocs.first(where: { $0.documentID == song.id })?.data()["isGlobal"] as? Bool) ?? false
+                                let forSale = (gDocs.first(where: { $0.documentID == song.id })?.data()["forSale"] as? Bool) ?? false
+                                return (isGlob || forSale) && (song.tracks?.isEmpty == false)
+                            }
                         }
                     }
             }
@@ -200,12 +205,49 @@ struct LibraryDrawerSheet: View {
         let sBpm = data["bpm"] as? Double ?? (data["tempo"] as? Double)
         
         var parsedTracks: [SongTrack] = []
-        if let tracksArray = data["tracks"] as? [[String: Any]] {
-            for tData in tracksArray {
-                let tId = tData["id"] as? String ?? UUID().uuidString
-                let tPath = tData["path"] as? String ?? (tData["url"] as? String ?? "")
-                let tName = tData["name"] as? String ?? (tData["title"] as? String ?? "")
-                parsedTracks.append(SongTrack(id: tId, path: tPath, name: tName))
+        
+        // 1. Array format
+        let rawArray = (data["tracks"] as? [[String: Any]]) ?? 
+                       (data["stems"] as? [[String: Any]]) ?? 
+                       (data["audioFiles"] as? [[String: Any]]) ?? 
+                       (data["files"] as? [[String: Any]]) ?? []
+        
+        for tData in rawArray {
+            let tId = tData["id"] as? String ?? UUID().uuidString
+            let tPath = tData["path"] as? String ?? 
+                        (tData["url"] as? String ?? 
+                        (tData["fileUrl"] as? String ?? 
+                        (tData["downloadUrl"] as? String ?? "")))
+            let tName = tData["name"] as? String ?? 
+                        (tData["title"] as? String ?? 
+                        (tData["type"] as? String ?? "Track"))
+            let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedPath.isEmpty {
+                parsedTracks.append(SongTrack(id: tId, path: trimmedPath, name: tName))
+            }
+        }
+        
+        // 2. Dictionary format
+        if parsedTracks.isEmpty {
+            let rawDict = (data["tracks"] as? [String: Any]) ?? (data["stems"] as? [String: Any]) ?? [:]
+            for (key, val) in rawDict {
+                if let tData = val as? [String: Any] {
+                    let tId = tData["id"] as? String ?? key
+                    let tPath = tData["path"] as? String ?? 
+                                (tData["url"] as? String ?? 
+                                (tData["fileUrl"] as? String ?? 
+                                (tData["downloadUrl"] as? String ?? "")))
+                    let tName = tData["name"] as? String ?? (tData["title"] as? String ?? key)
+                    let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedPath.isEmpty {
+                        parsedTracks.append(SongTrack(id: tId, path: trimmedPath, name: tName))
+                    }
+                } else if let tPath = val as? String {
+                    let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedPath.isEmpty {
+                        parsedTracks.append(SongTrack(id: key, path: trimmedPath, name: key))
+                    }
+                }
             }
         }
         

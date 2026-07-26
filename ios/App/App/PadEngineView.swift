@@ -9,7 +9,7 @@ public struct PadEngineView: View {
 
     public var body: some View {
         VStack(spacing: 8) {
-            // Status bar with Power ON/OFF Button
+            // Status bar with Power ON/OFF Button & Octave Controls
             HStack(spacing: 8) {
                 // Power Toggle
                 Button(action: {
@@ -25,7 +25,7 @@ public struct PadEngineView: View {
                         Text(padPlayer.activeKey != nil ? "OFF" : "POWER")
                             .font(.system(size: 9, weight: .bold))
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(padPlayer.activeKey != nil ? Color.zionRed : Color.zionCyan)
                     .foregroundColor(padPlayer.activeKey != nil ? .white : .black)
@@ -38,44 +38,40 @@ public struct PadEngineView: View {
                             .fill(Color.zionCyan)
                             .frame(width: 6, height: 6)
                             .shadow(color: .cyan, radius: 4)
-                        Text("Sonando: \(activeKey)")
-                            .font(.system(size: 10, weight: .bold))
+                        Text(activeKey)
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(Color.zionCyan)
                     }
-                } else {
-                    Text("Pads Ambientales")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color.zionTextSecondary)
                 }
                 
                 Spacer()
                 
                 // Octave Selector (-1, 0, +1)
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Button(action: { padPlayer.setOctave(-1) }) {
                         Text("-1")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == -1 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
                             .background(padPlayer.pitchOffset == -1 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)
                     }
                     Button(action: { padPlayer.setOctave(0) }) {
                         Text("0")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == 0 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
                             .background(padPlayer.pitchOffset == 0 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)
                     }
                     Button(action: { padPlayer.setOctave(1) }) {
                         Text("+1")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundColor(padPlayer.pitchOffset == 1 ? .black : Color.zionTextSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
                             .background(padPlayer.pitchOffset == 1 ? Color.zionCyan : Color.zionPanelLight)
                             .cornerRadius(4)
                     }

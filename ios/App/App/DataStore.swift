@@ -147,16 +147,52 @@ class DataStore: ObservableObject {
         let sBpm = data["bpm"] as? Double ?? (data["tempo"] as? Double)
         
         var parsedTracks: [SongTrack] = []
-        let rawTracks = (data["tracks"] as? [[String: Any]]) ?? (data["stems"] as? [[String: Any]]) ?? (data["audioFiles"] as? [[String: Any]]) ?? []
         
-        for tData in rawTracks {
+        // 1. Array format
+        let rawArray = (data["tracks"] as? [[String: Any]]) ?? 
+                       (data["stems"] as? [[String: Any]]) ?? 
+                       (data["audioFiles"] as? [[String: Any]]) ?? 
+                       (data["files"] as? [[String: Any]]) ?? []
+        
+        for tData in rawArray {
             let tId = tData["id"] as? String ?? UUID().uuidString
-            let tPath = tData["path"] as? String ?? (tData["url"] as? String ?? (tData["fileUrl"] as? String ?? ""))
-            let tName = tData["name"] as? String ?? (tData["title"] as? String ?? (tData["type"] as? String ?? "Track"))
-            if !tPath.isEmpty {
-                parsedTracks.append(SongTrack(id: tId, path: tPath, name: tName))
+            let tPath = tData["path"] as? String ?? 
+                        (tData["url"] as? String ?? 
+                        (tData["fileUrl"] as? String ?? 
+                        (tData["downloadUrl"] as? String ?? "")))
+            let tName = tData["name"] as? String ?? 
+                        (tData["title"] as? String ?? 
+                        (tData["type"] as? String ?? "Track"))
+            let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedPath.isEmpty {
+                parsedTracks.append(SongTrack(id: tId, path: trimmedPath, name: tName))
             }
         }
+        
+        // 2. Dictionary format
+        if parsedTracks.isEmpty {
+            let rawDict = (data["tracks"] as? [String: Any]) ?? (data["stems"] as? [String: Any]) ?? [:]
+            for (key, val) in rawDict {
+                if let tData = val as? [String: Any] {
+                    let tId = tData["id"] as? String ?? key
+                    let tPath = tData["path"] as? String ?? 
+                                (tData["url"] as? String ?? 
+                                (tData["fileUrl"] as? String ?? 
+                                (tData["downloadUrl"] as? String ?? "")))
+                    let tName = tData["name"] as? String ?? (tData["title"] as? String ?? key)
+                    let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedPath.isEmpty {
+                        parsedTracks.append(SongTrack(id: tId, path: trimmedPath, name: tName))
+                    }
+                } else if let tPath = val as? String {
+                    let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmedPath.isEmpty {
+                        parsedTracks.append(SongTrack(id: key, path: trimmedPath, name: key))
+                    }
+                }
+            }
+        }
+        
         return Song(id: id, name: sName, artist: sArtist, key: sKey, tracks: parsedTracks, bpm: sBpm)
     }
     
