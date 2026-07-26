@@ -94,17 +94,28 @@ class AudioEngineViewModel: ObservableObject {
 
         guard !tracks.isEmpty else { return }
 
+        // Sort tracks so Click / Guia / Guide / Cue are ALWAYS FIRST
+        let sortedTracks = tracks.sorted { a, b in
+            let nameA = (a.name ?? "").lowercased()
+            let nameB = (b.name ?? "").lowercased()
+            let isClickA = nameA.contains("click") || nameA.contains("guide") || nameA.contains("guia") || nameA.contains("cue")
+            let isClickB = nameB.contains("click") || nameB.contains("guide") || nameB.contains("guia") || nameB.contains("cue")
+            if isClickA && !isClickB { return true }
+            if !isClickA && isClickB { return false }
+            return a.name ?? "" < b.name ?? ""
+        }
+
         // Check if tracks are downloaded
-        let missing = tracks.filter { !DownloadManager.shared.isTrackDownloaded($0) }
+        let missing = sortedTracks.filter { !DownloadManager.shared.isTrackDownloaded($0) }
         if !missing.isEmpty {
             DispatchQueue.main.async {
                 self.isLoading = true
                 self.loadLabel = "Descargando stems..."
             }
-            DownloadManager.shared.downloadAllTracks(for: tracks) { [weak self] success in
+            DownloadManager.shared.downloadAllTracks(for: sortedTracks) { [weak self] success in
                 guard let self = self else { return }
                 if success {
-                    self.loadTracks(tracks)
+                    self.loadTracks(sortedTracks)
                 } else {
                     DispatchQueue.main.async {
                         self.isLoading = false
@@ -125,14 +136,14 @@ class AudioEngineViewModel: ObservableObject {
         var maxDuration: Double = 0
         
         DispatchQueue.main.async {
-            self.loadedTracks = tracks
+            self.loadedTracks = sortedTracks
             self.stemVolumes.removeAll()
             self.mutedStems.removeAll()
             self.soloedStem = nil
             self.stemPans.removeAll()
         }
 
-        for track in tracks {
+        for track in sortedTracks {
             let localURL = DownloadManager.shared.getLocalURL(for: track)
             
             do {
@@ -191,10 +202,10 @@ class AudioEngineViewModel: ObservableObject {
         }
         
         // Find representative track for waveform
-        let waveformTrack = tracks.first { 
+        let waveformTrack = sortedTracks.first { 
             let name = ($0.name ?? "").lowercased()
             return !name.contains("click") && !name.contains("guide") && !name.contains("guia") && !name.contains("cues")
-        } ?? tracks.first
+        } ?? sortedTracks.first
         
         if let repTrack = waveformTrack {
             let repURL = DownloadManager.shared.getLocalURL(for: repTrack)
@@ -217,38 +228,40 @@ class AudioEngineViewModel: ObservableObject {
     }
 
     private func generateWaveformPeaksSync(from file: AVAudioFile) {
-        let displayWidth = 400
+        let displayWidth = 300
         let totalFrames = file.length
         guard totalFrames > 0 else { return }
 
         let step = max(1, totalFrames / Int64(displayWidth))
-        let chunkSize: AVAudioFrameCount = 2048
+        let chunkSize: AVAudioFrameCount = 4096
         guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: chunkSize) else { return }
 
         var peaks = [Float](repeating: 0, count: displayWidth)
 
         for i in 0..<displayWidth {
             let targetFrame = Int64(i) * step
-            file.framePosition = min(targetFrame, max(0, totalFrames - Int64(chunkSize)))
+            let readPos = min(targetFrame, max(0, totalFrames - Int64(chunkSize)))
+            file.framePosition = readPos
             do {
                 try file.read(into: buffer, frameCount: chunkSize)
                 if let channelData = buffer.floatChannelData {
                     let data = channelData[0]
-                    var maxVal: Float = 0
+                    var maxVal: Float = 0.001
                     let count = Int(buffer.frameLength)
                     for j in 0..<count {
-                        maxVal = max(maxVal, abs(data[j]))
+                        let val = abs(data[j])
+                        if val > maxVal { maxVal = val }
                     }
                     peaks[i] = maxVal
                 }
             } catch {
-                // Ignore border read errors
+                // Ignore read boundary errors
             }
         }
 
         let maxPeak = peaks.max() ?? 0.001
         let scale = maxPeak > 0 ? (1.0 / maxPeak) : 1.0
-        let normalizedPeaks = peaks.map { min(Float(1.0), $0 * scale) }
+        let normalizedPeaks = peaks.map { max(Float(0.08), min(Float(1.0), $0 * scale)) }
 
         DispatchQueue.main.async {
             self.waveformPeaks = normalizedPeaks

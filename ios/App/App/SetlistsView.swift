@@ -155,6 +155,12 @@ struct SetlistsView: View {
                     .padding()
                 }
             }
+            
+            Divider().background(Color.zionBorderSubtle)
+            
+            // Ambient Pads Section Below Song List
+            PadEngineView()
+                .padding(6)
         }
         .background(Color.zionBackground)
         .onAppear {
