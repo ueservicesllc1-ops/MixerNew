@@ -24,7 +24,7 @@ struct MixerLayoutView: View {
                 
                 // Master Fader
                 HStack {
-                    Text("MASTER").font(.caption2).bold().foregroundColor(.white)
+                    Text("MASTER").font(.caption2).bold().foregroundColor(Color.zionTextPrimary)
                     Slider(value: Binding(
                         get: { Double(engine.masterVolume) },
                         set: { engine.masterVolume = Float($0) }
@@ -84,7 +84,7 @@ struct MixerLayoutView: View {
                         
                         Text(String(format: "%.1f BPM", currentBpm))
                             .font(.system(size: 11, weight: .bold).monospacedDigit())
-                            .foregroundColor(.white)
+                            .foregroundColor(Color.zionTextPrimary)
                             .frame(width: 80, alignment: .center)
                         
                         Button(action: {
@@ -122,7 +122,7 @@ struct MixerLayoutView: View {
                         let shiftText = shiftInt == 0 ? "" : (shiftInt > 0 ? " (+\(shiftInt))" : " (\(shiftInt))")
                         Text("\(shiftedKey)\(shiftText)")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
+                            .foregroundColor(Color.zionTextPrimary)
                             .frame(width: 60, alignment: .center)
                         
                         Button(action: {
@@ -144,18 +144,25 @@ struct MixerLayoutView: View {
                 
                 Spacer()
                 
-                // Profile
-                HStack(spacing: 12) {
+                // Profile & Theme Controls
+                HStack(spacing: 14) {
                     Text(authViewModel.currentUser?.name ?? "Usuario").font(.caption).foregroundColor(Color.zionTextSecondary)
+                    
+                    // Theme Switcher (Moon / Sun)
+                    Button(action: { themeManager.darkMode.toggle() }) {
+                        Image(systemName: themeManager.darkMode ? "sun.max.fill" : "moon.stars.fill")
+                            .foregroundColor(themeManager.darkMode ? Color.zionYellow : Color.zionCyan)
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    
                     Button(action: { authViewModel.logout() }) {
                         Image(systemName: "rectangle.portrait.and.arrow.right")
                             .foregroundColor(Color.zionTextSecondary)
                     }
-                    Button(action: {}) {
-                        Image(systemName: "arrow.triangle.2.circlepath").foregroundColor(Color.zionTextSecondary)
-                    }
+                    
                     Button(action: { selectedTab = 7 }) {
-                        Image(systemName: "gearshape").foregroundColor(selectedTab == 7 ? Color.zionCyan : Color.zionTextSecondary)
+                        Image(systemName: "gearshape.fill")
+                            .foregroundColor(selectedTab == 7 ? Color.zionCyan : Color.zionTextSecondary)
                     }
                 }
             }

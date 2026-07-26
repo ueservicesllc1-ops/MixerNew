@@ -68,33 +68,16 @@ struct MixerChannelView: View {
                     .frame(height: 180)
             }
             
-            // L / M / S / R Buttons
-            HStack(spacing: 6) {
-                let currentPan: Float = engine.stemPans[track.id] ?? (isClickGuide ? Float(-1.0) : Float(0.0))
-                let isL = currentPan <= Float(0.1)
-                let isR = currentPan >= Float(-0.1)
-                
-                // L Button
-                Button(action: {
-                    let nextPan: Float = isL ? (isR ? Float(1.0) : Float(0.0)) : (isR ? Float(-1.0) : Float(-1.0))
-                    engine.setTrackPan(id: track.id, pan: nextPan)
-                }) {
-                    Text("L")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 30, height: 30)
-                        .background(isL ? Color.zionCyan : Color.zionPanelLight)
-                        .foregroundColor(isL ? .black : Color.zionTextSecondary)
-                        .cornerRadius(6)
-                }
-                
+            // M (Mute) / S (Solo) Buttons & Stereo Routing Tag
+            HStack(spacing: 10) {
                 // M Button
                 let isMuted = engine.mutedStems.contains(track.id)
                 Button(action: {
                     engine.setTrackMute(id: track.id, muted: !isMuted)
                 }) {
                     Text("M")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 30, height: 30)
+                        .font(.system(size: 14, weight: .black))
+                        .frame(width: 54, height: 34)
                         .background(isMuted ? Color.zionRed : Color.zionPanelLight)
                         .foregroundColor(isMuted ? .white : Color.zionTextSecondary)
                         .cornerRadius(6)
@@ -106,26 +89,18 @@ struct MixerChannelView: View {
                     engine.setTrackSolo(id: track.id, solo: !isSolo)
                 }) {
                     Text("S")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 30, height: 30)
+                        .font(.system(size: 14, weight: .black))
+                        .frame(width: 54, height: 34)
                         .background(isSolo ? Color.zionYellow : Color.zionPanelLight)
                         .foregroundColor(isSolo ? .black : Color.zionTextSecondary)
                         .cornerRadius(6)
                 }
-                
-                // R Button
-                Button(action: {
-                    let nextPan: Float = isR ? (isL ? Float(-1.0) : Float(0.0)) : (isL ? Float(1.0) : Float(1.0))
-                    engine.setTrackPan(id: track.id, pan: nextPan)
-                }) {
-                    Text("R")
-                        .font(.system(size: 12, weight: .black))
-                        .frame(width: 30, height: 30)
-                        .background(isR ? Color.zionCyan : Color.zionPanelLight)
-                        .foregroundColor(isR ? .black : Color.zionTextSecondary)
-                        .cornerRadius(6)
-                }
             }
+            
+            // Stereo Position Tag
+            Text(isClickGuide ? "Canal R (Derecha)" : "Canal L (Izquierda)")
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(isClickGuide ? Color.zionRed : Color.zionCyan)
         }
         .padding(8)
         .frame(width: 150)

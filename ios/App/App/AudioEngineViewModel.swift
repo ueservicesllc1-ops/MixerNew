@@ -187,13 +187,16 @@ class AudioEngineViewModel: ObservableObject {
             return !name.contains("click") && !name.contains("guide") && !name.contains("guia") && !name.contains("cues")
         } ?? tracks.first
         
-        if let repTrack = waveformTrack, let file = audioFiles[repTrack.id] {
-            Task {
-                await generateWaveformPeaks(from: file)
+        if let repTrack = waveformTrack {
+            let repURL = DownloadManager.shared.getLocalURL(for: repTrack)
+            Task.detached(priority: .utility) { [weak self] in
+                guard let self = self else { return }
+                if let peakFile = try? AVAudioFile(forReading: repURL) {
+                    await self.generateWaveformPeaks(from: peakFile)
+                }
             }
         }
         
-        // Ensure engine is running before scheduling segment
         if !engine.isRunning {
             try? engine.start()
         }
@@ -237,8 +240,6 @@ class AudioEngineViewModel: ObservableObject {
             }
         }
 
-        file.framePosition = 0
-
         // Auto-gain normalization: scale peak array to 1.0 maximum amplitude
         let maxPeak = peaks.max() ?? 0.001
         let scale = maxPeak > 0 ? (1.0 / maxPeak) : 1.0
@@ -271,6 +272,7 @@ class AudioEngineViewModel: ObservableObject {
 
             guard remainingFrames > 0 else { continue }
 
+            playerNode.stop()
             playerNode.scheduleSegment(
                 audioFile,
                 startingFrame: startFrame,
@@ -290,20 +292,8 @@ class AudioEngineViewModel: ObservableObject {
             try? engine.start()
         }
 
-        // Synchronize all channels using sample-accurate start time
-        let delaySeconds: Double = 0.05
-        let sampleRate = engine.mainMixerNode.outputFormat(forBus: 0).sampleRate
-        let startAVTime: AVAudioTime
-        
-        if let lastRenderTime = engine.mainMixerNode.lastRenderTime {
-            let startSampleTime = lastRenderTime.sampleTime + AVAudioFramePosition(delaySeconds * sampleRate)
-            startAVTime = AVAudioTime(sampleTime: startSampleTime, atRate: sampleRate)
-        } else {
-            startAVTime = AVAudioTime(sampleTime: 0, atRate: sampleRate)
-        }
-
         for playerNode in playerNodes.values {
-            playerNode.play(at: startAVTime)
+            playerNode.play()
         }
         isPlaying = true
         startProgressTimer()

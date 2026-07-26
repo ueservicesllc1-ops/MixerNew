@@ -10,7 +10,11 @@ class ThemeManager: ObservableObject {
     }
     
     private init() {
-        self.darkMode = UserDefaults.standard.bool(forKey: "mixer_darkMode")
+        if UserDefaults.standard.object(forKey: "mixer_darkMode") == nil {
+            self.darkMode = true
+        } else {
+            self.darkMode = UserDefaults.standard.bool(forKey: "mixer_darkMode")
+        }
     }
     
     // Colors matching Android theme
