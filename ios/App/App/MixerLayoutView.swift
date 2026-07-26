@@ -20,12 +20,6 @@ struct MixerLayoutView: View {
             
             // 1. Top Transport Bar
             HStack(spacing: 16) {
-                // Menu Buttons
-                HStack(spacing: 8) {
-                    Button(action: {}) { Image(systemName: "line.3.horizontal") }
-                    Button(action: {}) { Image(systemName: "music.note.list") }
-                }
-                .foregroundColor(Color.zionTextSecondary)
                 
                 // Master Fader
                 HStack {
@@ -35,7 +29,7 @@ struct MixerLayoutView: View {
                         set: { engine.masterVolume = Float($0) }
                     ), in: 0.0...1.0)
                     .accentColor(Color.zionCyan)
-                    .frame(width: 100)
+                    .frame(width: 140)
                     Text("\(Int(engine.masterVolume * 100))%").font(.caption2).foregroundColor(Color.zionCyan)
                 }
                 .padding(.horizontal, 10)
