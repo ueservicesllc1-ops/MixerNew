@@ -5,6 +5,10 @@ struct SetlistsView: View {
     @ObservedObject var downloader = DownloadManager.shared
     @ObservedObject var themeManager = ThemeManager.shared
     
+    var onOpenLibrary: (() -> Void)? = nil
+    @State private var showCreateSetlistAlert = false
+    @State private var newSetlistName = ""
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
@@ -14,7 +18,7 @@ struct SetlistsView: View {
                 
                 Text(dataStore.setlists.first?.name ?? "Repertorio")
                     .font(.subheadline.bold())
-                    .foregroundColor(.white)
+                    .foregroundColor(Color.zionTextPrimary)
                     .lineLimit(1)
                 
                 // Show automatic sync status
@@ -37,9 +41,41 @@ struct SetlistsView: View {
                 
                 Spacer()
                 
-                // Restore the +Canciones and +Setlist buttons
-                Button("+Canciones") {}.font(.caption).foregroundColor(.purple)
-                Button("+Setlist") {}.font(.caption).foregroundColor(Color.zionCyan)
+                // +Canciones and +Setlist Buttons
+                Button(action: {
+                    onOpenLibrary?()
+                }) {
+                    Text("+Canciones")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.purple)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.purple.opacity(0.15))
+                        .cornerRadius(6)
+                }
+                
+                Button(action: {
+                    showCreateSetlistAlert = true
+                }) {
+                    Text("+Setlist")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.zionCyan)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.zionCyan.opacity(0.15))
+                        .cornerRadius(6)
+                }
+                .alert("Crear Nuevo Setlist", isPresented: $showCreateSetlistAlert) {
+                    TextField("Nombre del repertorio", text: $newSetlistName)
+                    Button("Cancelar", role: .cancel) { newSetlistName = "" }
+                    Button("Crear") {
+                        let trimmed = newSetlistName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            dataStore.createSetlist(name: trimmed)
+                            newSetlistName = ""
+                        }
+                    }
+                }
             }
             .padding()
             .background(Color.zionPanel)

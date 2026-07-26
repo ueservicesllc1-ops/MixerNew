@@ -29,6 +29,37 @@ public struct PadEngineView: View {
                 
                 Spacer()
                 
+                // Octave Selector (-1, 0, +1)
+                HStack(spacing: 4) {
+                    Button(action: { padPlayer.setOctave(-1) }) {
+                        Text("-1 Oct")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(padPlayer.pitchOffset == -1 ? .black : Color.zionTextSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(padPlayer.pitchOffset == -1 ? Color.zionCyan : Color.zionPanelLight)
+                            .cornerRadius(4)
+                    }
+                    Button(action: { padPlayer.setOctave(0) }) {
+                        Text("Norm")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(padPlayer.pitchOffset == 0 ? .black : Color.zionTextSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(padPlayer.pitchOffset == 0 ? Color.zionCyan : Color.zionPanelLight)
+                            .cornerRadius(4)
+                    }
+                    Button(action: { padPlayer.setOctave(1) }) {
+                        Text("+1 Oct")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(padPlayer.pitchOffset == 1 ? .black : Color.zionTextSecondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(padPlayer.pitchOffset == 1 ? Color.zionCyan : Color.zionPanelLight)
+                            .cornerRadius(4)
+                    }
+                }
+                
                 // Volume Slider
                 HStack(spacing: 4) {
                     Image(systemName: "speaker.wave.2.fill")
@@ -39,7 +70,7 @@ public struct PadEngineView: View {
                         set: { padPlayer.setVolume(Float($0)) }
                     ), in: 0.0...1.0)
                     .accentColor(Color.zionCyan)
-                    .frame(width: 70)
+                    .frame(width: 60)
                 }
             }
             .padding(.horizontal, 10)

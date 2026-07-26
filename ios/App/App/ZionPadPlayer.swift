@@ -11,14 +11,14 @@ public class ZionPadPlayer: ObservableObject {
     private let engine = AVAudioEngine()
     private var playerNode: AVAudioPlayerNode?
     private var timePitchNode: AVAudioUnitTimePitch?
-    private var currentBuffer: AVAudioPCMBuffer?
+    private var audioBuffers: [String: AVAudioPCMBuffer] = [:]
     private var isRunning = false
 
-    private let noteFrequencies: [String: Float] = [
-        "C":  261.63, "C#": 277.18, "D":  293.66,
-        "D#": 311.13, "E":  329.63, "F":  349.23,
-        "F#": 369.99, "G":  392.00, "G#": 415.30,
-        "A":  440.00, "A#": 466.16, "B":  493.88
+    // Map keys to canonical MP3 file names matching public/pads/
+    private let keyToFileName: [String: String] = [
+        "C": "C", "C#": "Db", "D": "D", "D#": "Eb",
+        "E": "E", "F": "F", "F#": "Gb", "G": "G",
+        "G#": "Ab", "A": "A", "A#": "Bb", "B": "B"
     ]
 
     private init() {
@@ -33,36 +33,70 @@ public class ZionPadPlayer: ObservableObject {
     public func start(key: String) {
         stop()
 
-        guard let baseFreq = noteFrequencies[key] else { return }
+        let fileName = keyToFileName[key] ?? key
+        
+        // Load real MP3 pad buffer asynchronously or load synthesized pad fallback
+        loadPadBuffer(fileName: fileName) { [weak self] buffer in
+            guard let self = self, let buffer = buffer else { return }
+            
+            DispatchQueue.main.async {
+                let player = AVAudioPlayerNode()
+                let timePitch = AVAudioUnitTimePitch()
 
-        let octaveMultiplier = pow(2.0, Float(pitchOffset))
-        let freq = baseFreq * octaveMultiplier
+                self.engine.attach(player)
+                self.engine.attach(timePitch)
+                self.engine.connect(player, to: timePitch, format: buffer.format)
+                self.engine.connect(timePitch, to: self.engine.mainMixerNode, format: buffer.format)
 
-        guard let buffer = synthesizePad(frequency: freq, duration: 4.0) else { return }
-        currentBuffer = buffer
+                player.volume = self.volume
+                timePitch.pitch = Float(self.pitchOffset * 1200) // -1200, 0, +1200 cents
 
-        let player = AVAudioPlayerNode()
-        let timePitch = AVAudioUnitTimePitch()
+                if !self.engine.isRunning {
+                    try? self.engine.start()
+                }
 
-        engine.attach(player)
-        engine.attach(timePitch)
-        engine.connect(player, to: timePitch, format: buffer.format)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: buffer.format)
+                player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
+                player.play()
 
-        player.volume = volume
-
-        if !engine.isRunning {
-            try? engine.start()
+                self.playerNode = player
+                self.timePitchNode = timePitch
+                self.isRunning = true
+                self.activeKey = key
+            }
         }
+    }
 
-        scheduleLoop(player: player, buffer: buffer)
-        player.play()
-
-        playerNode = player
-        timePitchNode = timePitch
-        isRunning = true
-
-        DispatchQueue.main.async { self.activeKey = key }
+    private func loadPadBuffer(fileName: String, completion: @escaping (AVAudioPCMBuffer?) -> Void) {
+        if let cached = audioBuffers[fileName] {
+            completion(cached)
+            return
+        }
+        
+        let proxyBase = "https://mixernew-production.up.railway.app"
+        guard let url = URL(string: "\(proxyBase)/pads/\(fileName).mp3") else {
+            completion(synthesizePadFallback(key: fileName))
+            return
+        }
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 10
+            
+            let task = URLSession.shared.downloadTask(with: request) { tempUrl, response, error in
+                guard let tempUrl = tempUrl, error == nil,
+                      let file = try? AVAudioFile(forReading: tempUrl),
+                      let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
+                    let fallback = self.synthesizePadFallback(key: fileName)
+                    completion(fallback)
+                    return
+                }
+                
+                try? file.read(into: buffer)
+                self.audioBuffers[fileName] = buffer
+                completion(buffer)
+            }
+            task.resume()
+        }
     }
 
     private func scheduleLoop(player: AVAudioPlayerNode, buffer: AVAudioPCMBuffer) {
@@ -101,6 +135,16 @@ public class ZionPadPlayer: ObservableObject {
         if let currentKey = activeKey {
             start(key: currentKey)
         }
+    }
+
+    private func synthesizePadFallback(key: String) -> AVAudioPCMBuffer? {
+        let noteFrequencies: [String: Float] = [
+            "C": 261.63, "Db": 277.18, "D": 293.66, "Eb": 311.13,
+            "E": 329.63, "F": 349.23, "Gb": 369.99, "G": 392.00,
+            "Ab": 415.30, "A": 440.00, "Bb": 466.16, "B": 493.88
+        ]
+        let baseFreq = noteFrequencies[key] ?? 261.63
+        return synthesizePad(frequency: baseFreq, duration: 4.0)
     }
 
     private func synthesizePad(frequency: Float, duration: Double) -> AVAudioPCMBuffer? {

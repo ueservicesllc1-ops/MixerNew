@@ -90,6 +90,17 @@ class DataStore: ObservableObject {
         }
     }
     
+    func createSetlist(name: String) {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let newDoc: [String: Any] = [
+            "name": name,
+            "userId": uid,
+            "songs": [],
+            "createdAt": FieldValue.serverTimestamp()
+        ]
+        db.collection("setlists").addDocument(data: newDoc)
+    }
+    
     func stopListening() {
         listener?.remove()
         listener = nil

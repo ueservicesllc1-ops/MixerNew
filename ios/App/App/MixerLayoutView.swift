@@ -22,16 +22,26 @@ struct MixerLayoutView: View {
             // 1. Top Transport Bar
             HStack(spacing: 16) {
                 
-                // Master Fader
-                HStack {
-                    Text("MASTER").font(.caption2).bold().foregroundColor(Color.zionTextPrimary)
+                // Master Fader (Fixed 1-line layout)
+                HStack(spacing: 6) {
+                    Text("MASTER")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color.zionTextPrimary)
+                        .lineLimit(1)
+                        .fixedSize()
+                    
                     Slider(value: Binding(
                         get: { Double(engine.masterVolume) },
                         set: { engine.masterVolume = Float($0) }
                     ), in: 0.0...1.0)
                     .accentColor(Color.zionCyan)
-                    .frame(width: 140)
-                    Text("\(Int(engine.masterVolume * 100))%").font(.caption2).foregroundColor(Color.zionCyan)
+                    .frame(width: 120)
+                    
+                    Text("\(Int(engine.masterVolume * 100))%")
+                        .font(.system(size: 11, weight: .bold).monospacedDigit())
+                        .foregroundColor(Color.zionCyan)
+                        .frame(width: 42, alignment: .trailing)
+                        .lineLimit(1)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -40,19 +50,42 @@ struct MixerLayoutView: View {
                 
                 Spacer()
                 
-                // Playback Controls
-                HStack(spacing: 12) {
-                    Button(action: { engine.seek(to: 0) }) { Image(systemName: "backward.end.fill") }
+                // Playback Controls (Prominent Glowing Play Button)
+                HStack(spacing: 14) {
+                    Button(action: { engine.seek(to: 0) }) {
+                        Image(systemName: "backward.end.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color.zionTextSecondary)
+                    }
+                    
+                    // Large Glowing Play/Pause Button
                     Button(action: { engine.isPlaying ? engine.pause() : engine.play() }) {
-                        Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
+                        ZStack {
+                            Circle()
+                                .fill(engine.isPlaying ? Color.zionOrange : Color.zionCyan)
+                                .frame(width: 42, height: 42)
+                                .shadow(color: (engine.isPlaying ? Color.zionOrange : Color.zionCyan).opacity(0.6), radius: 6)
+                            
+                            Image(systemName: engine.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.black)
+                                .offset(x: engine.isPlaying ? 0 : 2)
+                        }
                     }
                     .disabled(engine.loadedTracks.isEmpty || engine.isLoading)
                     .opacity((engine.loadedTracks.isEmpty || engine.isLoading) ? 0.4 : 1.0)
-                    Button(action: { engine.stop() }) { Image(systemName: "stop.fill") }
-                    Button(action: {}) { Image(systemName: "forward.end.fill") }
+                    
+                    Button(action: { engine.stop() }) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color.zionTextSecondary)
+                    }
+                    Button(action: {}) {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color.zionTextSecondary)
+                    }
                 }
-                .foregroundColor(Color.zionTextSecondary)
-                .font(.title3)
                 
                 // Time
                 Text(String(format: "%02d:%02d / %02d:%02d",
@@ -227,8 +260,8 @@ struct MixerLayoutView: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.zionBackground)
                 
-                // Right: Setlist (fixed)
-                SetlistsView()
+                // Right: Setlist (fixed) with callback to open Library
+                SetlistsView(onOpenLibrary: { selectedTab = 1 })
                     .frame(width: 320)
             }
             .background(Color.zionBackground)
