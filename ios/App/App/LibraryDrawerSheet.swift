@@ -178,36 +178,56 @@ struct LibraryDrawerSheet: View {
                     self.mySongs = docs.compactMap { self.parseSong(doc: $0) }
                 }
                 
-                // 2. Fetch Global VIP Songs ("global")
+                // 2. Fetch Global VIP Songs ("global") and forSale songs
                 self.db.collection("songs")
-                    .limit(to: 400)
+                    .whereField("isGlobal", isEqualTo: true)
                     .getDocuments { globalSnap, _ in
-                        self.isLoading = false
-                        if let gDocs = globalSnap?.documents {
-                            let allParsed = gDocs.compactMap { self.parseSong(doc: $0) }
-                            
-                            // Include catalog songs: marked isGlobal, forSale, or owned by others/admin
-                            self.globalSongs = allParsed.filter { song in
-                                if let docData = gDocs.first(where: { $0.documentID == song.id })?.data() {
-                                    let songUserId = docData["userId"] as? String
-                                    let isGlob = (docData["isGlobal"] as? Bool) ?? (docData["isGlobal"] as? String == "true")
-                                    let forSale = (docData["forSale"] as? Bool) ?? (docData["forSale"] as? String == "true")
-                                    
-                                    // If explicitly marked global/forSale or created by admin/others
-                                    if isGlob || forSale || (songUserId != nil && songUserId != uid) {
-                                        return true
+                        
+                        self.db.collection("songs")
+                            .whereField("forSale", isEqualTo: true)
+                            .getDocuments { saleSnap, _ in
+                                
+                                self.db.collection("songs")
+                                    .whereField("tracks", isNotEqualTo: NSNull())
+                                    .limit(to: 800)
+                                    .getDocuments { tracksSnap, _ in
+                                        self.isLoading = false
+                                        
+                                        var allDocs = globalSnap?.documents ?? []
+                                        if let sDocs = saleSnap?.documents {
+                                            allDocs.append(contentsOf: sDocs)
+                                        }
+                                        if let tDocs = tracksSnap?.documents {
+                                            allDocs.append(contentsOf: tDocs)
+                                        }
+                                        
+                                        // Remove duplicates
+                                        var uniqueDocs: [QueryDocumentSnapshot] = []
+                                        var seen = Set<String>()
+                                        for doc in allDocs {
+                                            if !seen.contains(doc.documentID) {
+                                                seen.insert(doc.documentID)
+                                                uniqueDocs.append(doc)
+                                            }
+                                        }
+                                        
+                                        let allParsed = uniqueDocs.compactMap { self.parseSong(doc: $0) }
+                                        
+                                        // Only keep those that actually have tracks!
+                                        self.globalSongs = allParsed.filter { song in
+                                            let songUserId = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["userId"] as? String
+                                            // Only show if it's not the user's own song, or if it's global/sale
+                                            if songUserId == uid {
+                                                let isGlob = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["isGlobal"] as? Bool ?? false
+                                                let forSale = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["forSale"] as? Bool ?? false
+                                                if !isGlob && !forSale {
+                                                    return false
+                                                }
+                                            }
+                                            return (song.tracks?.count ?? 0) > 0
+                                        }
                                     }
-                                }
-                                return false
                             }
-                            
-                            // Fallback if filter returned empty: show all parsed catalog songs not in mySongs
-                            if self.globalSongs.isEmpty {
-                                self.globalSongs = allParsed.filter { gSong in
-                                    !self.mySongs.contains(where: { $0.id == gSong.id })
-                                }
-                            }
-                        }
                     }
             }
     }
