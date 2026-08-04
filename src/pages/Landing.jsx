@@ -644,16 +644,14 @@ export default function Landing() {
                                 {item.label}
                             </span>
                         ))}
-                        {latestApp?.downloadUrl && (
-                            <span
-                                onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
-                                style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#3ddc84', fontWeight: 'bold' }}
-                                onMouseEnter={e => e.target.style.color = '#fff'}
-                                onMouseLeave={e => e.target.style.color = '#3ddc84'}
-                            >
-                                {t('nav.android')}
-                            </span>
-                        )}
+                        <span
+                            onClick={() => window.open('https://play.google.com/store/apps/details?id=com.zionstagelive.app', '_blank')}
+                            style={{ cursor: 'pointer', transition: 'color 0.2s', textDecoration: 'none', color: '#3ddc84', fontWeight: 'bold' }}
+                            onMouseEnter={e => e.target.style.color = '#fff'}
+                            onMouseLeave={e => e.target.style.color = '#3ddc84'}
+                        >
+                            {t('nav.android')}
+                        </span>
                         <span
                             role="button"
                             tabIndex={0}
@@ -822,15 +820,36 @@ export default function Landing() {
                             </button>
                         </div>
                         <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                            {latestApp?.downloadUrl && (
-                                <button
-                                    onClick={() => window.open(latestApp.downloadUrl, window.Capacitor?.isNativePlatform?.() ? '_system' : '_blank')}
-                                    style={{ padding: '12px 22px', fontSize: '0.82rem', background: 'linear-gradient(135deg,#3ddc84,#2a9d5c)', border: 'none', color: 'white', borderRadius: '50px', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '9px', boxShadow: '0 4px 15px rgba(61,220,132,0.35)' }}
-                                >
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85a.637.637 0 0 0-.83.22l-1.88 3.24A9.822 9.822 0 0 0 12 8c-1.53 0-2.97.38-4.47 1L5.65 5.67a.644.644 0 0 0-.84-.22c-.3.16-.42.54-.26.85l1.84 3.18C3.93 10.91 2.5 12.97 2.5 15.25c0 .22.02.44.05.65h18.9c.03-.21.05-.43.05-.65 0-2.28-1.43-4.34-3.9-5.77zM9 13.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm6 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-                                    {t('landing.downloadAndroid', { ver: latestApp.versionName })}
-                                </button>
-                            )}
+                            <a
+                                href="https://play.google.com/store/apps/details?id=com.zionstagelive.app"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    background: '#000000',
+                                    color: '#ffffff',
+                                    border: '1px solid rgba(255,255,255,0.2)',
+                                    borderRadius: '50px',
+                                    padding: '8px 22px',
+                                    textDecoration: 'none',
+                                    boxShadow: '0 4px 15px rgba(0,0,0,0.25)',
+                                    transition: 'transform 0.2s, background-color 0.2s, border-color 0.2s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.02)'; e.currentTarget.style.backgroundColor = '#111111'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.backgroundColor = '#000000'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+                            >
+                                <svg viewBox="0 0 512 512" width="18" height="18" style={{ marginRight: '10px' }}>
+                                    <path fill="#00C1FF" d="M26 18.062v475.875c0 10.938 6.188 20.313 15.313 24.813l249.25-249.25-249.25-249.25C32.188-1.75 26 7.625 26 18.062z"/>
+                                    <path fill="#FF3A44" d="M290.562 252.5L41.313 3.25C47.813.063 55.438-.688 63.688 4.062l311.188 164.126-84.314 84.312z"/>
+                                    <path fill="#FFE047" d="M290.562 252.5l84.313-84.312-311.188 178c-8.25 4.75-15.875 4-22.375.813l249.25-249.25L290.562 252.5z"/>
+                                    <path fill="#00E374" d="M374.875 168.188L290.562 252.5l84.313 84.313L476 280c21.875-12.5 36-31.063 36-52s-14.125-39.5-36-52l-101.125-57.812z"/>
+                                </svg>
+                                <div style={{ display: 'flex', flexDirection: 'column', textAlign: 'left', lineHeight: '1.2' }}>
+                                    <span style={{ fontSize: '0.55rem', fontWeight: '500', textTransform: 'uppercase', color: '#a0a0a0', letterSpacing: '0.4px' }}>{t('landing.availableOn')}</span>
+                                    <span style={{ fontSize: '0.82rem', fontWeight: '700', color: '#ffffff' }}>Google Play</span>
+                                </div>
+                            </a>
                             <button
                                 type="button"
                                 onClick={handleDesktopInstallerDownload}

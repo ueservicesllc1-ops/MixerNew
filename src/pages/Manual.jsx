@@ -130,13 +130,13 @@ export default function Manual() {
                     <div className="faq-item">
                         <h4 style={{ margin: '0 0 8px', color: '#00d2d3' }}>"¿Dónde descargo la app?"</h4>
                         <p style={{ margin: 0, background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px' }}>
-                            Descarga el APK para Android en 👉 zionstage.app (botón verde "Descargar Android"). También puedes instalarla en Windows buscando "Instalar Windows (PWA)". ¡Sin pasar por tiendas de apps!
+                            Descarga la aplicación para Android desde Google Play Store en 👉 zionstage.app (botón negro de "Google Play"). También puedes instalarla en Windows buscando "Instalar Windows (PWA)".
                         </p>
                     </div>
                     <div className="faq-item">
                         <h4 style={{ margin: '0 0 8px', color: '#00d2d3' }}>"¿Tienen iOS?"</h4>
                         <p style={{ margin: 0, background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px' }}>
-                            ¡Estamos trabajando en ello! 📲 Por ahora puedes usar Zion Stage en Android (APK), Windows (PWA) o navegador web.
+                            ¡Estamos trabajando en ello! 📲 Por ahora puedes usar Zion Stage en Android (Google Play), Windows (PWA) o navegador web.
                         </p>
                     </div>
                     <div className="faq-item">
