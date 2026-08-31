@@ -65,14 +65,20 @@ function CheckoutForm({ onPaid }) {
 /**
  * Modal escritorio: dos planes → Stripe → Firestore + SQLite (saveLicense vía callback).
  */
-export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicenseApplied }) {
+export function DesktopProSubscribeModal({ open, onClose, currentUser, initialCoupon = 'ZION99', onLicenseApplied }) {
     const [step, setStep] = useState('pick');
     const [selected, setSelected] = useState(null);
     const [clientSecret, setClientSecret] = useState('');
     const [subscriptionId, setSubscriptionId] = useState('');
     const [preparing, setPreparing] = useState(false);
     const [promoApplied, setPromoApplied] = useState(false);
-    const [couponInput, setCouponInput] = useState('');
+    const [couponInput, setCouponInput] = useState(initialCoupon || 'ZION99');
+
+    React.useEffect(() => {
+        if (open && initialCoupon) {
+            setCouponInput(initialCoupon);
+        }
+    }, [open, initialCoupon]);
 
     if (!open) return null;
 
@@ -83,7 +89,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
         setSubscriptionId('');
         setPreparing(false);
         setPromoApplied(false);
-        setCouponInput('');
+        setCouponInput(initialCoupon || 'ZION99');
     };
 
     const handleClose = () => {
@@ -167,25 +173,25 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                 position: 'fixed',
                 inset: 0,
                 zIndex: 100001,
-                background: 'rgba(0,0,0,0.75)',
+                background: 'rgba(0,0,0,0.85)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '16px',
-                backdropFilter: 'blur(6px)',
+                padding: '10px',
+                backdropFilter: 'blur(8px)',
             }}
         >
             <div
                 style={{
                     background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
                     color: '#f1f5f9',
-                    borderRadius: '16px',
+                    borderRadius: '18px',
                     maxWidth: '720px',
-                    width: '100%',
-                    maxHeight: '90vh',
-                    overflow: 'auto',
+                    width: '96%',
+                    maxHeight: '92vh',
+                    overflowY: 'auto',
                     border: '1px solid rgba(148,163,184,0.2)',
-                    boxShadow: '0 24px 80px rgba(0,0,0,0.5)',
+                    boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
                     position: 'relative',
                 }}
             >
@@ -230,18 +236,19 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                                         ¿Tienes un código de cupón? Ingrésalo antes de pagar para obtener el primer mes a <span style={{ color: '#fbbf24' }}>$0.99 USD</span>.
                                     </span>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                                     <input
                                         type="text"
                                         value={couponInput}
                                         onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
                                         placeholder="Ingresa tu cupón aquí (ej: ZION99)"
                                         style={{
-                                            flex: 1,
+                                            flex: '1 1 180px',
+                                            minWidth: '0',
                                             background: '#0f172a',
                                             border: couponInput.trim() ? '1px solid #22c55e' : '1px solid #334155',
                                             borderRadius: '8px',
-                                            padding: '8px 12px',
+                                            padding: '10px 12px',
                                             color: '#fbbf24',
                                             fontWeight: 800,
                                             fontSize: '0.9rem',
@@ -356,18 +363,77 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                             <ArrowLeft size={18} /> Volver
                         </button>
                         <h3 style={{ margin: '0 0 8px', fontSize: '1.15rem' }}>Pago: {selected.title}</h3>
-                        {promoApplied ? (
-                            <div>
-                                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>
-                                    <s>{selected.priceLabel}{selected.period}</s>
-                                </p>
-                                <p style={{ margin: '4px 0 0', color: '#fbbf24', fontWeight: 800, fontSize: '1rem' }}>
-                                    🎁 Hoy pagas solo $0.99 (primer mes)
-                                </p>
+                        
+                        {/* Casilla y estado del cupón en la pantalla de pago de tarjeta */}
+                        <div style={{
+                            marginTop: '10px',
+                            marginBottom: '16px',
+                            background: 'rgba(15, 23, 42, 0.85)',
+                            border: (promoApplied || couponInput.trim().toUpperCase() === 'ZION99') ? '1px solid #eab308' : '1px solid #334155',
+                            borderRadius: '12px',
+                            padding: '14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                        }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 700 }}>Código de Cupón:</span>
+                                {(promoApplied || couponInput.trim().toUpperCase() === 'ZION99') && (
+                                    <span style={{ fontSize: '0.78rem', color: '#4ade80', fontWeight: 800, background: 'rgba(34,197,94,0.2)', padding: '3px 10px', borderRadius: '50px' }}>
+                                        {promoApplied ? '✓ Oferta $0.99 Activa' : 'ZION99 Ingresado'}
+                                    </span>
+                                )}
                             </div>
-                        ) : (
-                            <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.88rem' }}>{selected.priceLabel}{selected.period}</p>
-                        )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <input
+                                    type="text"
+                                    value={couponInput}
+                                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                                    placeholder="Ingresa tu cupón (ej: ZION99)"
+                                    style={{
+                                        flex: '1 1 180px',
+                                        minWidth: '0',
+                                        background: '#0f172a',
+                                        border: '1px solid #eab308',
+                                        borderRadius: '8px',
+                                        padding: '9px 12px',
+                                        color: '#fbbf24',
+                                        fontWeight: 800,
+                                        fontSize: '0.9rem',
+                                        letterSpacing: '0.05em',
+                                        textTransform: 'uppercase',
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    disabled={preparing}
+                                    onClick={() => startCheckout(selected)}
+                                    style={{
+                                        background: 'linear-gradient(135deg, #eab308, #f59e0b)',
+                                        color: '#000',
+                                        border: 'none',
+                                        padding: '9px 14px',
+                                        borderRadius: '8px',
+                                        fontWeight: 800,
+                                        fontSize: '0.82rem',
+                                        cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                >
+                                    {preparing ? 'Aplicando…' : 'Aplicar Cupón'}
+                                </button>
+                            </div>
+                            {promoApplied ? (
+                                <div style={{ fontSize: '0.88rem', color: '#fbbf24', fontWeight: 800, marginTop: '4px' }}>
+                                    🎁 <s>{selected.priceLabel}{selected.period}</s> → <strong>$0.99 USD hoy (1er mes)</strong>
+                                </div>
+                            ) : (
+                                <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px' }}>
+                                    Ingresa <strong style={{ color: '#fbbf24' }}>ZION99</strong> y presiona Aplicar para activar tu 1er mes a $0.99 USD.
+                                </div>
+                            )}
+                        </div>
+
                         <Elements stripe={stripePromise} options={{ clientSecret }}>
                             <CheckoutForm onPaid={finalize} />
                         </Elements>

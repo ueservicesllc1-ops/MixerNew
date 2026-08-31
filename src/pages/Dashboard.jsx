@@ -204,7 +204,9 @@ function Dashboard() {
     // Stripe States for Upgrades
     const [stripeClientSecret, setStripeClientSecret] = useState('');
     const [stripeSubscriptionId, setStripeSubscriptionId] = useState('');
-    const [, setIsProcessingStripe] = useState(false);
+    const [isProcessingStripe, setIsProcessingStripe] = useState(false);
+    const [dashboardCouponInput, setDashboardCouponInput] = useState('ZION99');
+    const [dashboardPromoApplied, setDashboardPromoApplied] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [successPlanName, setSuccessPlanName] = useState('');
     const [showErrorModal, setShowErrorModal] = useState(false);
@@ -699,7 +701,8 @@ function Dashboard() {
         }
     };
 
-    const handlePrepareStripePayment = async (plan) => {
+    const handlePrepareStripePayment = async (plan, couponOverride) => {
+        const couponToUse = (couponOverride !== undefined ? couponOverride : dashboardCouponInput).trim();
         setPendingPaymentPlan(plan);
         setIsProcessingStripe(true);
         try {
@@ -713,13 +716,15 @@ function Dashboard() {
                     name: currentUser.displayName || currentUser.email.split('@')[0],
                     userId: currentUser.uid,
                     planId: plan.id,
-                    isAnnual: isAnnual
+                    isAnnual: isAnnual,
+                    couponCode: couponToUse,
                 })
             });
             const data = await res.json();
             if (data.clientSecret) {
                 setStripeClientSecret(data.clientSecret);
                 setStripeSubscriptionId(data.subscriptionId);
+                setDashboardPromoApplied(data.promoApplied === true);
             } else {
                 throw new Error(data.error || "Error al iniciar pago");
             }
@@ -1604,7 +1609,73 @@ function Dashboard() {
                             {pendingPaymentPlan ? (
                                 <div style={{ textAlign: 'center', padding: '20px' }}>
                                     <h3 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>Estás adquiriendo: <span style={{ color: pendingPaymentPlan.isVIP ? '#f1c40f' : '#00d2d3' }}>Plan {pendingPaymentPlan.name} ({isAnnual ? 'Anual' : 'Mensual'})</span></h3>
-                                    <p style={{ fontSize: '1.2rem', marginBottom: '30px', fontWeight: '800' }}>Total a pagar: ${isAnnual ? pendingPaymentPlan.annualPrice : pendingPaymentPlan.price} USD /{isAnnual ? 'año' : 'mes'}</p>
+                                    
+                                    {/* Casilla de cupón y estado de descuento en Dashboard */}
+                                    <div style={{
+                                        maxWidth: '400px',
+                                        margin: '0 auto 20px',
+                                        padding: '14px',
+                                        borderRadius: '12px',
+                                        background: 'rgba(15, 23, 42, 0.85)',
+                                        border: (dashboardPromoApplied || dashboardCouponInput.trim().toUpperCase() === 'ZION99') ? '1px solid #eab308' : '1px solid rgba(255,255,255,0.15)',
+                                        textAlign: 'left',
+                                    }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                            <span style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 700 }}>Código de Cupón de Descuento:</span>
+                                            {(dashboardPromoApplied || dashboardCouponInput.trim().toUpperCase() === 'ZION99') && (
+                                                <span style={{ fontSize: '0.78rem', color: '#4ade80', fontWeight: 800, background: 'rgba(34,197,94,0.2)', padding: '3px 10px', borderRadius: '50px' }}>
+                                                    {dashboardPromoApplied ? '✓ Oferta $0.99 Activa' : 'ZION99 Ingresado'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <input
+                                                type="text"
+                                                value={dashboardCouponInput}
+                                                onChange={(e) => setDashboardCouponInput(e.target.value.toUpperCase())}
+                                                placeholder="Ingresa tu cupón (ej: ZION99)"
+                                                style={{
+                                                    flex: 1,
+                                                    background: '#0f172a',
+                                                    border: '1px solid #eab308',
+                                                    borderRadius: '8px',
+                                                    padding: '9px 12px',
+                                                    color: '#fbbf24',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.9rem',
+                                                    letterSpacing: '0.05em',
+                                                    textTransform: 'uppercase',
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                disabled={isProcessingStripe}
+                                                onClick={() => handlePrepareStripePayment(pendingPaymentPlan, dashboardCouponInput)}
+                                                style={{
+                                                    background: 'linear-gradient(135deg, #eab308, #f59e0b)',
+                                                    color: '#000',
+                                                    border: 'none',
+                                                    padding: '9px 14px',
+                                                    borderRadius: '8px',
+                                                    fontWeight: 800,
+                                                    fontSize: '0.82rem',
+                                                    cursor: 'pointer',
+                                                    whiteSpace: 'nowrap',
+                                                }}
+                                            >
+                                                {isProcessingStripe ? '...' : 'Aplicar'}
+                                            </button>
+                                        </div>
+                                        {dashboardPromoApplied ? (
+                                            <div style={{ fontSize: '0.9rem', color: '#fbbf24', fontWeight: 800, marginTop: '8px' }}>
+                                                🎁 <s>${isAnnual ? pendingPaymentPlan.annualPrice : pendingPaymentPlan.price} USD</s> → <strong>$0.99 USD hoy (primer mes)</strong>
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '6px' }}>
+                                                Ingresa <strong style={{ color: '#fbbf24' }}>ZION99</strong> y presiona Aplicar para activar tu 1er mes a $0.99 USD.
+                                            </div>
+                                        )}
+                                    </div>
 
                                     <div style={{ maxWidth: '400px', margin: '0 auto' }}>
                                         {stripeClientSecret && stripePromise ? (

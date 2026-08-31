@@ -1681,8 +1681,8 @@ export default function Landing() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '20px',
-                        background: 'radial-gradient(ellipse 90% 70% at 50% 25%, rgba(234, 179, 8, 0.22) 0%, transparent 65%), rgba(2, 6, 23, 0.88)',
+                        padding: '12px',
+                        background: 'radial-gradient(ellipse 90% 70% at 50% 25%, rgba(234, 179, 8, 0.22) 0%, transparent 65%), rgba(2, 6, 23, 0.92)',
                         backdropFilter: 'blur(18px) saturate(1.3)',
                         WebkitBackdropFilter: 'blur(18px) saturate(1.3)',
                     }}
@@ -1690,10 +1690,11 @@ export default function Landing() {
                     <div
                         style={{
                             width: '100%',
-                            maxWidth: '460px',
+                            maxWidth: '440px',
+                            maxHeight: '92vh',
+                            overflowY: 'auto',
                             position: 'relative',
-                            borderRadius: '26px',
-                            overflow: 'hidden',
+                            borderRadius: '24px',
                             background: 'linear-gradient(165deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.99) 50%, #030712 100%)',
                             border: '1px solid rgba(250, 204, 21, 0.45)',
                             boxShadow: '0 0 60px rgba(234, 179, 8, 0.3), 0 30px 90px rgba(0, 0, 0, 0.85)',
@@ -1707,7 +1708,7 @@ export default function Landing() {
                                 top: '-60px',
                                 left: '50%',
                                 transform: 'translateX(-50%)',
-                                width: '320px',
+                                width: '280px',
                                 height: '140px',
                                 background: 'radial-gradient(ellipse at 50% 0%, rgba(234, 179, 8, 0.35) 0%, transparent 75%)',
                                 pointerEvents: 'none',
@@ -1729,10 +1730,10 @@ export default function Landing() {
                             onClick={() => setShowDesktopDownloadPromo(false)}
                             style={{
                                 position: 'absolute',
-                                top: '16px',
-                                right: '16px',
+                                top: '12px',
+                                right: '12px',
                                 zIndex: 10,
-                                background: 'rgba(15, 23, 42, 0.7)',
+                                background: 'rgba(15, 23, 42, 0.8)',
                                 border: '1px solid rgba(255, 255, 255, 0.15)',
                                 color: '#94a3b8',
                                 cursor: 'pointer',
@@ -1748,53 +1749,54 @@ export default function Landing() {
                             <X size={18} />
                         </button>
 
-                        <div style={{ padding: '32px 28px 28px', position: 'relative', zIndex: 1, textAlign: 'center' }}>
+                        <div style={{ padding: '24px 20px 22px', position: 'relative', zIndex: 1, textAlign: 'center' }}>
                             {/* Badge de Oferta */}
                             <div style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '6px',
-                                padding: '6px 14px',
+                                padding: '5px 12px',
                                 borderRadius: '50px',
                                 background: 'linear-gradient(135deg, rgba(234,179,8,0.2), rgba(245,158,11,0.25))',
                                 border: '1px solid rgba(250,204,21,0.5)',
                                 color: '#fbbf24',
-                                fontSize: '0.78rem',
+                                fontSize: '0.75rem',
                                 fontWeight: 800,
                                 letterSpacing: '0.08em',
                                 textTransform: 'uppercase',
-                                marginBottom: '16px',
+                                marginBottom: '12px',
                             }}>
                                 <Sparkles size={14} color="#fbbf24" />
                                 <span>OFERTA EXCLUSIVA PRO</span>
                             </div>
 
-                            {/* Título impactante */}
-                            <h2 id="hero-promo-title" style={{ margin: '0 0 10px', fontSize: '1.85rem', fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>
+                            {/* Título impactante adaptativo */}
+                            <h2 id="hero-promo-title" style={{ margin: '0 0 8px', fontSize: 'clamp(1.4rem, 5.5vw, 1.85rem)', fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>
                                 ¡Primer mes a solo <span style={{ color: '#fbbf24', textShadow: '0 0 20px rgba(250,204,21,0.5)' }}>$0.99 USD</span>!
                             </h2>
-                            <p style={{ margin: '0 0 20px', color: '#cbd5e1', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                            <p style={{ margin: '0 0 16px', color: '#cbd5e1', fontSize: '0.88rem', lineHeight: 1.5 }}>
                                 Obtén acceso a todas las funciones y secuencias PRO en cualquier plan ingresando tu cupón promocional:
                             </p>
 
-                            {/* Caja destacada del Cupón */}
+                            {/* Caja destacada del Cupón Adaptativa */}
                             <div style={{
                                 background: 'rgba(15, 23, 42, 0.9)',
                                 border: '2px dashed rgba(234, 179, 8, 0.65)',
                                 borderRadius: '16px',
-                                padding: '16px 18px',
-                                marginBottom: '22px',
+                                padding: '14px 16px',
+                                marginBottom: '18px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
-                                gap: '12px',
+                                gap: '10px',
+                                flexWrap: 'wrap',
                                 boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
                             }}>
-                                <div style={{ textAlign: 'left' }}>
-                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                                <div style={{ textAlign: 'left', flex: '1 1 auto' }}>
+                                    <div style={{ fontSize: '0.7rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
                                         CÓDIGO DE CUPÓN:
                                     </div>
-                                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#fbbf24', letterSpacing: '0.12em', fontFamily: 'monospace' }}>
+                                    <div style={{ fontSize: '1.45rem', fontWeight: 900, color: '#fbbf24', letterSpacing: '0.12em', fontFamily: 'monospace' }}>
                                         ZION99
                                     </div>
                                 </div>
@@ -1812,7 +1814,7 @@ export default function Landing() {
                                         border: couponCopied ? '1px solid #22c55e' : '1px solid rgba(250, 204, 21, 0.45)',
                                         color: couponCopied ? '#4ade80' : '#fbbf24',
                                         borderRadius: '10px',
-                                        padding: '10px 14px',
+                                        padding: '9px 14px',
                                         fontSize: '0.82rem',
                                         fontWeight: 800,
                                         cursor: 'pointer',
@@ -1839,12 +1841,13 @@ export default function Landing() {
                                 }}
                                 style={{
                                     width: '100%',
-                                    padding: '16px 20px',
+                                    padding: '14px 18px',
+                                    minHeight: '48px',
                                     borderRadius: '14px',
                                     border: 'none',
                                     background: 'linear-gradient(135deg, #eab308 0%, #f59e0b 50%, #d97706 100%)',
                                     color: '#000',
-                                    fontSize: '1.02rem',
+                                    fontSize: 'clamp(0.9rem, 3.8vw, 1.02rem)',
                                     fontWeight: 900,
                                     cursor: 'pointer',
                                     boxShadow: '0 10px 30px rgba(234, 179, 8, 0.45)',
@@ -1857,7 +1860,7 @@ export default function Landing() {
                                 <span>🚀 ¡Canjear ZION99 por $0.99!</span>
                             </button>
 
-                            <div style={{ marginTop: '14px', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                            <div style={{ marginTop: '12px', fontSize: '0.76rem', color: '#64748b', lineHeight: 1.4 }}>
                                 Válido para cualquier plan PRO. Ingresa <strong style={{ color: '#fbbf24' }}>ZION99</strong> al pagar para activar la oferta.
                             </div>
                         </div>
