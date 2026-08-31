@@ -72,6 +72,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
     const [subscriptionId, setSubscriptionId] = useState('');
     const [preparing, setPreparing] = useState(false);
     const [promoApplied, setPromoApplied] = useState(false);
+    const [couponInput, setCouponInput] = useState('');
 
     if (!open) return null;
 
@@ -82,6 +83,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
         setSubscriptionId('');
         setPreparing(false);
         setPromoApplied(false);
+        setCouponInput('');
     };
 
     const handleClose = () => {
@@ -107,6 +109,7 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                     userId: currentUser.uid,
                     planId: plan.id,
                     isAnnual: false,
+                    couponCode: couponInput.trim(),
                 }),
             });
             const data = await res.json().catch(() => ({}));
@@ -210,21 +213,48 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                             <p style={{ margin: '10px 0 0', color: '#94a3b8', fontSize: '0.95rem', lineHeight: 1.5 }}>
                                 Elige tu plan mensual. Tras el pago verificamos con Stripe y activamos tu licencia en esta app.
                             </p>
-                            {/* Banner promoción */}
+                            {/* Banner de cupón de descuento */}
                             <div style={{
                                 marginTop: '14px',
-                                background: 'linear-gradient(135deg, rgba(250,204,21,0.15), rgba(251,146,60,0.15))',
-                                border: '1px solid rgba(250,204,21,0.35)',
-                                borderRadius: '10px',
-                                padding: '10px 14px',
+                                background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.8))',
+                                border: '1px solid rgba(234,179,8,0.3)',
+                                borderRadius: '12px',
+                                padding: '14px',
                                 display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px',
+                                flexDirection: 'column',
+                                gap: '10px',
                             }}>
-                                <span style={{ fontSize: '1.1rem' }}>🎉</span>
-                                <span style={{ fontSize: '0.88rem', color: '#fde68a', fontWeight: 700, lineHeight: 1.4 }}>
-                                    ¡Oferta de lanzamiento! <span style={{ color: '#fff' }}>Primer mes a solo <span style={{ color: '#fbbf24' }}>$0.99</span></span> en cualquier plan PRO. Solo la primera vez, válida por tiempo limitado.
-                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '1.1rem' }}>🎟️</span>
+                                    <span style={{ fontSize: '0.88rem', color: '#fde68a', fontWeight: 700, lineHeight: 1.4 }}>
+                                        ¿Tienes un código de cupón? Ingrésalo antes de pagar para obtener el primer mes a <span style={{ color: '#fbbf24' }}>$0.99 USD</span>.
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <input
+                                        type="text"
+                                        value={couponInput}
+                                        onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                                        placeholder="Ingresa tu cupón aquí (ej: ZION99)"
+                                        style={{
+                                            flex: 1,
+                                            background: '#0f172a',
+                                            border: couponInput.trim() ? '1px solid #22c55e' : '1px solid #334155',
+                                            borderRadius: '8px',
+                                            padding: '8px 12px',
+                                            color: '#fbbf24',
+                                            fontWeight: 800,
+                                            fontSize: '0.9rem',
+                                            letterSpacing: '0.05em',
+                                            textTransform: 'uppercase',
+                                        }}
+                                    />
+                                    {couponInput.trim() && (
+                                        <span style={{ fontSize: '0.8rem', color: '#22c55e', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                            ✓ Cupón listo
+                                        </span>
+                                    )}
+                                </div>
                             </div>
                         </div>
                         <div
@@ -252,17 +282,30 @@ export function DesktopProSubscribeModal({ open, onClose, currentUser, onLicense
                                         {plan.title}
                                     </div>
                                     <div>
-                                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-                                            <span style={{ fontSize: '1.4rem', fontWeight: 900, color: '#64748b', textDecoration: 'line-through' }}>
-                                                {plan.priceLabel}
-                                            </span>
-                                            <span style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fbbf24' }}>
-                                                $0.99
-                                            </span>
-                                        </div>
-                                        <div style={{ fontSize: '0.78rem', color: '#fde68a', marginTop: '2px', fontWeight: 600 }}>
-                                            🎁 Primer mes · luego {plan.priceLabel}{plan.period}
-                                        </div>
+                                        {couponInput.trim() ? (
+                                            <>
+                                                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+                                                    <span style={{ fontSize: '1.2rem', fontWeight: 900, color: '#64748b', textDecoration: 'line-through' }}>
+                                                        {plan.priceLabel}
+                                                    </span>
+                                                    <span style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fbbf24' }}>
+                                                        $0.99
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '0.78rem', color: '#22c55e', marginTop: '2px', fontWeight: 700 }}>
+                                                    🎁 Cupón aplicado · 1er mes a $0.99, luego {plan.priceLabel}{plan.period}
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fff' }}>
+                                                    {plan.priceLabel}<span style={{ fontSize: '0.9rem', color: '#94a3b8' }}>{plan.period}</span>
+                                                </div>
+                                                <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>
+                                                    Facturación recurrente mensual
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                     <p style={{ margin: 0, fontSize: '0.88rem', lineHeight: 1.55, color: '#cbd5e1', flex: 1 }}>{plan.blurb}</p>
                                     <button

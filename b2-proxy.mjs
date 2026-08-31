@@ -75,44 +75,57 @@ const STRIPE_PLANS_CONFIG = {
 const DESKTOP_STRIPE_PLAN_IDS = new Set(['zion_desktop_pro_local', 'zion_desktop_pro_online']);
 const PAID_STORAGE_PLAN_IDS = new Set(['std1', 'std2', 'std3', 'vip1', 'vip2', 'vip3', 'universal_pro']);
 
-// ── Promoción: primer mes a 0.99 ¢ ───────────────────────────────────────────
-// Válida 60 días a partir del deploy. Se aplica automáticamente la primera vez por usuario.
-const FIRST_MONTH_COUPON_ID = process.env.STRIPE_FIRST_MONTH_COUPON || 'zion_first_month_99c';
-// Fecha límite: 60 días a partir de ahora (epoch UNIX). Fija en arranque del servidor para
-// que todos los arranques durante el periodo apunten al mismo cupón sin recrearlo.
-const PROMO_REDEEM_BY = Math.floor(Date.now() / 1000) + 60 * 24 * 60 * 60; // now + 60 días
+// ── Promoción de cupón permanente ─────────────────────────────────────────────
+// Cupón por defecto ZION99: $0.99 en el primer mes. SIN fecha de expiración automática.
+// ── Promoción de cupón permanente para todos los planes ───────────────────────
+// Si el usuario ingresa ZION99 al pagar, deja el primer mes en $0.99 USD para cualquier plan.
+// SIN fecha de expiración automática (permanece activo en Stripe hasta que decidas borrarlo).
+async function resolveSubscriptionCoupon(couponCode, planAmountCents) {
+    if (!stripe || !couponCode) return null;
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return null;
 
-/** Crea el cupón en Stripe si no existe. Idempotente. */
-async function ensureFirstMonthCoupon() {
-    if (!stripe) return;
-    try {
-        await stripe.coupons.retrieve(FIRST_MONTH_COUPON_ID);
-        // Ya existe → nada que hacer
-    } catch (err) {
-        if (err?.statusCode === 404 || err?.raw?.code === 'resource_missing') {
-            try {
-                await stripe.coupons.create({
-                    id: FIRST_MONTH_COUPON_ID,
-                    name: 'Primer mes Zion PRO',
-                    amount_off: 99,   // 0.99 USD en centavos
-                    currency: 'usd',
-                    duration: 'once', // solo aplica al primer periodo de facturación
-                    redeem_by: PROMO_REDEEM_BY,
-                });
-                console.log(`✅ Cupón de promoción creado: ${FIRST_MONTH_COUPON_ID}`);
-            } catch (createErr) {
-                // Si dos instancias crean el cupón al mismo tiempo, ignorar el error de duplicado
-                if (createErr?.raw?.code !== 'resource_already_exists') {
-                    console.warn('⚠️ No se pudo crear el cupón de promoción:', createErr?.message);
+    if (code === 'ZION99') {
+        const discountCents = Math.max(0, planAmountCents - 99);
+        const couponId = `ZION99_${discountCents}`;
+        try {
+            const existing = await stripe.coupons.retrieve(couponId);
+            return existing.id;
+        } catch (err) {
+            if (err?.statusCode === 404 || err?.raw?.code === 'resource_missing') {
+                try {
+                    const created = await stripe.coupons.create({
+                        id: couponId,
+                        name: 'Promoción ZION99 (Primer mes $0.99 USD)',
+                        amount_off: discountCents,
+                        currency: 'usd',
+                        duration: 'once',
+                        // SIN redeem_by -> permanece activo indefinidamente en Stripe
+                    });
+                    console.log(`✅ Cupón ZION99 para plan de ${planAmountCents}¢ creado en Stripe: ${couponId}`);
+                    return created.id;
+                } catch (createErr) {
+                    if (createErr?.raw?.code === 'resource_already_exists') {
+                        return couponId;
+                    }
+                    console.warn('⚠️ Error al crear cupón ZION99:', createErr?.message);
                 }
             }
-        } else {
-            console.warn('⚠️ Error verificando cupón de promoción:', err?.message);
         }
     }
+
+    // Para cualquier otro código de cupón personalizado en Stripe
+    try {
+        const retrieved = await stripe.coupons.retrieve(code);
+        if (retrieved && retrieved.valid !== false) {
+            return retrieved.id;
+        }
+    } catch (err) {
+        throw new Error(`El cupón "${code}" no existe o ha caducado.`);
+    }
+    throw new Error(`El cupón "${code}" no es válido.`);
 }
-// Crear el cupón en el arranque (best-effort)
-ensureFirstMonthCoupon().catch(() => {});
+
 
 // ───────────────────────────────────────────────────────────────────────────────
 // PLAN promo_free_1m ELIMINADO — ya no existen planes VIP gratuitos de promoción.
@@ -1281,7 +1294,7 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         if (!stripe) {
             return res.status(503).json({ error: 'Stripe no está configurado en el servidor (STRIPE_SECRET_KEY).' });
         }
-        const { email, name, userId, planId = 'seller', isAnnual = false } = req.body;
+        const { email, name, userId, planId = 'seller', isAnnual = false, couponCode } = req.body;
         if (!email || !userId) return res.status(400).json({ error: 'Faltan datos de usuario' });
 
         const planConfig = STRIPE_PLANS_CONFIG[planId];
@@ -1336,20 +1349,21 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
             }
         }
 
-        // 3. Verificar si el usuario califica para la promo de primer mes (0.99 ¢)
+        // 3. Verificar y aplicar cupón si el usuario lo ingresó activamente antes de pagar
+        let appliedCouponId = null;
         let applyPromo = false;
-        if (dbAdmin) {
+
+        const codeToUse = (couponCode || '').trim();
+        if (codeToUse) {
             try {
-                const userDoc = await dbAdmin.collection('users').doc(String(userId)).get();
-                const alreadyUsed = userDoc.exists && userDoc.data()?.firstMonthPromoUsed === true;
-                if (!alreadyUsed) {
-                    await ensureFirstMonthCoupon();
+                appliedCouponId = await resolveSubscriptionCoupon(codeToUse, amount);
+                if (appliedCouponId) {
                     applyPromo = true;
-                    console.log(`🎁 Aplicando promoción primer mes 0.99¢ al usuario ${userId}`);
+                    console.log(`🎁 Cupón "${appliedCouponId}" aplicado exitosamente para el usuario ${userId}`);
                 }
-            } catch (promoErr) {
-                // No bloquear el checkout si falla la verificación de la promo
-                console.warn('⚠️ No se pudo verificar promo del usuario:', promoErr?.message);
+            } catch (couponErr) {
+                console.warn(`⚠️ Error validando cupón "${codeToUse}":`, couponErr?.message);
+                return res.status(400).json({ error: couponErr.message || `El cupón "${codeToUse}" no es válido.` });
             }
         }
 
@@ -1362,19 +1376,11 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.payment_intent'],
         };
-        if (applyPromo) {
-            subscriptionPayload.coupon = FIRST_MONTH_COUPON_ID;
+        if (appliedCouponId) {
+            subscriptionPayload.coupon = appliedCouponId;
         }
 
         const subscription = await stripe.subscriptions.create(subscriptionPayload);
-
-        // 5. Marcar promo como usada en Firestore (best-effort, no bloquea el flujo de pago)
-        if (applyPromo && dbAdmin) {
-            dbAdmin.collection('users').doc(String(userId)).set(
-                { firstMonthPromoUsed: true },
-                { merge: true }
-            ).catch(e => console.warn('⚠️ No se pudo marcar firstMonthPromoUsed:', e?.message));
-        }
 
         const inv = subscription.latest_invoice;
         const pi = inv && typeof inv === 'object' ? inv.payment_intent : null;
