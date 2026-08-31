@@ -6,13 +6,14 @@ import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp, collection, query, where, limit, getDocs, orderBy, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp, Monitor } from 'lucide-react';
+import { Search, ShoppingCart, Play, CheckCircle2, Menu, X, ArrowRight, User, KeyRound, Timer, Layers, Music2, Globe, Camera, ChevronLeft, ChevronRight, TrendingUp, Monitor, Copy, Sparkles, Tag } from 'lucide-react';
 import Footer from '../components/Footer';
 import { HorizontalMixer } from '../components/HorizontalMixer';
 import { trackUserUsage } from '../utils/usageMetrics';
 import { isPlausibleWindowsInstallerHttpsUrl } from '../utils/desktopInstallerUrl';
 import { getMixerApiBase, getMixerApiBaseCandidates } from '../mixerApiBase';
 import { DESKTOP_PRO_PLANS } from '../desktop/desktopProPlans';
+import { DesktopProSubscribeModal } from '../desktop/DesktopProSubscribeModal.jsx';
 
 /** URL hardcodeada del .exe actual. Cuando subas una versión nueva, actualizá estas dos constantes y listo: instantáneo, sin Firestore, sin manifiesto, sin esperas. */
 const HARDCODED_DESKTOP_INSTALLER_URL = 'https://mixernew-production.up.railway.app/api/download?url=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2Fmixercur%2Fapps%2Fzion-stage-desktop-v1.1.9-1778611080599.exe';
@@ -29,9 +30,11 @@ export default function Landing() {
         [t],
     );
     const [showSellerInfoModal, setShowSellerInfoModal] = useState(false);
-    /** Modal de entrada: descarga escritorio; 20 s y se cierra solo. */
+    /** Modal Hero de entrada: Promoción ZION99 $0.99 USD */
     const [showDesktopDownloadPromo, setShowDesktopDownloadPromo] = useState(false);
-    const [desktopPromoSecondsLeft, setDesktopPromoSecondsLeft] = useState(20);
+    const [showProSubscribeModal, setShowProSubscribeModal] = useState(false);
+    const [couponCopied, setCouponCopied] = useState(false);
+    const [desktopPromoSecondsLeft, setDesktopPromoSecondsLeft] = useState(30);
     const [email, setEmail] = useState('');
 
     useEffect(() => {
@@ -935,11 +938,67 @@ export default function Landing() {
                                     flexDirection: 'column',
                                     alignItems: 'center', 
                                     justifyContent: 'center', 
-                                    background: 'linear-gradient(135deg, rgba(15,23,42,0.8), rgba(30,41,59,0.8))',
-                                    gap: '15px'
+                                    background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #020617 100%)',
+                                    padding: '30px',
+                                    textAlign: 'center',
+                                    position: 'relative',
+                                    overflow: 'hidden',
                                 }}>
-                                    <img src="/logo2blanco.png" alt="Loading" style={{ height: '30px', opacity: 0.2, filter: 'grayscale(1)' }} />
-                                    <div className="skeleton-pulse" style={{ width: '40px', height: '4px', background: 'rgba(0,210,211,0.2)', borderRadius: '2px' }}></div>
+                                    <div style={{
+                                        position: 'absolute',
+                                        inset: 0,
+                                        background: 'radial-gradient(circle at 50% 30%, rgba(234,179,8,0.2) 0%, transparent 70%)',
+                                        pointerEvents: 'none',
+                                    }} />
+                                    <div style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        padding: '4px 12px',
+                                        borderRadius: '50px',
+                                        background: 'rgba(234, 179, 8, 0.15)',
+                                        border: '1px solid rgba(234, 179, 8, 0.4)',
+                                        color: '#fbbf24',
+                                        fontSize: '0.78rem',
+                                        fontWeight: 800,
+                                        letterSpacing: '0.08em',
+                                        textTransform: 'uppercase',
+                                        marginBottom: '8px',
+                                    }}>
+                                        <Sparkles size={14} color="#fbbf24" />
+                                        <span>PROMOCIÓN ESPECIAL</span>
+                                    </div>
+                                    <h3 style={{ margin: '0 0 6px', fontSize: 'clamp(1.1rem, 2.2vw, 1.5rem)', fontWeight: 900, color: '#fff' }}>
+                                        ¡Primer mes a solo <span style={{ color: '#fbbf24' }}>$0.99 USD</span> con <span style={{ color: '#fbbf24', fontFamily: 'monospace' }}>ZION99</span>!
+                                    </h3>
+                                    <p style={{ margin: '0 0 14px', color: '#cbd5e1', fontSize: '0.85rem', maxWidth: '420px', lineHeight: 1.4 }}>
+                                        Acceso a todas las secuencias multitracks y licencias de escritorio PRO.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                                                navigator.clipboard.writeText('ZION99');
+                                            }
+                                            setShowProSubscribeModal(true);
+                                        }}
+                                        style={{
+                                            padding: '10px 20px',
+                                            borderRadius: '10px',
+                                            border: 'none',
+                                            background: 'linear-gradient(135deg, #eab308, #f59e0b)',
+                                            color: '#000',
+                                            fontWeight: 900,
+                                            fontSize: '0.88rem',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 6px 18px rgba(234,179,8,0.35)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '6px',
+                                        }}
+                                    >
+                                        🚀 ¡Canjear Cupón ZION99!
+                                    </button>
                                 </div>
                             )}
 
@@ -1609,13 +1668,12 @@ export default function Landing() {
                 </div>
             )}
 
-            {/* Modal entrada: descarga escritorio (5 s, cierre automático) */}
+            {/* HERO PROMO MODAL: ZION99 ($0.99 1er Mes PRO) */}
             {showDesktopDownloadPromo && (
                 <div
                     role="dialog"
                     aria-modal="true"
-                    aria-labelledby="desktop-promo-title"
-                    className="landing-desktop-promo-backdrop"
+                    aria-labelledby="hero-promo-title"
                     style={{
                         position: 'fixed',
                         inset: 0,
@@ -1623,238 +1681,196 @@ export default function Landing() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        padding: '24px 18px',
-                        background: 'radial-gradient(ellipse 90% 70% at 50% 20%, rgba(15, 118, 110, 0.12) 0%, transparent 55%), radial-gradient(ellipse 80% 50% at 50% 100%, rgba(8, 145, 178, 0.08) 0%, transparent 45%), rgba(2, 6, 23, 0.86)',
-                        backdropFilter: 'blur(18px) saturate(1.2)',
-                        WebkitBackdropFilter: 'blur(18px) saturate(1.2)',
+                        padding: '20px',
+                        background: 'radial-gradient(ellipse 90% 70% at 50% 25%, rgba(234, 179, 8, 0.22) 0%, transparent 65%), rgba(2, 6, 23, 0.88)',
+                        backdropFilter: 'blur(18px) saturate(1.3)',
+                        WebkitBackdropFilter: 'blur(18px) saturate(1.3)',
                     }}
                 >
                     <div
-                        className="landing-desktop-promo-card"
                         style={{
                             width: '100%',
-                            maxWidth: '420px',
+                            maxWidth: '460px',
                             position: 'relative',
-                            borderRadius: '22px',
+                            borderRadius: '26px',
                             overflow: 'hidden',
-                            background: 'linear-gradient(165deg, rgba(30, 41, 59, 0.55) 0%, rgba(15, 23, 42, 0.98) 42%, #0a0f18 100%)',
-                            boxShadow: `
-                                0 0 0 1px rgba(148, 163, 184, 0.14),
-                                0 1px 0 rgba(255, 255, 255, 0.06) inset,
-                                0 40px 80px -20px rgba(0, 0, 0, 0.65)
-                            `,
+                            background: 'linear-gradient(165deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.99) 50%, #030712 100%)',
+                            border: '1px solid rgba(250, 204, 21, 0.45)',
+                            boxShadow: '0 0 60px rgba(234, 179, 8, 0.3), 0 30px 90px rgba(0, 0, 0, 0.85)',
                         }}
                     >
+                        {/* Resplandor superior animado */}
                         <div
                             aria-hidden
                             style={{
                                 position: 'absolute',
-                                inset: '-40% -20% auto -20%',
-                                height: '120px',
-                                background: 'radial-gradient(ellipse at 50% 0%, rgba(45, 212, 191, 0.14) 0%, transparent 70%)',
-                                animation: 'landingDesktopPromoGlow 4s ease-in-out infinite',
+                                top: '-60px',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                width: '320px',
+                                height: '140px',
+                                background: 'radial-gradient(ellipse at 50% 0%, rgba(234, 179, 8, 0.35) 0%, transparent 75%)',
                                 pointerEvents: 'none',
                             }}
                         />
+
+                        {/* Línea de acento brillante */}
                         <div
-                            className="landing-desktop-promo-accent-line"
                             style={{
-                                height: '2px',
+                                height: '3px',
                                 width: '100%',
-                                transformOrigin: '50% 50%',
-                                background: 'linear-gradient(90deg, transparent, rgba(45, 212, 191, 0.15) 12%, #2dd4bf 42%, #5eead4 50%, #2dd4bf 58%, rgba(45, 212, 191, 0.15) 88%, transparent)',
+                                background: 'linear-gradient(90deg, transparent, #eab308 30%, #fbbf24 50%, #eab308 70%, transparent)',
                             }}
                         />
+
+                        {/* Botón cerrar */}
                         <button
                             type="button"
                             onClick={() => setShowDesktopDownloadPromo(false)}
                             style={{
                                 position: 'absolute',
-                                top: '14px',
-                                right: '14px',
-                                zIndex: 2,
-                                background: 'rgba(15, 23, 42, 0.55)',
-                                border: '1px solid rgba(148, 163, 184, 0.2)',
+                                top: '16px',
+                                right: '16px',
+                                zIndex: 10,
+                                background: 'rgba(15, 23, 42, 0.7)',
+                                border: '1px solid rgba(255, 255, 255, 0.15)',
                                 color: '#94a3b8',
                                 cursor: 'pointer',
-                                width: '38px',
-                                height: '38px',
-                                borderRadius: '12px',
+                                width: '36px',
+                                height: '36px',
+                                borderRadius: '50%',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                transition: 'color 0.2s, border-color 0.2s, background 0.2s',
+                                transition: 'all 0.2s',
                             }}
-                            onMouseEnter={(e) => {
-                                e.currentTarget.style.color = '#e2e8f0';
-                                e.currentTarget.style.borderColor = 'rgba(94, 234, 212, 0.35)';
-                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.85)';
-                            }}
-                            onMouseLeave={(e) => {
-                                e.currentTarget.style.color = '#94a3b8';
-                                e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
-                                e.currentTarget.style.background = 'rgba(15, 23, 42, 0.55)';
-                            }}
-                            aria-label={tDesktopPromo('desktopPromoClose')}
                         >
-                            <X size={18} strokeWidth={2.25} />
+                            <X size={18} />
                         </button>
 
-                        <div style={{ padding: '30px 32px 32px', position: 'relative', zIndex: 1 }}>
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: '16px',
-                                    marginBottom: '26px',
-                                }}
-                            >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-                                    <img
-                                        src="/logo2blanco.png"
-                                        alt=""
-                                        style={{ height: '30px', width: 'auto', opacity: 0.95, flexShrink: 0 }}
-                                    />
-                                    <span
-                                        style={{
-                                            display: 'block',
-                                            width: '1px',
-                                            height: '28px',
-                                            background: 'linear-gradient(180deg, transparent, rgba(148,163,184,0.35), transparent)',
-                                            flexShrink: 0,
-                                        }}
-                                        aria-hidden
-                                    />
-                                    <Monitor size={26} color="#5eead4" strokeWidth={1.75} style={{ flexShrink: 0, opacity: 0.88 }} aria-hidden />
-                                </div>
-                                <div
-                                    title={tDesktopPromo('desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
-                                    style={{
-                                        flexShrink: 0,
-                                        minWidth: '52px',
-                                        padding: '8px 12px',
-                                        borderRadius: '12px',
-                                        border: '1px solid rgba(94, 234, 212, 0.22)',
-                                        background: 'rgba(6, 78, 59, 0.22)',
-                                        fontFamily: 'ui-monospace, "Cascadia Code", "SF Mono", Menlo, monospace',
-                                        fontSize: '0.95rem',
-                                        fontWeight: 700,
-                                        letterSpacing: '0.06em',
-                                        color: '#5eead4',
-                                        lineHeight: 1,
-                                    }}
-                                >
-                                    {String(Math.max(0, desktopPromoSecondsLeft)).padStart(2, '0')}
-                                </div>
+                        <div style={{ padding: '32px 28px 28px', position: 'relative', zIndex: 1, textAlign: 'center' }}>
+                            {/* Badge de Oferta */}
+                            <div style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                padding: '6px 14px',
+                                borderRadius: '50px',
+                                background: 'linear-gradient(135deg, rgba(234,179,8,0.2), rgba(245,158,11,0.25))',
+                                border: '1px solid rgba(250,204,21,0.5)',
+                                color: '#fbbf24',
+                                fontSize: '0.78rem',
+                                fontWeight: 800,
+                                letterSpacing: '0.08em',
+                                textTransform: 'uppercase',
+                                marginBottom: '16px',
+                            }}>
+                                <Sparkles size={14} color="#fbbf24" />
+                                <span>OFERTA EXCLUSIVA PRO</span>
                             </div>
 
-                            <p
-                                style={{
-                                    margin: '0 0 10px',
-                                    fontSize: '0.68rem',
-                                    fontWeight: 700,
-                                    letterSpacing: '0.28em',
-                                    textTransform: 'uppercase',
-                                    color: '#64748b',
-                                }}
-                            >
-                                {tDesktopPromo('desktopPromoEyebrow')}
-                            </p>
-                            <h2
-                                id="desktop-promo-title"
-                                style={{
-                                    margin: '0 0 16px',
-                                    fontSize: 'clamp(1.42rem, 4.2vw, 1.72rem)',
-                                    fontWeight: 650,
-                                    letterSpacing: '-0.03em',
-                                    lineHeight: 1.18,
-                                    color: '#f8fafc',
-                                }}
-                            >
-                                {tDesktopPromo('desktopPromoTitle')}
+                            {/* Título impactante */}
+                            <h2 id="hero-promo-title" style={{ margin: '0 0 10px', fontSize: '1.85rem', fontWeight: 900, color: '#fff', lineHeight: 1.2 }}>
+                                ¡Primer mes a solo <span style={{ color: '#fbbf24', textShadow: '0 0 20px rgba(250,204,21,0.5)' }}>$0.99 USD</span>!
                             </h2>
-                            <p
-                                style={{
-                                    margin: '0 0 28px',
-                                    maxWidth: '34ch',
-                                    fontSize: '0.9rem',
-                                    lineHeight: 1.65,
-                                    fontWeight: 500,
-                                    color: '#94a3b8',
-                                }}
-                            >
-                                {tDesktopPromo('desktopPromoSub', { seconds: desktopPromoSecondsLeft })}
+                            <p style={{ margin: '0 0 20px', color: '#cbd5e1', fontSize: '0.92rem', lineHeight: 1.55 }}>
+                                Obtén acceso a todas las funciones y secuencias PRO en cualquier plan ingresando tu cupón promocional:
                             </p>
 
-                            <div
-                                aria-hidden
-                                style={{
-                                    height: '1px',
-                                    margin: '0 0 22px',
-                                    background: 'linear-gradient(90deg, transparent, rgba(148,163,184,0.25) 20%, rgba(148,163,184,0.25) 80%, transparent)',
-                                }}
-                            />
+                            {/* Caja destacada del Cupón */}
+                            <div style={{
+                                background: 'rgba(15, 23, 42, 0.9)',
+                                border: '2px dashed rgba(234, 179, 8, 0.65)',
+                                borderRadius: '16px',
+                                padding: '16px 18px',
+                                marginBottom: '22px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '12px',
+                                boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
+                            }}>
+                                <div style={{ textAlign: 'left' }}>
+                                    <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>
+                                        CÓDIGO DE CUPÓN:
+                                    </div>
+                                    <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#fbbf24', letterSpacing: '0.12em', fontFamily: 'monospace' }}>
+                                        ZION99
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                                            navigator.clipboard.writeText('ZION99');
+                                        }
+                                        setCouponCopied(true);
+                                        setTimeout(() => setCouponCopied(false), 2500);
+                                    }}
+                                    style={{
+                                        background: couponCopied ? 'rgba(34, 197, 94, 0.25)' : 'rgba(250, 204, 21, 0.15)',
+                                        border: couponCopied ? '1px solid #22c55e' : '1px solid rgba(250, 204, 21, 0.45)',
+                                        color: couponCopied ? '#4ade80' : '#fbbf24',
+                                        borderRadius: '10px',
+                                        padding: '10px 14px',
+                                        fontSize: '0.82rem',
+                                        fontWeight: 800,
+                                        cursor: 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        transition: 'all 0.2s',
+                                    }}
+                                >
+                                    <Copy size={15} />
+                                    {couponCopied ? '¡Copiado!' : 'Copiar'}
+                                </button>
+                            </div>
 
+                            {/* Botón CTA Principal */}
                             <button
                                 type="button"
-                                className="landing-desktop-promo-cta"
                                 onClick={() => {
-                                    handleDesktopInstallerDownload();
+                                    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                                        navigator.clipboard.writeText('ZION99');
+                                    }
+                                    setShowDesktopDownloadPromo(false);
+                                    setShowProSubscribeModal(true);
                                 }}
                                 style={{
                                     width: '100%',
-                                    padding: '15px 22px',
-                                    fontSize: '0.94rem',
-                                    fontWeight: 750,
-                                    letterSpacing: '0.04em',
+                                    padding: '16px 20px',
                                     borderRadius: '14px',
                                     border: 'none',
-                                    cursor: desktopWinUrlReady ? 'pointer' : 'not-allowed',
-                                    color: '#042f2e',
-                                    background: 'linear-gradient(135deg, #0d9488 0%, #14b8a6 38%, #2dd4bf 72%, #5eead4 100%)',
-                                    boxShadow: '0 10px 28px -6px rgba(13, 148, 136, 0.55), inset 0 1px 0 rgba(255,255,255,0.28)',
-                                    opacity: desktopWinUrlReady ? 1 : 0.5,
+                                    background: 'linear-gradient(135deg, #eab308 0%, #f59e0b 50%, #d97706 100%)',
+                                    color: '#000',
+                                    fontSize: '1.02rem',
+                                    fontWeight: 900,
+                                    cursor: 'pointer',
+                                    boxShadow: '0 10px 30px rgba(234, 179, 8, 0.45)',
                                     display: 'flex',
                                     alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '8px',
                                 }}
                             >
-                                <span style={{ flex: 1, textAlign: 'center' }}>
-                                    {tDesktopPromo('desktopPromoDownload')}
-                                    {latestApp?.desktopVersionName ? (
-                                        <span style={{ fontWeight: 650, opacity: 0.92 }}>
-                                            {' '}
-                                            · v{latestApp.desktopVersionName}
-                                        </span>
-                                    ) : null}
-                                </span>
+                                <span>🚀 ¡Canjear ZION99 por $0.99!</span>
                             </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowDesktopDownloadPromo(false)}
-                                style={{
-                                    display: 'block',
-                                    width: '100%',
-                                    marginTop: '14px',
-                                    background: 'none',
-                                    border: 'none',
-                                    color: '#64748b',
-                                    fontSize: '0.78rem',
-                                    fontWeight: 600,
-                                    letterSpacing: '0.04em',
-                                    cursor: 'pointer',
-                                    padding: '6px',
-                                    transition: 'color 0.2s',
-                                }}
-                                onMouseEnter={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
-                                onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; }}
-                            >
-                                {tDesktopPromo('desktopPromoClose')}
-                            </button>
+
+                            <div style={{ marginTop: '14px', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.4 }}>
+                                Válido para cualquier plan PRO. Ingresa <strong style={{ color: '#fbbf24' }}>ZION99</strong> al pagar para activar la oferta.
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Modal de suscripción PRO con Stripe */}
+            <DesktopProSubscribeModal
+                open={showProSubscribeModal}
+                onClose={() => setShowProSubscribeModal(false)}
+                currentUser={currentUser}
+            />
         </div >
     );
 }
