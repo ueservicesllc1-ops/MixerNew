@@ -1842,6 +1842,7 @@ export default function Multitrack({ session }) {
     // Sincronizar pads con PadEngine (misma lógica que Multitrack.jsx / web)
     useEffect(() => {
         if (padActive) {
+            padEngine.ensureContext();
             padEngine.start(padKey);
         } else {
             padEngine.stop();
@@ -1859,6 +1860,54 @@ export default function Multitrack({ session }) {
     useEffect(() => {
         padEngine.setPitch(padPitch);
     }, [padPitch]);
+
+    // Sincronizar Modo SOLO del Pad con el motor de canciones
+    useEffect(() => {
+        if (padSolo) {
+            audioEngine.setMasterVolume(0);
+            if (!padActive) {
+                setPadActive(true);
+            }
+        } else {
+            audioEngine.setMasterVolume(masterVolume);
+        }
+    }, [padSolo, masterVolume]);
+
+    const togglePadActive = () => {
+        padEngine.ensureContext();
+        const next = !padActive;
+        setPadActive(next);
+        if (!next && padSolo) {
+            setPadSolo(false);
+            audioEngine.setMasterVolume(masterVolume);
+        }
+    };
+
+    const togglePadSolo = () => {
+        padEngine.ensureContext();
+        const next = !padSolo;
+        setPadSolo(next);
+        if (next) {
+            if (!padActive) setPadActive(true);
+            if (padMute) setPadMute(false);
+            audioEngine.setMasterVolume(0);
+        } else {
+            audioEngine.setMasterVolume(masterVolume);
+        }
+    };
+
+    const togglePadMute = () => {
+        padEngine.ensureContext();
+        setPadMute(m => !m);
+    };
+
+    const handleSelectPadKey = (k) => {
+        padEngine.ensureContext();
+        setPadKey(k);
+        if (!padActive) {
+            setPadActive(true);
+        }
+    };
 
     // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // ΓöÇΓöÇ DYNAMIC CLICK ENGINE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -3244,7 +3293,9 @@ export default function Multitrack({ session }) {
         const val = parseFloat(e.target.value);
         setMasterVolume(val);
         // audioEngine.setMasterVolume maneja nativo y web internamente
-        audioEngine.setMasterVolume(val);
+        if (!padSolo) {
+            audioEngine.setMasterVolume(val);
+        }
     };
 
     // Tempo control (┬▒15 BPM from original, pitch preserved via SoundTouch)
@@ -4199,75 +4250,81 @@ export default function Multitrack({ session }) {
                     </span>
                 )}
 
-                {/* MASTER VOLUME SLIDER — % fijo junto al rail para que no quede fuera en tablets */}
+                {/* MASTER VOLUME FADER — Cápsula interactiva completa: sólo dice MASTER y el relleno de color se mueve con el volumen */}
                 <div
                     className="master-fader-mini"
                     style={{
+                        position: 'relative',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '6px',
-                        padding: '0 6px',
-                        height: '38px',
-                        flex: '1 1 0',
-                        minWidth: 0,
+                        justifyContent: 'center',
+                        height: '36px',
+                        minHeight: '36px',
+                        width: '120px',
+                        minWidth: '95px',
+                        maxWidth: '140px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        border: '1px solid rgba(255, 255, 255, 0.22)',
+                        borderRadius: '6px',
+                        overflow: 'hidden',
+                        cursor: 'ew-resize',
+                        userSelect: 'none',
+                        touchAction: 'none',
+                        flexShrink: 0,
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.35)',
+                        padding: 0,
                     }}
+                    onPointerDown={(e) => {
+                        const target = e.currentTarget;
+                        const rect = target.getBoundingClientRect();
+                        const updateVal = (clientX) => {
+                            const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                            const rounded = Math.round(ratio * 100) / 100;
+                            setMasterVolume(rounded);
+                            if (!padSolo) {
+                                audioEngine.setMasterVolume(rounded);
+                            }
+                        };
+                        updateVal(e.clientX);
+                        const onMove = (ev) => updateVal(ev.clientX);
+                        const onUp = () => {
+                            window.removeEventListener('pointermove', onMove);
+                            window.removeEventListener('pointerup', onUp);
+                        };
+                        window.addEventListener('pointermove', onMove);
+                        window.addEventListener('pointerup', onUp);
+                    }}
+                    title="Master"
                 >
-                    <span
-                        className="desktop-only"
-                        style={{
-                            display: window.innerWidth < 1000 ? 'none' : 'block',
-                            color: 'white',
-                            fontSize: '0.65rem',
-                            fontWeight: '900',
-                            letterSpacing: '0.1em',
-                            whiteSpace: 'nowrap',
-                            opacity: 0.9,
-                            flex: '0 0 auto',
-                        }}
-                    >
-                        {t('multitrack.master')}
-                    </span>
+                    {/* Relleno de color que abarca toda la cápsula y se mueve con el volumen */}
                     <div
                         style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            flex: '1 1 0',
-                            minWidth: 0,
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: `${Math.round(masterVolume * 100)}%`,
+                            background: 'linear-gradient(90deg, #00b4d8, #00f2fe)',
+                            pointerEvents: 'none',
+                            transition: 'width 0.04s ease-out',
+                        }}
+                    />
+                    {/* Texto MASTER centrado encima del relleno */}
+                    <span
+                        style={{
+                            position: 'relative',
+                            zIndex: 2,
+                            color: '#ffffff',
+                            fontSize: '0.78rem',
+                            fontWeight: '900',
+                            letterSpacing: '0.12em',
+                            textTransform: 'uppercase',
+                            pointerEvents: 'none',
+                            textShadow: '0 1px 3px rgba(0,0,0,0.7)',
                         }}
                     >
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value={masterVolume}
-                            onChange={handleMasterVolume}
-                            onInput={handleMasterVolume}
-                            aria-label={t('multitrack.volMaster')}
-                            style={{
-                                flex: '1 1 0',
-                                minWidth: 0,
-                                width: '100%',
-                                accentColor: 'white',
-                                cursor: 'pointer',
-                                height: '4px',
-                            }}
-                        />
-                        <span
-                            style={{
-                                flex: '0 0 2.65rem',
-                                width: '2.65rem',
-                                textAlign: 'right',
-                                color: 'white',
-                                fontSize: '0.72rem',
-                                fontWeight: '900',
-                                fontVariantNumeric: 'tabular-nums',
-                            }}
-                        >
-                            {Math.round(masterVolume * 100)}%
-                        </span>
-                    </div>
+                        MASTER
+                    </span>
                 </div>
 
                 <div className="controls-group multitrack-main-transport">
@@ -5390,7 +5447,7 @@ export default function Multitrack({ session }) {
 
                     <div className="desktop-pads-card">
                         <div className="pads-header" style={{ marginBottom: '10px' }}>
-                            <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '45px', height: '45px' }}>
+                            <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={togglePadActive} style={{ width: '45px', height: '45px' }}>
                                 <Power size={22} />
                             </button>
                             <div className="pad-title-section">
@@ -5401,6 +5458,7 @@ export default function Multitrack({ session }) {
                                 <input
                                     type="range" min="0" max="1" step="0.01"
                                     value={padVolume}
+                                    onPointerDown={() => padEngine.ensureContext()}
                                     onChange={e => setPadVolume(parseFloat(e.target.value))}
                                     style={{ flex: 1, accentColor: '#00bcd4', height: '4px' }}
                                     title={`Volumen: ${Math.round(padVolume * 100)}%`}
@@ -5408,19 +5466,19 @@ export default function Multitrack({ session }) {
                                 <span style={{ fontSize: '0.6rem', color: '#00bcd4', minWidth: '24px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
                             </div>
                             <div className="pad-pitch-control">
-                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>-</button>
+                                <button className="pad-pitch-btn" onClick={() => { padEngine.ensureContext(); setPadPitch(p => Math.max(-1, p - 1)); }}>-</button>
                                 <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
-                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
+                                <button className="pad-pitch-btn" onClick={() => { padEngine.ensureContext(); setPadPitch(p => Math.min(1, p + 1)); }}>+</button>
                             </div>
                         </div>
                         <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)', gap: '5px' }}>
                             {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '28px', fontSize: '0.75rem' }}>{k}</button>
+                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => handleSelectPadKey(k)} style={{ height: '28px', fontSize: '0.75rem' }}>{k}</button>
                             ))}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '32px', height: '32px' }}>M</button>
-                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '32px', height: '32px' }}>S</button>
+                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={togglePadMute} style={{ width: '32px', height: '32px' }}>M</button>
+                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={togglePadSolo} style={{ width: '32px', height: '32px' }}>S</button>
                         </div>
                     </div>
                 </aside>

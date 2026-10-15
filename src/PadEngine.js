@@ -1,140 +1,248 @@
+// Engine de Audio dedicado exclusivamente a la reproducción de Fundamental Ambient Pads
+// Soporta Web Audio en Web, Capacitor Android / iOS y Electron.
+
+function normalizePadKey(k) {
+    if (!k) return 'C';
+    const map = {
+        'C#': 'Db',
+        'D#': 'Eb',
+        'F#': 'Gb',
+        'G#': 'Ab',
+        'A#': 'Bb',
+    };
+    const clean = String(k).trim();
+    return map[clean] || clean;
+}
+
 export class PadEngine {
     constructor() {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        this._ctx = null;
         this.buffers = {};
+        this.loadingPromises = {};
         this.currentSource = null;
         this.currentGain = null;
+        this.lowShelf = null;
+        this.highShelf = null;
+        this.masterGain = null;
 
-        // Equal Power Crossfade Arrays
-        this.fadeInCurve = new Float32Array(100);
-        this.fadeOutCurve = new Float32Array(100);
-        for (let i = 0; i < 100; i++) {
-            const x = i / 99; // de 0 a 1
-            this.fadeInCurve[i] = Math.cos((1.0 - x) * 0.5 * Math.PI);
-            this.fadeOutCurve[i] = Math.cos(x * 0.5 * Math.PI);
-        }
-
-        // Filtro EQ para simular "Octavas" sin deformar el audio
-        this.lowShelf = this.ctx.createBiquadFilter();
-        this.lowShelf.type = 'lowshelf';
-        this.lowShelf.frequency.value = 300;
-        this.lowShelf.gain.value = 0;
-
-        this.highShelf = this.ctx.createBiquadFilter();
-        this.highShelf.type = 'highshelf';
-        this.highShelf.frequency.value = 2000;
-        this.highShelf.gain.value = 0;
-
-        // Master Gain
-        this.masterGain = this.ctx.createGain();
-        this.masterGain.gain.value = 0.8;
-
-        // Enrutamiento: Filtros -> MasterGain -> Salida
-        this.lowShelf.connect(this.highShelf);
-        this.highShelf.connect(this.masterGain);
-        this.masterGain.connect(this.ctx.destination);
-
-        this.fadeTime = 3.5; // Transición muy larga y atmosférica
+        this.volume = 0.8;
+        this.pitchState = 0; // -1, 0, 1
         this.isPlaying = false;
         this.currentKey = null;
-        this.pitchState = 0; // -1, 0, 1
+    }
+
+    get ctx() {
+        if (!this._ctx) {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    this._ctx = new AudioCtx();
+                    this.initNodes();
+                }
+            } catch (e) {
+                console.warn('[PadEngine] Error instanciando AudioContext:', e);
+            }
+        }
+        return this._ctx;
+    }
+
+    set ctx(val) {
+        this._ctx = val;
+    }
+
+    ensureContext() {
+        const c = this.ctx;
+        if (c && (c.state === 'suspended' || c.state === 'interrupted')) {
+            c.resume().then(() => {
+                console.log('[PadEngine] AudioContext resumido correctamente, state:', c.state);
+            }).catch(e => console.warn('[PadEngine] resume error', e));
+        }
+        return c;
+    }
+
+    initNodes() {
+        if (!this._ctx) return;
+        try {
+            // Filtro EQ para simular "Octavas" sin deformar el audio ni pitch
+            this.lowShelf = this._ctx.createBiquadFilter();
+            this.lowShelf.type = 'lowshelf';
+            this.lowShelf.frequency.value = 300;
+            this.lowShelf.gain.value = 0;
+
+            this.highShelf = this._ctx.createBiquadFilter();
+            this.highShelf.type = 'highshelf';
+            this.highShelf.frequency.value = 2000;
+            this.highShelf.gain.value = 0;
+
+            // Master Gain
+            this.masterGain = this._ctx.createGain();
+            this.masterGain.gain.value = this.volume;
+
+            // Enrutamiento: Filtros -> MasterGain -> Salida
+            this.lowShelf.connect(this.highShelf);
+            this.highShelf.connect(this.masterGain);
+            this.masterGain.connect(this._ctx.destination);
+        } catch (e) {
+            console.warn('[PadEngine] initNodes error', e);
+        }
     }
 
     async loadBuffer(key) {
-        if (this.buffers[key]) return this.buffers[key];
+        const normKey = normalizePadKey(key);
+        if (this.buffers[normKey]) return this.buffers[normKey];
+        if (this.loadingPromises[normKey]) return await this.loadingPromises[normKey];
 
-        const extensions = ['m4a', 'mp3', 'wav', 'ogg'];
-        let buffer = null;
-
-        const base =
-            typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL
-                ? String(import.meta.env.BASE_URL)
-                : '/';
-        const baseNorm = base.endsWith('/') ? base : `${base}/`;
-
-        for (const ext of extensions) {
-            try {
-                const response = await fetch(`${baseNorm}pads/${key}.${ext}`);
-                if (!response.ok) continue;
-
-                const arrayBuffer = await response.arrayBuffer();
-                buffer = await this.ctx.decodeAudioData(arrayBuffer);
-                break;
-            } catch (error) {
-                console.debug('loadBuffer try format error', error);
-                // Siguiente formato
+        const p = (async () => {
+            const candidates = [
+                `pads/${normKey}.mp3`,
+                `./pads/${normKey}.mp3`,
+                `/pads/${normKey}.mp3`
+            ];
+            if (typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null' && !window.location.origin.startsWith('file')) {
+                candidates.unshift(`${window.location.origin}/pads/${normKey}.mp3`);
             }
-        }
 
-        if (buffer) {
-            this.buffers[key] = buffer;
-            return buffer;
-        } else {
-            console.error(`Pad no encontrado para: ${key}`);
-            return null;
+            let audioBuffer = null;
+            for (const url of candidates) {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) continue;
+
+                    const ctype = response.headers.get('content-type') || '';
+                    if (ctype.includes('text/html')) {
+                        // Evita el fallback SPA de Capacitor
+                        continue;
+                    }
+
+                    const arrayBuffer = await response.arrayBuffer();
+                    if (!arrayBuffer || arrayBuffer.byteLength < 100) continue;
+
+                    const head = new Uint8Array(arrayBuffer.slice(0, 4));
+                    if (head[0] === 0x3c) { // '<' de HTML
+                        continue;
+                    }
+
+                    this.ensureContext();
+                    const ctx = this.ctx;
+                    if (!ctx) continue;
+
+                    // Decodificar con promesa y callback para compatibilidad universal
+                    audioBuffer = await new Promise((resolve, reject) => {
+                        try {
+                            const res = ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+                            if (res && typeof res.then === 'function') {
+                                res.then(resolve).catch(reject);
+                            }
+                        } catch (err) {
+                            reject(err);
+                        }
+                    });
+
+                    if (audioBuffer) {
+                        console.log(`[PadEngine] Pad ${normKey} cargado exitosamente desde ${url}`);
+                        break;
+                    }
+                } catch (err) {
+                    console.warn(`[PadEngine] Intento fallido para ${url}:`, err);
+                }
+            }
+
+            if (audioBuffer) {
+                this.buffers[normKey] = audioBuffer;
+                return audioBuffer;
+            } else {
+                console.error(`[PadEngine] No se pudo cargar pad para tono: ${normKey}`);
+                return null;
+            }
+        })();
+
+        this.loadingPromises[normKey] = p;
+        try {
+            return await p;
+        } finally {
+            delete this.loadingPromises[normKey];
         }
     }
 
-    start(key) {
-        if (this.ctx.state === 'suspended') {
-            this.ctx.resume();
-        }
+    async start(key) {
         this.isPlaying = true;
-        this.playPad(key);
+        this.ensureContext();
+        await this.playPad(key);
     }
 
     stop() {
         this.isPlaying = false;
-        const now = this.ctx.currentTime;
+        if (!this._ctx) return;
+        const now = this._ctx.currentTime;
         if (this.currentGain) {
-            this.currentGain.gain.cancelScheduledValues(now);
-            this.currentGain.gain.setValueCurveAtTime(this.fadeOutCurve, now, 2.0); // Fade out más rápido
+            try {
+                this.currentGain.gain.cancelScheduledValues(now);
+                this.currentGain.gain.setValueAtTime(this.currentGain.gain.value, now);
+                this.currentGain.gain.linearRampToValueAtTime(0.0001, now + 0.5);
+            } catch (e) {}
         }
-
         if (this.currentSource) {
             const src = this.currentSource;
             setTimeout(() => {
-                try { src.stop(); src.disconnect(); } catch (e) { console.warn('pad stop error', e); }
-            }, 2100);
+                try { src.stop(); src.disconnect(); } catch (e) {}
+            }, 600);
         }
-
         this.currentSource = null;
         this.currentGain = null;
         this.currentKey = null;
     }
 
     async playPad(key) {
-        if (key === this.currentKey && this.currentSource) return;
-        this.currentKey = key;
+        const normKey = normalizePadKey(key);
+        if (normKey === this.currentKey && this.currentSource && this.isPlaying) return;
+        this.currentKey = normKey;
 
-        const buffer = await this.loadBuffer(key);
-        if (!buffer || !this.isPlaying || this.currentKey !== key) return;
+        this.ensureContext();
+        const buffer = await this.loadBuffer(normKey);
+        if (!buffer || !this.isPlaying || this.currentKey !== normKey) return;
 
-        const now = this.ctx.currentTime;
+        const ctx = this.ctx;
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const isFirstPlay = !this.currentSource;
 
-        // FADE OUT suave (Equal Power) del archivo anterior
+        // FADE OUT suave de la nota anterior
         if (this.currentGain && this.currentSource) {
             const oldGain = this.currentGain;
             const oldSource = this.currentSource;
-            oldGain.gain.cancelScheduledValues(now);
-            oldGain.gain.setValueCurveAtTime(this.fadeOutCurve, now, this.fadeTime);
-
-            setTimeout(() => {
-                try { oldSource.stop(); oldSource.disconnect(); } catch (e) { console.warn('pad stop error', e); }
-            }, this.fadeTime * 1000 + 100);
+            try {
+                oldGain.gain.cancelScheduledValues(now);
+                oldGain.gain.setValueAtTime(oldGain.gain.value, now);
+                oldGain.gain.linearRampToValueAtTime(0.0001, now + 1.0);
+                setTimeout(() => {
+                    try {
+                        oldSource.stop();
+                        oldSource.disconnect();
+                    } catch (e) {}
+                }, 1100);
+            } catch (e) {
+                console.warn('[PadEngine] oldSource fadeout error', e);
+            }
         }
 
-        // FADE IN suave (Equal Power) del nuevo archivo
-        const source = this.ctx.createBufferSource();
+        // FADE IN del nuevo pad
+        const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.loop = true;
 
-        const gainNode = this.ctx.createGain();
-        gainNode.gain.setValueCurveAtTime(this.fadeInCurve, now, this.fadeTime);
+        const gainNode = ctx.createGain();
+        const fadeInDur = isFirstPlay ? 0.35 : 1.0;
+        gainNode.gain.setValueAtTime(0.0001, now);
+        gainNode.gain.linearRampToValueAtTime(1.0, now + fadeInDur);
 
-        // Conectar al filtro EQ en lugar de directamente al master
         source.connect(gainNode);
-        gainNode.connect(this.lowShelf);
+        if (this.lowShelf) {
+            gainNode.connect(this.lowShelf);
+        } else if (this.masterGain) {
+            gainNode.connect(this.masterGain);
+        } else {
+            gainNode.connect(ctx.destination);
+        }
 
         source.start(now);
 
@@ -143,33 +251,34 @@ export class PadEngine {
     }
 
     setVolume(value) {
-        if (this.masterGain) {
-            // Suavizar el volumen
-            this.masterGain.gain.setTargetAtTime(value, this.ctx.currentTime, 0.1);
+        this.volume = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0.8));
+        if (this.masterGain && this._ctx) {
+            try {
+                this.masterGain.gain.cancelScheduledValues(this._ctx.currentTime);
+                this.masterGain.gain.setValueAtTime(this.masterGain.gain.value, this._ctx.currentTime);
+                this.masterGain.gain.linearRampToValueAtTime(this.volume, this._ctx.currentTime + 0.05);
+            } catch (e) {
+                this.masterGain.gain.value = this.volume;
+            }
         }
     }
 
     setPitch(octave) {
         this.pitchState = octave;
-        const now = this.ctx.currentTime;
-
-        // En lugar de acelerar la pista y arruinarla, 
-        // usamos ecualización de estudio (Filtros LowShelf y HighShelf)
-        if (octave === 1) {
-            // "Octava arriba" -> Cortamos graves, subimos agudos brillosos
-            this.lowShelf.gain.setTargetAtTime(-15, now, 0.5);   // Elimina opacidad
-            this.highShelf.gain.setTargetAtTime(10, now, 0.5);  // Añade brillo/aire
-        }
-        else if (octave === -1) {
-            // "Octava abajo" -> Subimos graves profundos, cortamos agudos
-            this.lowShelf.gain.setTargetAtTime(12, now, 0.5);   // Añade peso/cuerpo
-            this.highShelf.gain.setTargetAtTime(-15, now, 0.5); // Elimina brillo
-        }
-        else {
-            // "Normal" -> Plano, sin filtros
-            this.lowShelf.gain.setTargetAtTime(0, now, 0.5);
-            this.highShelf.gain.setTargetAtTime(0, now, 0.5);
-        }
+        if (!this._ctx || !this.lowShelf || !this.highShelf) return;
+        const now = this._ctx.currentTime;
+        try {
+            if (octave === 1) {
+                this.lowShelf.gain.setTargetAtTime(-15, now, 0.2);
+                this.highShelf.gain.setTargetAtTime(10, now, 0.2);
+            } else if (octave === -1) {
+                this.lowShelf.gain.setTargetAtTime(12, now, 0.2);
+                this.highShelf.gain.setTargetAtTime(-15, now, 0.2);
+            } else {
+                this.lowShelf.gain.setTargetAtTime(0, now, 0.2);
+                this.highShelf.gain.setTargetAtTime(0, now, 0.2);
+            }
+        } catch (e) {}
     }
 }
 

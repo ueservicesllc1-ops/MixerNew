@@ -306,8 +306,8 @@ body.dark-mode .multitrack-layout {
 }
 
 .multitrack-main-layout .master-fader-mini {
-  min-width: 0;
-  max-width: min(280px, 42vw);
+  min-width: 90px;
+  max-width: 160px;
 }
 
 .multitrack-main-layout .tab-bar {
@@ -355,10 +355,10 @@ body.dark-mode .multitrack-layout {
   }
 
   .master-fader-mini {
-    min-width: 110px !important;
-    max-width: 170px !important;
-    height: 34px !important;
-    padding: 0 4px !important;
+    min-width: 90px !important;
+    max-width: 140px !important;
+    height: 36px !important;
+    padding: 0 !important;
   }
 
   .multitrack-main-layout .audio-info,
@@ -496,12 +496,22 @@ body.dark-mode .transport-bar {
 }
 
 .master-fader-mini {
-  min-width: 150px;
-  height: 40px;
-  background: var(--transport-blue);
-  border-radius: 8px;
+  min-width: 100px;
+  max-width: 160px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 6px;
   margin-right: auto;
-  overflow: visible;
+  overflow: hidden !important;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: ew-resize;
+  user-select: none;
+  touch-action: none;
+  padding: 0 !important;
 }
 
 .controls-group {
