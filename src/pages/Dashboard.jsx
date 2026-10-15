@@ -1124,7 +1124,20 @@ function Dashboard() {
 
                                 <div style={{ display: 'flex', gap: '15px' }}>
                                     <button onClick={() => setStep('idle')} className="btn-ghost">Cancelar</button>
-                                    <button disabled={useType === 'sell' && !hasRights} onClick={() => setStep('choose-use')} className="btn-teal" style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}>Siguiente</button>
+                                    <button
+                                        disabled={useType === 'sell' && !hasRights}
+                                        onClick={() => {
+                                            if (!tempo || isNaN(parseFloat(tempo)) || parseFloat(tempo) <= 20) {
+                                                alert('Debes ingresar el Tempo (BPM) de la canción antes de continuar.');
+                                                return;
+                                            }
+                                            setStep('choose-use');
+                                        }}
+                                        className="btn-teal"
+                                        style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}
+                                    >
+                                        Siguiente
+                                    </button>
                                 </div>
                             </div>
                         )}

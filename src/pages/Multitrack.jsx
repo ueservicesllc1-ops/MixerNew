@@ -185,6 +185,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     globalCatalogDocCount,
     downloadQueueState = {},
     activeSetlist = null,
+    onSyncGlobal = null,
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -215,8 +216,8 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                {/* TABS */}
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: '#f0f0f0', padding: '4px', borderRadius: '8px' }}>
+                {/* TABS CON CONTADOR SIEMPRE VISIBLE Y BOTON SINCRONIZAR */}
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: '#f0f0f0', padding: '4px', borderRadius: '8px', alignItems: 'center' }}>
                     <button
                         onClick={() => onTabChange('mine')}
                         style={{ flex: 1, padding: '9px', background: libraryTab === 'mine' ? '#00d2d3' : 'transparent', color: libraryTab === 'mine' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
@@ -229,6 +230,31 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     >
                         🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
                     </button>
+                    {onSyncGlobal && (
+                        <button
+                            onClick={onSyncGlobal}
+                            disabled={globalCatalogLoading}
+                            title="Sincronizar nuevas canciones desde la nube"
+                            style={{
+                                padding: '9px 12px',
+                                background: '#e2e8f0',
+                                color: '#334155',
+                                border: 'none',
+                                borderRadius: '6px',
+                                fontWeight: 'bold',
+                                fontSize: '0.78rem',
+                                cursor: globalCatalogLoading ? 'default' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                transition: '0.2s',
+                                opacity: globalCatalogLoading ? 0.6 : 1
+                            }}
+                        >
+                            <RefreshCw size={13} className={globalCatalogLoading ? 'animate-spin' : ''} />
+                            <span>{globalCatalogLoading ? '...' : 'Sincronizar'}</span>
+                        </button>
+                    )}
                 </div>
 
                 {/* Buscador */}
@@ -496,7 +522,18 @@ export default function Multitrack() {
     const [newSetlistName, setNewSetlistName] = useState('');
     const [localMarkerOverrides, setLocalMarkerOverrides] = useState({});
     const [librarySongs, setLibrarySongs] = useState([]);
-    const [globalSongs, setGlobalSongs] = useState([]);
+    const [globalSongs, setGlobalSongs] = useState(() => {
+        try {
+            const raw = localStorage.getItem('zion_cached_global_songs_v1');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+            }
+        } catch (e) {
+            console.warn('[Cache] Error loading cached global songs', e);
+        }
+        return [];
+    });
     const [globalCatalogLoading, setGlobalCatalogLoading] = useState(false);
     const [libraryTab, setLibraryTab] = useState('mine'); // 'mine' | 'global'
     const [searchQuery, setSearchQuery] = useState('');
@@ -1187,50 +1224,68 @@ export default function Multitrack() {
         };
     }, []);
 
-    // APK: catálogo Global solo al elegir la pestaña (getDocs acotado). Al volver a "Mi librería" se vacía para liberar RAM.
+    // Sincronización del catálogo Global (con persistencia local en caché para no gastar lecturas)
+    const syncGlobalCatalog = useCallback(async (force = false) => {
+        if (!force && globalSongs.length > 0) return;
+        setGlobalCatalogLoading(true);
+        try {
+            const qMT = query(
+                collection(db, 'songs'),
+                where('tracks', '!=', null),
+                limit(600)
+            );
+            const qG = query(
+                collection(db, 'songs'),
+                or(
+                    where('isGlobal', '==', true),
+                    where('forSale', '==', true)
+                ),
+                limit(400)
+            );
+
+            const [snapMT, snapG] = await Promise.all([getDocs(qMT), getDocs(qG)]);
+            const songs = [];
+            snapMT.forEach(d => songs.push({ id: d.id, ...d.data() }));
+            snapG.forEach(d => {
+                if (!songs.find(x => x.id === d.id)) songs.push({ id: d.id, ...d.data() });
+            });
+
+            const sorted = sortGlobalCatalogNewestFirst(songs);
+            setGlobalSongs(sorted);
+
+            try {
+                const slim = sorted.map(s => ({
+                    id: s.id,
+                    name: s.name || '',
+                    artist: s.artist || '',
+                    uploadedBy: s.uploadedBy || '',
+                    tempo: s.tempo || s.bpm || '',
+                    key: s.key || s.musicalKey || '',
+                    musicalKey: s.musicalKey || s.key || '',
+                    tracks: (s.tracks || []).map(t => ({ name: t.name, url: t.url, sizeMB: t.sizeMB })),
+                    isGlobal: !!s.isGlobal,
+                    forSale: !!s.forSale,
+                    price: s.price || 0,
+                    createdAt: s.createdAt?.seconds ? s.createdAt : null
+                }));
+                localStorage.setItem('zion_cached_global_songs_v1', JSON.stringify(slim));
+            } catch (err) {
+                console.warn('[Cache] Error saving global songs cache', err);
+            }
+        } catch (e) {
+            console.error('[Global catalog]', e);
+        } finally {
+            setGlobalCatalogLoading(false);
+        }
+    }, [globalSongs.length]);
+
+    // Si la caché está vacía en primer inicio o se abre pestaña global sin canciones, cargar una vez
     useEffect(() => {
         if (!isAppNative) return;
-        if (libraryTab !== 'global') {
-            setGlobalSongs([]);
-            setGlobalCatalogLoading(false);
-            return;
+        if (globalSongs.length === 0) {
+            syncGlobalCatalog(false);
         }
-        let cancelled = false;
-        setGlobalCatalogLoading(true);
-        (async () => {
-            try {
-                // Query 1: Multitracks — docs with tracks[] array (user-uploaded ZIPs)
-                const qMT = query(
-                    collection(db, 'songs'),
-                    where('tracks', '!=', null),
-                    limit(600)
-                );
-                const qG = query(
-                    collection(db, 'songs'),
-                    or(
-                        where('isGlobal', '==', true),
-                        where('forSale', '==', true)
-                    ),
-                    limit(400)
-                );
-                
-                const [snapMT, snapG] = await Promise.all([getDocs(qMT), getDocs(qG)]);
-                const songs = [];
-                snapMT.forEach(d => songs.push({ id: d.id, ...d.data() }));
-                snapG.forEach(d => {
-                    if (!songs.find(x => x.id === d.id)) songs.push({ id: d.id, ...d.data() });
-                });
-
-                if (!cancelled) setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
-            } catch (e) {
-                console.error('[Global catalog]', e);
-                if (!cancelled) setGlobalSongs([]);
-            } finally {
-                if (!cancelled) setGlobalCatalogLoading(false);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [libraryTab, isAppNative]);
+    }, [isAppNative, globalSongs.length, syncGlobalCatalog]);
 
     const handleCreateSetlist = async () => {
         if (!newSetlistName.trim()) return;
@@ -2275,10 +2330,29 @@ export default function Multitrack() {
         audioEngine.setMasterVolume(val);
     };
 
-    // Tempo control (┬▒15 BPM from original, pitch preserved via SoundTouch)
+    // Canción activa: mezclar entrada del setlist con el doc vivo de Firestore (librería / global)
+    // para no perder `key`, `tempo`, etc. si el array del setlist está desactualizado o es mínimo.
+    const fromSetlist = (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
+    const liveSong = librarySongs.find(s => s.id === activeSongId)
+        || globalSongs.find(s => s.id === activeSongId);
+    const activeSong = liveSong
+        ? { ...fromSetlist, ...liveSong }
+        : fromSetlist;
+
+    const getActiveSongBpm = () => {
+        const val = activeSong?.tempo ?? activeSong?.bpm ?? activeSong?.BPM;
+        if (val !== undefined && val !== null && val !== '') {
+            const parsed = parseFloat(val);
+            if (!isNaN(parsed) && parsed > 0) return parsed;
+        }
+        return null;
+    };
+
+    // Tempo control (±15 BPM from original, pitch preserved via SoundTouch)
     const [tempoOffset, setTempoOffset] = useState(0); // offset in BPM from original
     const handleTempoChange = (delta) => {
-        const originalBPM = activeSong?.tempo ? parseFloat(activeSong.tempo) : 120;
+        const songBpm = getActiveSongBpm();
+        const originalBPM = songBpm || 120;
         const newOffset = Math.max(-15, Math.min(15, tempoOffset + delta));
         setTempoOffset(newOffset);
         const newRatio = (originalBPM + newOffset) / originalBPM;
@@ -2289,7 +2363,35 @@ export default function Multitrack() {
         audioEngine.setTempo(1.0);
     };
 
-    // Pitch / Key control (┬▒6 semitones via SoundTouch)
+    const handleSetSongBpmPrompt = async () => {
+        if (!activeSong) return;
+        const currentBpm = getActiveSongBpm() || 120;
+        const input = prompt(`Ingresa el BPM para "${activeSong.name}":`, currentBpm);
+        if (!input) return;
+        const newBpm = parseFloat(input.trim());
+        if (isNaN(newBpm) || newBpm <= 20 || newBpm >= 350) {
+            return alert("Por favor ingresa un número de BPM válido (ej: 128).");
+        }
+        if (activeSetlist?.id) {
+            try {
+                const updatedSongs = (activeSetlist.songs || []).map(s => 
+                    s.id === activeSong.id ? { ...s, tempo: String(newBpm) } : s
+                );
+                await updateDoc(doc(db, 'setlists', activeSetlist.id), { songs: updatedSongs });
+                setActiveSetlist(prev => prev ? { ...prev, songs: updatedSongs } : prev);
+            } catch (e) {
+                console.warn("[Setlist] Error actualizando BPM en setlist:", e);
+            }
+        }
+        try {
+            await updateDoc(doc(db, 'songs', activeSong.id), { tempo: String(newBpm) });
+        } catch (e) {
+            // si no tiene permiso de escritura por ser global, se mantiene en el setlist
+        }
+        handleTempoReset();
+    };
+
+    // Pitch / Key control (±6 semitones via SoundTouch)
     const [pitchOffset, setPitchOffset] = useState(0);
     const handlePitchChange = (delta) => {
         // NextGen native (SoundTouch) clamps to ±3 semitones — keep UI in sync so +/- is audible.
@@ -2315,15 +2417,6 @@ export default function Multitrack() {
         const seconds = Math.floor(secs % 60);
         return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
     };
-
-    // Canción activa: mezclar entrada del setlist con el doc vivo de Firestore (librería / global)
-    // para no perder `key`, `tempo`, etc. si el array del setlist está desactualizado o es mínimo.
-    const fromSetlist = (activeSetlist?.songs || []).find(s => s.id === activeSongId) || null;
-    const liveSong = librarySongs.find(s => s.id === activeSongId)
-        || globalSongs.find(s => s.id === activeSongId);
-    const activeSong = liveSong
-        ? { ...fromSetlist, ...liveSong }
-        : fromSetlist;
 
     const songKeyForUi = getSongMusicalKey(activeSong);
     const activeMarkers = React.useMemo(() => {
@@ -3186,24 +3279,51 @@ export default function Multitrack() {
                             minWidth: 0,
                         }}
                     >
-                        <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                            value={masterVolume}
-                            onChange={handleMasterVolume}
-                            onInput={handleMasterVolume}
-                            aria-label={t('multitrack.volMaster')}
+                        {/* Slider de volumen con relleno completo (sin línea con punto) */}
+                        <div
                             style={{
+                                position: 'relative',
                                 flex: '1 1 0',
                                 minWidth: 0,
-                                width: '100%',
-                                accentColor: 'white',
+                                height: '14px',
+                                background: 'rgba(255, 255, 255, 0.16)',
+                                borderRadius: '4px',
+                                overflow: 'hidden',
                                 cursor: 'pointer',
-                                height: '4px',
+                                touchAction: 'none',
                             }}
-                        />
+                            onPointerDown={(e) => {
+                                const target = e.currentTarget;
+                                const rect = target.getBoundingClientRect();
+                                const updateVal = (clientX) => {
+                                    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                                    const rounded = Math.round(ratio * 100) / 100;
+                                    setMasterVolume(rounded);
+                                    audioEngine.setMasterVolume(rounded);
+                                };
+                                updateVal(e.clientX);
+                                const onMove = (ev) => updateVal(ev.clientX);
+                                const onUp = () => {
+                                    window.removeEventListener('pointermove', onMove);
+                                    window.removeEventListener('pointerup', onUp);
+                                };
+                                window.addEventListener('pointermove', onMove);
+                                window.addEventListener('pointerup', onUp);
+                            }}
+                            title={`Volumen Master: ${Math.round(masterVolume * 100)}%`}
+                        >
+                            {/* Relleno completo */}
+                            <div
+                                style={{
+                                    height: '100%',
+                                    width: `${Math.round(masterVolume * 100)}%`,
+                                    background: 'linear-gradient(90deg, #00d2d3, #2ecc71)',
+                                    borderRadius: '4px',
+                                    pointerEvents: 'none',
+                                    transition: 'width 0.04s ease-out',
+                                }}
+                            />
+                        </div>
                         <span
                             style={{
                                 flex: '0 0 2.65rem',
@@ -3255,16 +3375,31 @@ export default function Multitrack() {
                     {/* TEMPO CONTROL — web y APK (NextGen setTempoRatio vía AudioEngine) */}
                     <span style={{ borderLeft: '1px solid #ddd', paddingLeft: '15px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <button onClick={() => handleTempoChange(-1)} className="square-btn">-</button>
-                        <span
-                            onClick={tempoOffset !== 0 ? handleTempoReset : undefined}
-                            className="control-value"
-                            style={{ minWidth: '75px', color: tempoOffset !== 0 ? '#f39c12' : 'inherit' }}
-                        >
-                            {activeSong?.tempo
-                                ? `${(parseFloat(activeSong.tempo) + tempoOffset).toFixed(1)} BPM`
-                                : '-- BPM'}
-                            {tempoOffset !== 0 && <span style={{ fontSize: '0.6rem', marginLeft: '2px' }}>{tempoOffset > 0 ? `▲${tempoOffset}` : `▼${Math.abs(tempoOffset)}`}</span>}
-                        </span>
+                        {(() => {
+                            const songBpm = getActiveSongBpm();
+                            const baseBpm = songBpm || 120;
+                            const currentDisplayBpm = (baseBpm + tempoOffset).toFixed(1);
+                            return (
+                                <span
+                                    onClick={tempoOffset !== 0 ? handleTempoReset : handleSetSongBpmPrompt}
+                                    className="control-value"
+                                    style={{
+                                        minWidth: '75px',
+                                        color: tempoOffset !== 0 ? '#f39c12' : songBpm ? 'inherit' : '#94a3b8',
+                                        cursor: 'pointer'
+                                    }}
+                                    title={tempoOffset !== 0 ? "Clic para resetear tempo al original" : "Clic para definir o editar el BPM de esta canción"}
+                                >
+                                    {`${currentDisplayBpm} BPM`}
+                                    {!songBpm && <span style={{ fontSize: '0.55rem', color: '#94a3b8', marginLeft: '2px' }}>(def)</span>}
+                                    {tempoOffset !== 0 && (
+                                        <span style={{ fontSize: '0.6rem', marginLeft: '2px', color: '#f39c12' }}>
+                                            {tempoOffset > 0 ? `▲${tempoOffset}` : `▼${Math.abs(tempoOffset)}`}
+                                        </span>
+                                    )}
+                                </span>
+                            );
+                        })()}
                         <button onClick={() => handleTempoChange(+1)} className="square-btn">+</button>
                     </span>
 
@@ -3396,7 +3531,7 @@ export default function Multitrack() {
             )}
 
             {/* WAVEFORM OVERVIEW / SCRUBBER — web: WaveformCanvas; native: NextGen ProgressBar + lightweight fake overview (no decode pipeline) */}
-            <div className="waveform-section" style={{ height: isAppNative ? '96px' : '115px' }}>
+            <div className="waveform-section" style={{ height: isAppNative ? '60px' : '70px' }}>
                 {isAppNative ? (
                     <div
                         style={{
@@ -4406,6 +4541,7 @@ export default function Multitrack() {
                 downloadQueueState={downloadQueueState}
                 activeSetlist={activeSetlist}
                 onDownloadAdd={handleDownloadAndAdd}
+                onSyncGlobal={() => syncGlobalCatalog(true)}
                 globalCatalogDocCount={globalSongs.length}
             />
             {/* PARTITURA FULLSCREEN OVERLAY */}

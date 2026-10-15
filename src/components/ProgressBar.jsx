@@ -783,86 +783,6 @@ export const ProgressBar = React.memo(
                     userSelect: 'none',
                 }}
             >
-                <div
-                    style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: nativeUi ? 5 : 4,
-                        flexShrink: 0,
-                    }}
-                >
-                    {/* Time / Bar toggle row */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <span
-                            ref={timeRef}
-                            style={{
-                                fontSize: '0.82rem',
-                                fontWeight: '900',
-                                color: '#fff',
-                                opacity: 0.95,
-                                fontVariantNumeric: 'tabular-nums',
-                                letterSpacing: '0.05em',
-                                textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                                flexShrink: 0,
-                            }}
-                        >
-                            0:00 / {formatTime(durationProp)}
-                        </span>
-
-                        {/* Bar/beat display */}
-                        <span
-                            ref={barRef}
-                            style={{
-                                fontSize: '0.78rem',
-                                fontWeight: '700',
-                                color: '#7dd3fc',
-                                fontVariantNumeric: 'tabular-nums',
-                                letterSpacing: '0.04em',
-                                opacity: isBarsModeRef.current ? 1 : 0,
-                                transition: 'opacity 0.2s',
-                                flexShrink: 0,
-                            }}
-                        />
-
-                        {/* Toggle button (Req 1) */}
-                        <button
-                            ref={toggleRef}
-                            onClick={() => {
-                                const next = !isBarsModeRef.current;
-                                isBarsModeRef.current = next;
-                                saveBarMode(next);
-                                // Update button label
-                                if (toggleRef.current) {
-                                    toggleRef.current.textContent = next ? '🎵 Compás' : '🕐 Tiempo';
-                                }
-                                // Show/hide barRef
-                                if (barRef.current) {
-                                    barRef.current.style.opacity = next ? '1' : '0';
-                                    if (!next) barRef.current.textContent = '';
-                                }
-                                console.log(next ? '[BAR DISPLAY] mode bars' : '[BAR DISPLAY] mode time');
-                            }}
-                            style={{
-                                marginLeft: 'auto',
-                                padding: '2px 10px',
-                                fontSize: '0.72rem',
-                                fontWeight: '700',
-                                borderRadius: 6,
-                                border: '1px solid rgba(125,211,252,0.4)',
-                                background: 'rgba(125,211,252,0.12)',
-                                color: '#7dd3fc',
-                                cursor: 'pointer',
-                                flexShrink: 0,
-                                transition: 'background 0.15s',
-                                letterSpacing: '0.04em',
-                            }}
-                        >
-                            {isBarsModeRef.current ? '🎵 Compás' : '🕐 Tiempo'}
-                        </button>
-                    </div>
-                </div>
-
-
                 {nativeUi ? (
                     <div
                         ref={trackRef}
@@ -873,7 +793,7 @@ export const ProgressBar = React.memo(
                         style={{
                             width: '100%',
                             flex: 1,
-                            minHeight: 56,
+                            minHeight: 48,
                             position: 'relative',
                             borderRadius: 10,
                             overflow: 'hidden',
@@ -896,6 +816,97 @@ export const ProgressBar = React.memo(
                                 pointerEvents: 'none',
                             }}
                         />
+
+                        {/* OVERLAY ENCIMA DE LA BARRA DE ONDAS */}
+                        <div
+                            style={{
+                                position: 'absolute',
+                                top: 4,
+                                left: 6,
+                                right: 6,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                pointerEvents: 'none',
+                                zIndex: 10,
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span
+                                    ref={timeRef}
+                                    style={{
+                                        fontSize: '0.78rem',
+                                        fontWeight: '900',
+                                        color: '#fff',
+                                        background: 'rgba(15, 23, 42, 0.75)',
+                                        backdropFilter: 'blur(4px)',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontVariantNumeric: 'tabular-nums',
+                                        letterSpacing: '0.04em',
+                                        textShadow: '0 1px 2px rgba(0,0,0,0.6)',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                    }}
+                                >
+                                    0:00 / {formatTime(durationProp)}
+                                </span>
+
+                                <span
+                                    ref={barRef}
+                                    style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: '700',
+                                        color: '#7dd3fc',
+                                        background: 'rgba(15, 23, 42, 0.75)',
+                                        backdropFilter: 'blur(4px)',
+                                        padding: '2px 8px',
+                                        borderRadius: '6px',
+                                        fontVariantNumeric: 'tabular-nums',
+                                        letterSpacing: '0.04em',
+                                        opacity: isBarsModeRef.current ? 1 : 0,
+                                        transition: 'opacity 0.2s',
+                                        border: '1px solid rgba(125,211,252,0.2)',
+                                    }}
+                                />
+                            </div>
+
+                            {/* Botón modo a la derecha encima de la barra */}
+                            <button
+                                ref={toggleRef}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = !isBarsModeRef.current;
+                                    isBarsModeRef.current = next;
+                                    saveBarMode(next);
+                                    if (toggleRef.current) {
+                                        toggleRef.current.textContent = next ? '🎵 Compás' : '🕐 Tiempo';
+                                    }
+                                    if (barRef.current) {
+                                        barRef.current.style.opacity = next ? '1' : '0';
+                                        if (!next) barRef.current.textContent = '';
+                                    }
+                                    console.log(next ? '[BAR DISPLAY] mode bars' : '[BAR DISPLAY] mode time');
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onTouchStart={(e) => e.stopPropagation()}
+                                style={{
+                                    padding: '2px 8px',
+                                    fontSize: '0.72rem',
+                                    fontWeight: '700',
+                                    borderRadius: 6,
+                                    border: '1px solid rgba(125,211,252,0.35)',
+                                    background: 'rgba(15, 23, 42, 0.75)',
+                                    backdropFilter: 'blur(4px)',
+                                    color: '#7dd3fc',
+                                    cursor: 'pointer',
+                                    pointerEvents: 'auto',
+                                    transition: 'background 0.15s',
+                                    letterSpacing: '0.04em',
+                                }}
+                            >
+                                {isBarsModeRef.current ? '🎵 Compás' : '🕐 Tiempo'}
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <div

@@ -652,10 +652,10 @@ body.dark-mode .audio-info button {
 /* WAVEFORM AREA / PROFESSIONAL SCRUBBER */
 .waveform-section {
   width: 100%;
-  height: 96px;
+  height: 60px;
   background: #ffffff;
   border-radius: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   box-shadow: var(--shadow-soft);
   border: 1px solid var(--border-subtle);
   display: flex;
@@ -1431,8 +1431,8 @@ body.dark-mode .pads-panel {
   /* Antes 25px: en móvil landscape / viewport bajo recortaba la barra nativa (ondas + seek).
      ~96px: tiempo + padding + pista (min 56px) sin overflow:hidden del contenedor. */
   .waveform-section {
-    min-height: 96px !important;
-    height: 96px !important;
+    min-height: 60px !important;
+    height: 60px !important;
     flex-shrink: 0 !important;
   }
 
