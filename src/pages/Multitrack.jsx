@@ -183,6 +183,8 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     globalCatalogLoading,
     downloadProgress, onDownloadAdd,
     globalCatalogDocCount,
+    downloadQueueState = {},
+    activeSetlist = null,
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -286,32 +288,83 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {baseSongs.map(song => {
-                                const isDownloading = downloadProgress.songId === song.id;
+                                const qState = downloadQueueState[song.id];
+                                const isDownloading = qState?.status === 'downloading' || downloadProgress?.songId === song.id;
+                                const isQueued = qState?.status === 'queued';
+                                const isCompleted = qState?.status === 'completed';
+                                const isError = qState?.status === 'error';
                                 const isOtherUser = song.userId !== currentUser?.uid;
                                 const listSongKey = getSongMusicalKey(song);
+
+                                // Si la canción ya está en el setlist activo o se acaba de completar
+                                const isInSetlist = activeSetlist?.songs?.some(s => s.id === song.id) || isCompleted;
+
+                                let btnText = '➕ Añadir';
+                                let btnBg = '#2ecc71';
+                                let btnDisabled = false;
+
+                                if (isDownloading) {
+                                    btnText = '⏳ Bajando...';
+                                    btnBg = '#f39c12';
+                                    btnDisabled = true;
+                                } else if (isQueued) {
+                                    btnText = qState?.text || '🕒 En cola';
+                                    btnBg = '#3498db';
+                                    btnDisabled = true;
+                                } else if (isInSetlist) {
+                                    btnText = '✓ En Setlist';
+                                    btnBg = '#27ae60';
+                                    btnDisabled = true;
+                                } else if (isError) {
+                                    btnText = '⚠️ Reintentar';
+                                    btnBg = '#e74c3c';
+                                    btnDisabled = false;
+                                }
+
+                                const progressMsg = isDownloading
+                                    ? (qState?.text || downloadProgress?.text || 'Bajando pistas...')
+                                    : isQueued
+                                        ? (qState?.text || 'En cola de descarga...')
+                                        : isError
+                                            ? (qState?.text || 'Error en descarga')
+                                            : null;
+
                                 return (
                                     <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
-                                        <div>
-                                            <h4 style={{ margin: '0 0 3px 0', color: '#333' }}>{song.name}</h4>
+                                        <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
+                                            <h4 style={{ margin: '0 0 3px 0', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.name}</h4>
                                             <div style={{ fontSize: '0.75rem', color: '#888' }}>
                                                 {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
                                                 {song.artist && `${song.artist} • `}
                                                 {listSongKey && `${listSongKey} • `}
                                                 {song.tempo && `${song.tempo} BPM`}
                                             </div>
-                                            {isDownloading && (
-                                                <div style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                                    {downloadProgress.text}
+                                            {progressMsg && (
+                                                <div style={{ color: isError ? '#e74c3c' : isQueued ? '#3498db' : '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                                    {progressMsg}
                                                 </div>
                                             )}
                                         </div>
                                         <button
-                                            style={{ background: isDownloading ? '#f39c12' : (downloadProgress.songId ? '#ccc' : '#2ecc71'), color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px', cursor: (isDownloading || downloadProgress.songId) ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+                                            style={{
+                                                background: btnBg,
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '8px 12px',
+                                                borderRadius: '6px',
+                                                cursor: btnDisabled ? 'default' : 'pointer',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 'bold',
+                                                whiteSpace: 'nowrap',
+                                                flexShrink: 0,
+                                                transition: 'all 0.2s',
+                                                opacity: btnDisabled && !isDownloading && !isQueued ? 0.8 : 1
+                                            }}
                                             title="Añadir a Setlist y Guardar Local"
-                                            onClick={() => !downloadProgress.songId && onDownloadAdd(song)}
-                                            disabled={!!downloadProgress.songId}
+                                            onClick={() => !btnDisabled && onDownloadAdd(song)}
+                                            disabled={btnDisabled}
                                         >
-                                            {isDownloading ? '⏳ Bajando...' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
+                                            {btnText}
                                         </button>
                                     </div>
                                 );
@@ -450,6 +503,9 @@ export default function Multitrack() {
 
     // Download States
     const [downloadProgress, setDownloadProgress] = useState({ songId: null, text: '' });
+    const [downloadQueueState, setDownloadQueueState] = useState({});
+    const downloadQueueRef = useRef([]);
+    const isProcessingQueueRef = useRef(false);
     const [nativeLoadProgress, setNativeLoadProgress] = useState(null); // { songId, loaded, total }
     // Active loaded song
     const [activeSongId, setActiveSongId] = useState(null);
@@ -1446,124 +1502,211 @@ export default function Multitrack() {
         }
     };
 
-    const handleDownloadAndAdd = async (song) => {
-        if (!activeSetlist) {
-            return alert("Por favor, selecciona un setlist primero antes de a├▒adir canciones.");
-        }
+    const executeSongDownload = async (song) => {
+        const tracks = song.tracks || [];
+        const validTracks = tracks.filter(t => t && t.url && t.url !== 'undefined');
+        const totalTracks = validTracks.length;
+        let completedTracks = 0;
 
-        setDownloadProgress({ songId: song.id, text: 'Iniciando descarga B2...' });
+        const downloadSingleTrack = async (tr) => {
+            const downloadBlob = async () => {
+                const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
+                return await r.blob();
+            };
 
-        try {
-            const tracks = song.tracks || [];
-            const isAppNativeInner = typeof window !== 'undefined' && !!window.Capacitor?.isNativePlatform?.();
-
-            // Loop tracks to download
-            for (let i = 0; i < tracks.length; i++) {
-                const tr = tracks[i];
-                setDownloadProgress({ songId: song.id, text: `Bajando pista ${i + 1}/${tracks.length}: ${tr.name}` });
-
-                // Fetch the binary stream from our proxy (which hooks to B2)
-                if (!tr.url || tr.url === 'undefined') {
-                    console.warn(`[DOWNLOAD] Saltando pista ${tr.name} porque no tiene URL v├ílida.`);
-                    continue;
-                }
-
-                /**
-                 * Descarga una pista via Railway proxy.
-                 */
-                const downloadBlob = async () => {
-                    const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                    if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
-                    return await r.blob();
-                };
-
-                if (isAppNative) {
-                    const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
-                    if (useFlac) {
-                        const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
-                        if (!flacCached) {
-                            const blob = await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null);
-                            if (blob && blob.size > 500) {
-                                await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
-                                await NativeEngine.invalidateLegacyCache(song.id, tr.name);
-                            }
-                        }
-                    } else {
-                        const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
-                        if (!alreadyHasFile) {
-                            const blobData = await downloadBlob();
-                            await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
+            if (isAppNative) {
+                const useFlac = tr.normalizedReady === true && tr.normalizedUrl;
+                if (useFlac) {
+                    const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                    if (!flacCached) {
+                        const blob = await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null);
+                        if (blob && blob.size > 500) {
+                            await NativeEngine.saveTrackBlob(blob, `${song.id}_${tr.name}.flac`);
+                            await NativeEngine.invalidateLegacyCache(song.id, tr.name);
                         }
                     }
                 } else {
-                    // Web path: prefer FLAC v2 if available
-                    const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
-                    let rawBuf = useFlacWeb
-                        ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
-                        : await LocalFileManager.getTrackLocal(song.id, tr.name);
-                    if (!rawBuf) {
-                        rawBuf = useFlacWeb
-                            ? await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null)
-                            : await downloadBlob();
-                        if (rawBuf) {
-                            if (useFlacWeb) {
-                                await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
-                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                            } else {
-                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
-                            }
+                    const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                    if (!alreadyHasFile) {
+                        const blobData = await downloadBlob();
+                        await NativeEngine.saveTrackBlob(blobData, `${song.id}_${tr.name}.mp3`);
+                    }
+                }
+            } else {
+                // Web path: prefer FLAC v2 if available
+                const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
+                let rawBuf = useFlacWeb
+                    ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
+                    : await LocalFileManager.getTrackLocal(song.id, tr.name);
+                if (!rawBuf) {
+                    rawBuf = useFlacWeb
+                        ? await fetch(tr.normalizedUrl).then(r => r.blob()).catch(() => null)
+                        : await downloadBlob();
+                    if (rawBuf) {
+                        if (useFlacWeb) {
+                            await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                            await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                        } else {
+                            await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                         }
                     }
                 }
             }
 
-            setDownloadProgress({ songId: song.id, text: 'Guardando Letra y Acordes offline...' });
+            completedTracks++;
+            const progressMsg = `Bajando pistas (${completedTracks}/${totalTracks}): ${tr.name}`;
+            setDownloadQueueState(prev => ({
+                ...prev,
+                [song.id]: {
+                    status: 'downloading',
+                    text: progressMsg
+                }
+            }));
+            setDownloadProgress({ songId: song.id, text: progressMsg });
+        };
 
-            // Descargar Letra offline
-            try {
-                const lyricsQuery = query(collection(db, 'lyrics'), where('songId', '==', song.id));
-                const lyricsSnap = await getDocs(lyricsQuery);
-                let lyricsText = song.lyrics || '';
-                if (!lyricsSnap.empty) {
-                    lyricsText = lyricsSnap.docs[0].data().text || '';
-                }
-                if (lyricsText) {
-                    await LocalFileManager.saveTextLocal(song.id, 'lyrics', lyricsText);
-                }
+        // Descarga concurrente (3 pistas a la vez en paralelo)
+        const CONCURRENCY = 3;
+        let trackIndex = 0;
+        const workers = [];
 
-                // Descargar Acordes offline
-                const chordsQuery = query(collection(db, 'chords'), where('songId', '==', song.id));
-                const chordsSnap = await getDocs(chordsQuery);
-                let chordsText = song.chords || '';
-                if (!chordsSnap.empty) {
-                    chordsText = chordsSnap.docs[0].data().text || '';
+        const worker = async () => {
+            while (trackIndex < validTracks.length) {
+                const currentTrack = validTracks[trackIndex++];
+                if (!currentTrack) break;
+                try {
+                    await downloadSingleTrack(currentTrack);
+                } catch (err) {
+                    console.warn(`[DOWNLOAD] Error descargando pista ${currentTrack.name}:`, err);
                 }
-                if (chordsText) {
-                    await LocalFileManager.saveTextLocal(song.id, 'chords', chordsText);
-                }
-            } catch (err) {
-                console.warn("[OFFLINE] No se pudieron guardar letras o acordes offline", err);
+            }
+        };
+
+        const numWorkers = Math.min(CONCURRENCY, Math.max(1, validTracks.length));
+        for (let w = 0; w < numWorkers; w++) {
+            workers.push(worker());
+        }
+        await Promise.all(workers);
+
+        // Guardar Letra y Acordes offline
+        try {
+            const lyricsQuery = query(collection(db, 'lyrics'), where('songId', '==', song.id));
+            const lyricsSnap = await getDocs(lyricsQuery);
+            let lyricsText = song.lyrics || '';
+            if (!lyricsSnap.empty) {
+                lyricsText = lyricsSnap.docs[0].data().text || '';
+            }
+            if (lyricsText) {
+                await LocalFileManager.saveTextLocal(song.id, 'lyrics', lyricsText);
             }
 
-            setDownloadProgress({ songId: song.id, text: 'Guardando en Setlist...' });
+            const chordsQuery = query(collection(db, 'chords'), where('songId', '==', song.id));
+            const chordsSnap = await getDocs(chordsQuery);
+            let chordsText = song.chords || '';
+            if (!chordsSnap.empty) {
+                chordsText = chordsSnap.docs[0].data().text || '';
+            }
+            if (chordsText) {
+                await LocalFileManager.saveTextLocal(song.id, 'chords', chordsText);
+            }
+        } catch (err) {
+            console.warn("[OFFLINE] No se pudieron guardar letras o acordes offline", err);
+        }
+    };
 
-            await updateDoc(doc(db, 'setlists', activeSetlist.id), {
-                songs: arrayUnion(song)
+    const processDownloadQueue = async () => {
+        if (isProcessingQueueRef.current) return;
+        isProcessingQueueRef.current = true;
+
+        while (downloadQueueRef.current.length > 0) {
+            const song = downloadQueueRef.current.shift();
+            if (!song || !song.id) continue;
+
+            // Actualizar textos de los que siguen en la cola
+            setDownloadQueueState(prev => {
+                const next = { ...prev };
+                downloadQueueRef.current.forEach((qSong, idx) => {
+                    if (next[qSong.id]?.status === 'queued') {
+                        next[qSong.id] = {
+                            ...next[qSong.id],
+                            text: `🕒 En cola (#${idx + 1})`
+                        };
+                    }
+                });
+                next[song.id] = {
+                    status: 'downloading',
+                    text: 'Iniciando descarga...'
+                };
+                return next;
             });
 
-            setIsLibraryMenuOpen(false);
-        } catch (error) {
-            if (isFirestoreDocMissing(error)) {
-                console.warn('[Setlist] Documento no existe al añadir canción.');
-                setActiveSetlist(null);
-                clearMixerLastSetlistId();
-                alert('Este setlist ya no existe en la nube. Creá o elegí otro setlist e intentá de nuevo.');
-                return;
+            setDownloadProgress({ songId: song.id, text: 'Iniciando descarga B2...' });
+
+            try {
+                await executeSongDownload(song);
+
+                // Guardar en Setlist activo en Firestore
+                if (activeSetlist?.id) {
+                    await updateDoc(doc(db, 'setlists', activeSetlist.id), {
+                        songs: arrayUnion(song)
+                    });
+                }
+
+                setDownloadQueueState(prev => ({
+                    ...prev,
+                    [song.id]: {
+                        status: 'completed',
+                        text: '✓ Añadido'
+                    }
+                }));
+            } catch (error) {
+                if (isFirestoreDocMissing(error)) {
+                    console.warn('[Setlist] Documento no existe al añadir canción.');
+                    setActiveSetlist(null);
+                    clearMixerLastSetlistId();
+                    alert('Este setlist ya no existe en la nube. Creá o elegí otro setlist e intentá de nuevo.');
+                    break;
+                }
+                console.error(`[DOWNLOAD QUEUE] Error descargando ${song.name}:`, error);
+                setDownloadQueueState(prev => ({
+                    ...prev,
+                    [song.id]: {
+                        status: 'error',
+                        text: '⚠️ Error al descargar'
+                    }
+                }));
+            } finally {
+                setDownloadProgress({ songId: null, text: '' });
             }
-            console.error(error);
-            alert("Hubo un error descargando la canci├│n. Verifica la consola.");
-        } finally {
-            setDownloadProgress({ songId: null, text: '' });
+        }
+
+        isProcessingQueueRef.current = false;
+    };
+
+    const handleDownloadAndAdd = (song) => {
+        if (!activeSetlist) {
+            return alert("Por favor, selecciona un setlist primero antes de añadir canciones.");
+        }
+
+        const currentStatus = downloadQueueState[song.id]?.status;
+        if (currentStatus === 'queued' || currentStatus === 'downloading' || currentStatus === 'completed') {
+            return;
+        }
+
+        downloadQueueRef.current.push(song);
+        const queuePos = downloadQueueRef.current.length;
+
+        setDownloadQueueState(prev => ({
+            ...prev,
+            [song.id]: {
+                status: isProcessingQueueRef.current ? 'queued' : 'downloading',
+                text: isProcessingQueueRef.current ? `🕒 En cola (#${queuePos})` : 'Iniciando descarga...'
+            }
+        }));
+
+        if (!isProcessingQueueRef.current) {
+            processDownloadQueue();
         }
     };
 
@@ -4260,6 +4403,8 @@ export default function Multitrack() {
                 isAppNative={isAppNative}
                 globalCatalogLoading={globalCatalogLoading}
                 downloadProgress={downloadProgress}
+                downloadQueueState={downloadQueueState}
+                activeSetlist={activeSetlist}
                 onDownloadAdd={handleDownloadAndAdd}
                 globalCatalogDocCount={globalSongs.length}
             />
