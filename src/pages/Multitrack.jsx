@@ -744,12 +744,24 @@ export default function Multitrack() {
 
     // ΓöÇΓöÇ PADS SYSTEM STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [masterVolume, setMasterVolume] = useState(1);
+    const masterFillRef = useRef(null);
+    const isDraggingMasterRef = useRef(false);
+    const masterVolumeRef = useRef(masterVolume);
+    masterVolumeRef.current = masterVolume;
+    const padSoloRef = useRef(false);
+
+    useEffect(() => {
+        if (masterFillRef.current && !isDraggingMasterRef.current) {
+            masterFillRef.current.style.width = `${(masterVolume * 100).toFixed(2)}%`;
+        }
+    }, [masterVolume]);
     const [padActive, setPadActive] = useState(false);
     const [padKey, setPadKey] = useState('C');
     const [padPitch, setPadPitch] = useState(0);
     const [padVolume, setPadVolume] = useState(0.8);
     const [padMute, setPadMute] = useState(false);
-    const [padSolo, setPadSolo] = useState(false); // (El modo Solo ser├¡a m├ís complejo de integrar contra el otro motor, por ahora sirve visual)
+    const [padSolo, setPadSolo] = useState(false);
+    padSoloRef.current = padSolo;
 
     // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const sensors = useSensors(
@@ -3304,7 +3316,7 @@ export default function Multitrack() {
                     </button>
                 </div>
 
-                {/* MASTER VOLUME FADER — Cápsula interactiva completa: sólo dice MASTER y el relleno de color se mueve con el volumen */}
+                {/* MASTER VOLUME FADER — Cápsula interactiva ultra fluida con actualización DOM directa a 60/120fps */}
                 <div
                     className="master-fader-mini"
                     style={{
@@ -3312,55 +3324,108 @@ export default function Multitrack() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        height: '36px',
-                        minHeight: '36px',
-                        width: '185px',
-                        minWidth: '150px',
-                        maxWidth: '240px',
-                        background: 'rgba(255, 255, 255, 0.12)',
+                        height: '38px',
+                        minHeight: '38px',
+                        width: '210px',
+                        minWidth: '170px',
+                        maxWidth: '260px',
+                        background: 'rgba(255, 255, 255, 0.10)',
                         border: '1px solid rgba(255, 255, 255, 0.22)',
-                        borderRadius: '6px',
+                        borderRadius: '8px',
                         overflow: 'hidden',
                         cursor: 'ew-resize',
                         userSelect: 'none',
                         touchAction: 'none',
                         flexShrink: 0,
-                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.35)',
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.2)',
                         padding: 0,
                     }}
                     onPointerDown={(e) => {
+                        e.preventDefault();
                         const target = e.currentTarget;
+                        try {
+                            target.setPointerCapture(e.pointerId);
+                        } catch (_) {}
+                        isDraggingMasterRef.current = true;
+
                         const rect = target.getBoundingClientRect();
-                        const updateVal = (clientX) => {
+                        let rafId = null;
+                        let latestRatio = masterVolumeRef.current;
+
+                        const updateFromClientX = (clientX) => {
                             const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                            const rounded = Math.round(ratio * 100) / 100;
-                            setMasterVolume(rounded);
-                            if (!padSolo) {
-                                audioEngine.setMasterVolume(rounded);
+                            latestRatio = ratio;
+
+                            // Actualización visual directa instantánea (0ms, 120 FPS sin React re-renders)
+                            if (masterFillRef.current) {
+                                masterFillRef.current.style.width = `${(ratio * 100).toFixed(2)}%`;
+                            }
+
+                            // Throttle de audio nativo por frame de refresco (evita saturar el puente JNI)
+                            if (!rafId) {
+                                rafId = requestAnimationFrame(() => {
+                                    rafId = null;
+                                    const rounded = Math.round(latestRatio * 100) / 100;
+                                    if (!padSoloRef.current) {
+                                        audioEngine.setMasterVolume(rounded);
+                                    }
+                                });
                             }
                         };
-                        updateVal(e.clientX);
-                        const onMove = (ev) => updateVal(ev.clientX);
-                        const onUp = () => {
-                            window.removeEventListener('pointermove', onMove);
-                            window.removeEventListener('pointerup', onUp);
+
+                        updateFromClientX(e.clientX);
+
+                        const onPointerMove = (ev) => {
+                            if (!isDraggingMasterRef.current) return;
+                            updateFromClientX(ev.clientX);
                         };
-                        window.addEventListener('pointermove', onMove);
-                        window.addEventListener('pointerup', onUp);
+
+                        const onPointerUp = (ev) => {
+                            isDraggingMasterRef.current = false;
+                            try {
+                                target.releasePointerCapture(ev.pointerId);
+                            } catch (_) {}
+                            window.removeEventListener('pointermove', onPointerMove);
+                            window.removeEventListener('pointerup', onPointerUp);
+                            window.removeEventListener('pointercancel', onPointerUp);
+                            target.removeEventListener('pointermove', onPointerMove);
+                            target.removeEventListener('pointerup', onPointerUp);
+                            target.removeEventListener('pointercancel', onPointerUp);
+
+                            if (rafId) {
+                                cancelAnimationFrame(rafId);
+                                rafId = null;
+                            }
+
+                            const finalVal = Math.round(latestRatio * 100) / 100;
+                            masterVolumeRef.current = finalVal;
+                            setMasterVolume(finalVal);
+                            if (!padSoloRef.current) {
+                                audioEngine.setMasterVolume(finalVal);
+                            }
+                        };
+
+                        window.addEventListener('pointermove', onPointerMove, { passive: true });
+                        window.addEventListener('pointerup', onPointerUp);
+                        window.addEventListener('pointercancel', onPointerUp);
+                        target.addEventListener('pointermove', onPointerMove, { passive: true });
+                        target.addEventListener('pointerup', onPointerUp);
+                        target.addEventListener('pointercancel', onPointerUp);
                     }}
                     title="Master"
                 >
-                    {/* Relleno de color que abarca toda la cápsula y se mueve con el volumen */}
+                    {/* Relleno de color instantáneo sin CSS transition */}
                     <div
+                        ref={masterFillRef}
                         style={{
                             position: 'absolute',
                             left: 0,
                             top: 0,
                             bottom: 0,
-                            width: `${Math.round(masterVolume * 100)}%`,
-                            background: 'linear-gradient(90deg, #00b4d8, #00f2fe)',
+                            width: `${(masterVolume * 100).toFixed(2)}%`,
+                            background: 'linear-gradient(90deg, #0284c7 0%, #00b4d8 60%, #00f2fe 100%)',
                             pointerEvents: 'none',
-                            transition: 'width 0.04s ease-out',
+                            transition: 'none',
                         }}
                     />
                     {/* Texto MASTER centrado encima del relleno */}
@@ -3369,9 +3434,9 @@ export default function Multitrack() {
                             position: 'relative',
                             zIndex: 2,
                             color: '#ffffff',
-                            fontSize: '0.78rem',
+                            fontSize: '0.8rem',
                             fontWeight: '900',
-                            letterSpacing: '0.12em',
+                            letterSpacing: '0.14em',
                             textTransform: 'uppercase',
                             pointerEvents: 'none',
                             textShadow: '0 1px 3px rgba(0,0,0,0.7)',
@@ -4141,12 +4206,39 @@ export default function Multitrack() {
                     <div className="pads-panel" style={{ flexShrink: 0, marginTop: 'auto', height: 'auto', minHeight: isPadsCollapsed ? '38px' : '90px', padding: '8px 10px', borderTop: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #dbe2e6' }}>
                         <div className="pads-header" style={{ marginBottom: isPadsCollapsed ? '0' : '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={togglePadActive} style={{ width: '30px', height: '30px', minWidth: '30px', borderRadius: '6px' }} title="Encender/Apagar Pads">
-                                    <Power size={15} />
+                                <button
+                                    type="button"
+                                    className={`pad-power-btn ${padActive ? 'active' : ''}`}
+                                    onClick={togglePadActive}
+                                    style={{
+                                        width: '32px',
+                                        height: '32px',
+                                        minWidth: '32px',
+                                        borderRadius: '6px',
+                                        background: padActive
+                                            ? 'linear-gradient(135deg, #10b981, #059669)'
+                                            : (darkMode ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'),
+                                        color: padActive ? '#ffffff' : (darkMode ? '#94a3b8' : '#64748b'),
+                                        boxShadow: padActive
+                                            ? '0 0 12px rgba(16, 185, 129, 0.85), inset 0 1px 2px rgba(255,255,255,0.4)'
+                                            : 'none',
+                                        border: padActive
+                                            ? '1px solid #34d399'
+                                            : (darkMode ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid #cbd5e1'),
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s ease',
+                                        flexShrink: 0,
+                                    }}
+                                    title="Encender/Apagar Pads"
+                                >
+                                    <Power size={16} color={padActive ? '#ffffff' : (darkMode ? '#94a3b8' : '#64748b')} />
                                 </button>
                                 <div className="pad-title-section" style={{ minWidth: 0 }}>
                                     <h4 className="pad-title" style={{ fontSize: '0.78rem', margin: 0, whiteSpace: 'nowrap' }}>
-                                        Pads {padActive && <span style={{ color: '#00bcd4', fontWeight: '900' }}>({padKey})</span>}
+                                        Pads {padActive && <span style={{ color: '#10b981', fontWeight: '900' }}>({padKey})</span>}
                                     </h4>
                                 </div>
                             </div>
@@ -4406,7 +4498,35 @@ export default function Multitrack() {
                 </div>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                     <div className="pads-header" style={{ marginBottom: '20px' }}>
-                        <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={togglePadActive} style={{ width: '55px', height: '55px' }}><Power size={26} /></button>
+                        <button
+                            type="button"
+                            className={`pad-power-btn ${padActive ? 'active' : ''}`}
+                            onClick={togglePadActive}
+                            style={{
+                                width: '55px',
+                                height: '55px',
+                                borderRadius: '12px',
+                                background: padActive
+                                    ? 'linear-gradient(135deg, #10b981, #059669)'
+                                    : (darkMode ? 'rgba(255, 255, 255, 0.08)' : '#e2e8f0'),
+                                color: padActive ? '#ffffff' : (darkMode ? '#94a3b8' : '#64748b'),
+                                boxShadow: padActive
+                                    ? '0 0 16px rgba(16, 185, 129, 0.85), inset 0 1px 3px rgba(255,255,255,0.4)'
+                                    : 'none',
+                                border: padActive
+                                    ? '2px solid #34d399'
+                                    : (darkMode ? '1px solid rgba(255, 255, 255, 0.15)' : '1px solid #cbd5e1'),
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease',
+                                flexShrink: 0,
+                            }}
+                            title="Encender/Apagar Pads"
+                        >
+                            <Power size={26} color={padActive ? '#ffffff' : (darkMode ? '#94a3b8' : '#64748b')} />
+                        </button>
                         <div className="pad-title-section">
                             <h3 className="pad-title">Fundamental Ambient Pads</h3>
                             <div className="pad-subtitle">Loop Community</div>

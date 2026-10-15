@@ -2170,8 +2170,10 @@ body.dark-mode .drawer-overlay {
 }
 
 .pad-power-btn.active {
-  background: var(--primary-cyan);
-  color: white;
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.75) !important;
+  border: 1px solid #34d399 !important;
 }
 
 .pad-title-section {
@@ -2316,6 +2318,13 @@ body.dark-mode .pad-title {
 
 body.dark-mode .pad-power-btn {
   background: #2d3748;
+}
+
+body.dark-mode .pad-power-btn.active {
+  background: linear-gradient(135deg, #10b981, #059669) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.75) !important;
+  border: 1px solid #34d399 !important;
 }
 
 body.dark-mode .pad-pitch-control {
