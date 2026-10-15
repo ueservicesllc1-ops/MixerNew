@@ -1874,27 +1874,41 @@ export default function Multitrack({ session }) {
         }
     }, [padSolo, masterVolume]);
 
+    const lastPadToggleRef = useRef(0);
     const togglePadActive = () => {
+        const now = Date.now();
+        if (now - lastPadToggleRef.current < 350) return;
+        lastPadToggleRef.current = now;
+
         padEngine.ensureContext();
-        const next = !padActive;
-        setPadActive(next);
-        if (!next && padSolo) {
-            setPadSolo(false);
-            audioEngine.setMasterVolume(masterVolume);
-        }
+        setPadActive(prev => {
+            const next = !prev;
+            if (!next && padSolo) {
+                setPadSolo(false);
+                audioEngine.setMasterVolume(masterVolume);
+            }
+            return next;
+        });
     };
 
+    const lastPadSoloToggleRef = useRef(0);
     const togglePadSolo = () => {
+        const now = Date.now();
+        if (now - lastPadSoloToggleRef.current < 350) return;
+        lastPadSoloToggleRef.current = now;
+
         padEngine.ensureContext();
-        const next = !padSolo;
-        setPadSolo(next);
-        if (next) {
-            if (!padActive) setPadActive(true);
-            if (padMute) setPadMute(false);
-            audioEngine.setMasterVolume(0);
-        } else {
-            audioEngine.setMasterVolume(masterVolume);
-        }
+        setPadSolo(prev => {
+            const next = !prev;
+            if (next) {
+                setPadActive(true);
+                setPadMute(false);
+                audioEngine.setMasterVolume(0);
+            } else {
+                audioEngine.setMasterVolume(masterVolume);
+            }
+            return next;
+        });
     };
 
     const togglePadMute = () => {
@@ -1905,9 +1919,7 @@ export default function Multitrack({ session }) {
     const handleSelectPadKey = (k) => {
         padEngine.ensureContext();
         setPadKey(k);
-        if (!padActive) {
-            setPadActive(true);
-        }
+        setPadActive(true);
     };
 
     // ΓöÇΓöÇ DND SENSORS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -4260,9 +4272,9 @@ export default function Multitrack({ session }) {
                         justifyContent: 'center',
                         height: '36px',
                         minHeight: '36px',
-                        width: '120px',
-                        minWidth: '95px',
-                        maxWidth: '140px',
+                        width: '185px',
+                        minWidth: '150px',
+                        maxWidth: '240px',
                         background: 'rgba(255, 255, 255, 0.12)',
                         border: '1px solid rgba(255, 255, 255, 0.22)',
                         borderRadius: '6px',

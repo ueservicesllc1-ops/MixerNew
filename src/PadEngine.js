@@ -128,13 +128,26 @@ export class PadEngine {
 
                     // Decodificar con promesa y callback para compatibilidad universal
                     audioBuffer = await new Promise((resolve, reject) => {
+                        let settled = false;
+                        const onOk = (buf) => {
+                            if (!settled) {
+                                settled = true;
+                                resolve(buf);
+                            }
+                        };
+                        const onErr = (err) => {
+                            if (!settled) {
+                                settled = true;
+                                reject(err);
+                            }
+                        };
                         try {
-                            const res = ctx.decodeAudioData(arrayBuffer.slice(0), resolve, reject);
+                            const res = ctx.decodeAudioData(arrayBuffer.slice(0), onOk, onErr);
                             if (res && typeof res.then === 'function') {
-                                res.then(resolve).catch(reject);
+                                res.then(onOk).catch(onErr);
                             }
                         } catch (err) {
-                            reject(err);
+                            onErr(err);
                         }
                     });
 
