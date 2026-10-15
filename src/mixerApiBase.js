@@ -16,6 +16,14 @@ export function getMixerApiBase() {
     if (typeof window === 'undefined') {
         return viteB2ProxyBase() || DEFAULT_PUBLIC_PROXY;
     }
+    // Capacitor en Android/iOS corre en https://localhost o capacitor://localhost.
+    // En un dispositivo nativo, localhost NO es el backend de desarrollo local.
+    const isNative = window.Capacitor?.isNativePlatform?.() === true ||
+                     window.location.protocol === 'capacitor:' ||
+                     window.location.protocol === 'ionic:';
+    if (isNative) {
+        return viteB2ProxyBase() || DEFAULT_PUBLIC_PROXY;
+    }
     const h = window.location.hostname;
     if (h === 'localhost' || h === '127.0.0.1') {
         return 'http://localhost:3001';

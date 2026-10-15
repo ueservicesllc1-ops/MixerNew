@@ -9,7 +9,7 @@ import { Mixer } from '../components/Mixer'
 import WaveformCanvas from '../components/WaveformCanvas'
 import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
-import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode, Save } from 'lucide-react'
+import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode, Save, Globe } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
@@ -79,7 +79,6 @@ async function nativeAllCriticalStemsOnDisk(song, formatPlan) {
             ? await NativeEngine.isNormalizedDownloaded(song.id, tr.name)
             : await NativeEngine.isTrackDownloaded(song.id, tr.name);
         if (!ok) return false;
-        await prepareYield();
     }
     return true;
 }
@@ -104,21 +103,14 @@ async function computeNativeSongFormatPlan(song) {
     const tracksData = filterCriticalDownloadableTracks(song.tracks);
     const v2Stems = tracksData.filter(tr => tr.normalizedReady === true && tr.normalizedUrl);
     const missingFlac = [];
-    const m = v2Stems.length;
-    let si = 0;
     for (const tr of v2Stems) {
-        si++;
-        console.log(`[QUEUE] processing track ${si}/${m} (format FLAC check)`);
         if (!(await NativeEngine.isNormalizedDownloaded(song.id, tr.name))) {
             missingFlac.push(tr.name);
         }
-        await prepareYield();
-        console.log('[QUEUE] delay inserted');
     }
-    const allFlacAvailable = v2Stems.length > 0 && missingFlac.length === 0;
+    const allFlacAvailable = tracksData.length > 0 && v2Stems.length === tracksData.length && missingFlac.length === 0;
     const useFullFlac = allFlacAvailable;
     const v2StemNames = v2Stems.map(t => t.name);
-    await prepareYield();
 
     return {
         useFullFlac,
@@ -275,7 +267,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                     {!isAppNative && (
                                         <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
                                             Para subir tus propias canciones, ingresa desde tu computadora a:<br />
-                                            <a href="https://www.zionstage.com" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>www.zionstage.com</a>
+                                            <a href="https://zionstage.live/#/dashboard" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>zionstage.live</a>
                                         </div>
                                     )}
                                 </>
@@ -423,27 +415,9 @@ export default function Multitrack() {
         if (!tracksData.length) return null;
         const v2Set = new Set(formatPlan.v2StemNames);
         const { useFullFlac } = formatPlan;
-        const n = tracksData.length;
-
-        let i = 0;
-        for (const tr of tracksData) {
-            i++;
-            console.log(`[QUEUE] processing track ${i}/${n} (disk exists check)`);
-            const useFlacStem = useFullFlac && v2Set.has(tr.name) && tr.normalizedReady === true && tr.normalizedUrl;
-            const ok = useFlacStem
-                ? await NativeEngine.isNormalizedDownloaded(song.id, tr.name)
-                : await NativeEngine.isTrackDownloaded(song.id, tr.name);
-            if (!ok) return null;
-            await prepareYield();
-            console.log('[QUEUE] delay inserted');
-        }
 
         const pathMap = new Map();
-        i = 0;
         for (const tr of tracksData) {
-            i++;
-            console.log(`[QUEUE] processing track ${i}/${n} (resolve path)`);
-            console.log('[QUEUE] getUri start');
             const useFlacStem = useFullFlac && v2Set.has(tr.name) && tr.normalizedReady === true && tr.normalizedUrl;
             let finalPath = '';
             if (useFlacStem) {
@@ -451,10 +425,8 @@ export default function Multitrack() {
             } else {
                 finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
             }
-            console.log('[QUEUE] getUri done');
+            if (!finalPath) return null;
             pathMap.set(tr.name, { path: finalPath, audioBuf: null, rawBuf: null });
-            await prepareYield();
-            console.log('[QUEUE] delay inserted');
         }
         return pathMap;
     }, []);
@@ -550,15 +522,41 @@ export default function Multitrack() {
     const [loginIsRegister, setLoginIsRegister] = useState(false);
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
+    const [showNativePlanModal, setShowNativePlanModal] = useState(false);
+    const [showWelcomeModal, setShowWelcomeModal] = useState(false);
 
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    const [isPadsCollapsed, setIsPadsCollapsed] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
-    const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
-    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
+    const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'stereo'); // 'split' | 'stereo' | 'mono'
+    const [appFontSize, setAppFontSize] = useState(() => {
+        const saved = localStorage.getItem('mixer_appFontSize');
+        if (!saved || saved === '14') return 10;
+        return parseInt(saved);
+    });
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
+
+    const handleSetAudioRoutingMode = useCallback((mode) => {
+        setPanMode(mode);
+        try { localStorage.setItem('mixer_panMode', mode); } catch {}
+        if (tracks && tracks.length > 0) {
+            tracks.forEach(t => {
+                const isClickGuide = isMixerClickStem(t.name) || isMixerGuideStem(t.name);
+                let pan = 0;
+                if (mode === 'split') {
+                    pan = isClickGuide ? -1.0 : 1.0;
+                } else if (mode === 'mono') {
+                    pan = 0.0;
+                } else {
+                    pan = 0.0;
+                }
+                audioEngine.setTrackPan(t.id, pan);
+            });
+        }
+    }, [tracks]);
 
     /** APK nativo: aviso si en Firestore hay una versión más nueva que la embebida en el bundle. */
     const [appUpdateOffer, setAppUpdateOffer] = useState(null);
@@ -851,8 +849,18 @@ export default function Multitrack() {
                 // High-click oscillator (wood block feel)
                 const osc = ctx.createOscillator();
                 const gainNode = ctx.createGain();
+                let panner = null;
+                if (typeof ctx.createStereoPanner === 'function') {
+                    panner = ctx.createStereoPanner();
+                    panner.pan.setValueAtTime(-1.0, clickNextBeatRef.current);
+                }
                 osc.connect(gainNode);
-                gainNode.connect(ctx.destination);
+                if (panner) {
+                    gainNode.connect(panner);
+                    panner.connect(ctx.destination);
+                } else {
+                    gainNode.connect(ctx.destination);
+                }
 
                 osc.type = 'triangle';
                 osc.frequency.setValueAtTime(isAccent ? 1200 : 800, clickNextBeatRef.current);
@@ -937,6 +945,8 @@ export default function Multitrack() {
     const lruOrder = useRef([]);
     const [preloadStatus, setPreloadStatus] = useState({});
     const hasAutoLoaded = useRef(false);
+    const setlistPreloadToken = useRef(0);
+    const songLoadToken = useRef(0);
 
     // Evict the oldest decoded song from RAM when cache is full.
     // NEVER evicts the currently active song (it's playing!).
@@ -944,7 +954,7 @@ export default function Multitrack() {
         while (preloadCache.current.size >= MAX_DECODED_SONGS) {
             // Find the oldest entry that is NOT the active song
             const candidate = lruOrder.current.find(id => id !== activeSongId && preloadCache.current.has(id));
-            if (!candidate) break; // All cached songs are active ΓÇö don't evict anything
+            if (!candidate) break; // All cached songs are active — don't evict anything
             lruOrder.current = lruOrder.current.filter(id => id !== candidate);
             preloadCache.current.delete(candidate);
             setPreloadStatus(prev => { const n = { ...prev }; delete n[candidate]; return n; });
@@ -967,23 +977,19 @@ export default function Multitrack() {
                 if (found) {
                     console.log("Auto-loading last setlist:", found.name);
                     setActiveSetlist(found);
-                    // Preload only the start of the setlist
-                    const subset = (found.songs || []).slice(0, 2);
-                    preloadSetlistSongs(subset);
+                    if (found.songs && found.songs.length > 0) {
+                        const token = ++setlistPreloadToken.current;
+                        preloadSetlistSongs(found.songs, token);
+                        if (!activeSongId) {
+                            handleLoadSong(found.songs[0]);
+                        }
+                    }
                 }
             }
             hasAutoLoaded.current = true;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setlists, activeSetlist]);
-
-    // Preload first 2 songs whenever the active setlist changes (covers manual selection too)
-    useEffect(() => {
-        if (!activeSetlist?.songs?.length) return;
-        const subset = (activeSetlist.songs).slice(0, 2).filter(s => !preloadCache.current.has(s.id));
-        if (subset.length > 0) preloadSetlistSongs(subset);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSetlist?.id]);
 
     // Auto-load a pending song from the Dashboard if present
     useEffect(() => {
@@ -1192,34 +1198,131 @@ export default function Multitrack() {
         }
     };
 
-    const handleSelectSetlist = (list) => {
-        setActiveSetlist(list);
+    const handleSelectSetlist = async (list) => {
+        if (!list) return;
         setIsSetlistMenuOpen(false);
         localStorage.setItem('mixer_lastSetlistId', list.id);
-        // Preload only the start of the setlist
-        const subset = (list.songs || []).slice(0, 2);
-        preloadSetlistSongs(subset);
+
+        // Cancelar inmediatamente descargas y cargas del setlist anterior
+        const newPreloadToken = ++setlistPreloadToken.current;
+        const newLoadToken = ++songLoadToken.current;
+        isPreparingSong = false;
+        if (isAppNative) {
+            audioEngine.setSongPreparationActive(false);
+            setNativePrepareBusy(false);
+            setNativeLoadProgress(null);
+        }
+        setDownloadProgress({ songId: null, text: '' });
+
+        // Detener audio anterior inmediatamente
+        await audioEngine.stop();
+        setIsPlaying(false);
+        progressRef.current = 0;
+
+        setActiveSetlist(list);
+
+        if (list.songs && list.songs.length > 0) {
+            // Cargar de inmediato la primera canción del nuevo setlist
+            handleLoadSong(list.songs[0]);
+            // Descargar en segundo plano las canciones del nuevo setlist
+            preloadSetlistSongs(list.songs, newPreloadToken);
+        } else {
+            setActiveSongId(null);
+            setViewedSongId(null);
+            setTracks([]);
+        }
     };
 
-    // Precarga vecinos al cambiar setlist o la canción activa (antes solo [songs] → no se movía al tocar otra fila).
-    useEffect(() => {
-        if (activeSetlist && activeSetlist.songs) {
-            const currentIndex = activeSetlist.songs.findIndex(s => s.id === activeSongId);
-            const startIdx = Math.max(0, currentIndex === -1 ? 0 : currentIndex);
-            const subset = activeSetlist.songs.slice(startIdx, startIdx + 3);
-            preloadSetlistSongs(subset);
+
+    // Descarga y precarga de canciones del setlist con soporte de cancelación inmediata
+    // En APK / Nativo: descarga stems directo a disco local en segundo plano (Filesystem)
+    // sin decodificar en JS RAM ni saturar C++. Al cambiar de canción ya está en disco y carga en 1-2s.
+    // En Web: IndexedDB + AudioBuffers.
+    const preloadSetlistSongs = async (songs, token) => {
+        if (!songs || !songs.length) return;
+        const currentToken = token ?? ++setlistPreloadToken.current;
+
+        if (typeof window !== 'undefined' && isAppNative) {
+            for (const song of songs) {
+                if (setlistPreloadToken.current !== currentToken) {
+                    console.log('[PRELOAD_NATIVE] Cancelled: setlist changed');
+                    return;
+                }
+                if (!song || !song.id) continue;
+                try {
+                    const formatPlan = await computeNativeSongFormatPlan(song);
+                    if (setlistPreloadToken.current !== currentToken) return;
+
+                    const allLocal = await nativeAllCriticalStemsOnDisk(song, formatPlan);
+                    if (setlistPreloadToken.current !== currentToken) return;
+
+                    if (allLocal) {
+                        setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                        continue;
+                    }
+
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
+                    const downloadableTracks = filterCriticalDownloadableTracks(song.tracks || []);
+                    let songSuccess = true;
+
+                    for (const tr of downloadableTracks) {
+                        if (setlistPreloadToken.current !== currentToken) {
+                            console.log('[PRELOAD_NATIVE] Cancelled mid-song: setlist changed');
+                            return;
+                        }
+                        try {
+                            const useFlacStem = formatPlan?.useFullFlac === true && tr.normalizedReady === true && tr.normalizedUrl;
+                            if (useFlacStem) {
+                                const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                                if (setlistPreloadToken.current !== currentToken) return;
+                                if (!flacCached) {
+                                    const dl = await fetchBlobNative(tr.normalizedUrl);
+                                    if (setlistPreloadToken.current !== currentToken) return;
+                                    if (dl) {
+                                        await NativeEngine.saveTrackBlob(dl, `${song.id}_${tr.name}.flac`);
+                                        await NativeEngine.invalidateLegacyCache(song.id, tr.name);
+                                    } else {
+                                        songSuccess = false;
+                                    }
+                                }
+                            } else {
+                                const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                                if (setlistPreloadToken.current !== currentToken) return;
+                                if (!alreadyHasFile) {
+                                    const dl = await fetchBlobNative(tr.url);
+                                    if (setlistPreloadToken.current !== currentToken) return;
+                                    if (dl) {
+                                        await NativeEngine.saveTrackBlob(dl, `${song.id}_${tr.name}.mp3`);
+                                    } else {
+                                        songSuccess = false;
+                                    }
+                                }
+                            }
+                        } catch (stemErr) {
+                            console.warn(`[PRELOAD_NATIVE] Stem error "${tr.name}" (${song.name}):`, stemErr);
+                            songSuccess = false;
+                        }
+                    }
+
+                    if (setlistPreloadToken.current === currentToken) {
+                        setPreloadStatus(prev => ({ ...prev, [song.id]: songSuccess ? 'ready' : 'error' }));
+                        console.log(`[PRELOAD_NATIVE] "${song.name}" ready on disk: ${songSuccess}`);
+                    }
+                } catch (songErr) {
+                    console.warn(`[PRELOAD_NATIVE] Failed "${song.name}":`, songErr);
+                    if (setlistPreloadToken.current === currentToken) {
+                        setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                    }
+                }
+            }
+            return;
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeSetlist?.songs, activeSongId]);
 
-
-    // Precarga solo en web (IndexedDB + AudioBuffers). En APK desactivado: llenaba memoria y C++ colas → cierres en 4.º tema.
-    const preloadSetlistSongs = async (songs) => {
-        if (typeof window !== 'undefined' && isAppNative) return;
-
+        // Web mode: LRU decodeAudioData cache
         for (const song of songs) {
+            if (setlistPreloadToken.current !== currentToken) return;
             if (preloadCache.current.has(song.id)) {
-                touchLRU(song.id); // Already cached ΓÇö refresh recency
+                touchLRU(song.id); // Already cached — refresh recency
                 continue;
             }
 
@@ -1232,8 +1335,8 @@ export default function Multitrack() {
                 const tracksData = song.tracks || [];
 
                 // Carga secuencial o en batches pequeños para evitar picos de RAM
-                // En lugar de Promise.all, usamos un loop simple o batches
                 for (let i = 0; i < tracksData.length; i += 3) {
+                    if (setlistPreloadToken.current !== currentToken) return;
                     const batch = tracksData.slice(i, i + 3);
                     await Promise.all(batch.map(async (tr) => {
                         if (!tr.url || tr.url === 'undefined') return;
@@ -1276,13 +1379,17 @@ export default function Multitrack() {
                         }
                     }));
                 }
-                preloadCache.current.set(song.id, trackBuffers);
-                touchLRU(song.id);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                console.log(`[PRELOAD] "${song.name}" in Cache. Size: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
+                if (setlistPreloadToken.current === currentToken) {
+                    preloadCache.current.set(song.id, trackBuffers);
+                    touchLRU(song.id);
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                    console.log(`[PRELOAD] "${song.name}" in Cache. Size: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
+                }
             } catch (e) {
                 console.warn(`[PRELOAD] Failed "${song.name}":`, e);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                if (setlistPreloadToken.current === currentToken) {
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                }
             }
         }
     };
@@ -1492,6 +1599,9 @@ export default function Multitrack() {
     };
 
     const handleLoadSong = async (song) => {
+        if (!song || !song.id) return;
+        const myLoadToken = ++songLoadToken.current;
+
         // Evitar carga duplicada si ya está en progreso (ej. de handleDownloadAndAdd)
         if (downloadProgress.songId === song.id) {
             console.log("[SELECT] Canción ya se está descargando/cargando.");
@@ -1506,12 +1616,6 @@ export default function Multitrack() {
         
         const isAppNativeLoad = typeof window !== 'undefined' && !!isAppNative;
 
-        if (isAppNativeLoad && isPreparingSong) {
-            console.log('[PREPARE] ignored, already running');
-            return;
-        }
-
-
         // Nativo: primero cortar polling y audio (antes de setState/render) para no acumular callbacks al bridge.
         if (isAppNativeLoad) {
             isPreparingSong = true;
@@ -1521,7 +1625,7 @@ export default function Multitrack() {
             setNativePrepareBusy(true);
         }
 
-        console.log(`[SELECT] start "${song.name}" (${song.id})`);
+        console.log(`[SELECT] start "${song.name}" (${song.id}) [token=${myLoadToken}]`);
         console.log(`[SELECT] Seleccionando "${song.name}"...`);
         setActiveSongId(song.id);
         setViewedSongId(song.id);
@@ -1553,15 +1657,19 @@ export default function Multitrack() {
             let nativeFormatPlan = null;
             if (isAppNativeLoad) {
                 await prepareStagger();
+                if (songLoadToken.current !== myLoadToken) return;
                 console.log('[PREPARE] begin');
                 nativeFormatPlan = await computeNativeSongFormatPlan(song);
             }
+            if (songLoadToken.current !== myLoadToken) return;
 
             await audioEngine.init();
+            if (songLoadToken.current !== myLoadToken) return;
 
             let cachedBuffers = null;
             if (isAppNativeLoad) {
                 const allStemsLocal = await nativeAllCriticalStemsOnDisk(song, nativeFormatPlan);
+                if (songLoadToken.current !== myLoadToken) return;
                 console.log('[CACHE] all stems local =', allStemsLocal);
                 if (allStemsLocal) {
                     const diskMap = await tryBuildNativeTrackMapFromDisk(song, nativeFormatPlan);
@@ -1581,6 +1689,7 @@ export default function Multitrack() {
                     }
                 }
             }
+            if (songLoadToken.current !== myLoadToken) return;
 
             if (cachedBuffers && cachedBuffers.size > 0) {
                 if (!isAppNativeLoad) touchLRU(song.id);
@@ -1612,7 +1721,9 @@ export default function Multitrack() {
                     console.log('[LOAD] start local session');
                     await prepareYield();
                 }
+                if (songLoadToken.current !== myLoadToken) return;
                 await audioEngine.addTracksBatch(batch);
+                if (songLoadToken.current !== myLoadToken) return;
                 if (isAppNativeLoad) {
                     await prepareYield();
                     console.log('[LOAD] ready');
@@ -1620,18 +1731,18 @@ export default function Multitrack() {
                     deferPreviewMixDownload(song);
                 }
 
-                // ALWAYS: click/guide = left ear (-1), all other tracks = right ear (+1)
-                if (!isAppNativeLoad) {
-                    for (const { id: tId, name: tName } of newTracks) {
-                        const isClickOrGuide = isMixerClickStem(tName) || isMixerGuideStem(tName);
-                        const pan = isClickOrGuide ? -1 : 1;
-                        audioEngine.setTrackPan(tId, pan);
-                    }
+                const savedMode = localStorage.getItem('mixer_panMode') || 'stereo';
+                for (const { id: tId, name: tName } of newTracks) {
+                    const isClickOrGuide = isMixerClickStem(tName) || isMixerGuideStem(tName);
+                    const pan = (savedMode === 'split') ? (isClickOrGuide ? -1 : 1) : 0;
+                    audioEngine.setTrackPan(tId, pan);
                 }
 
-                setTracks(newTracks);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                setAudioReady(prev => prev + 1);
+                if (songLoadToken.current === myLoadToken) {
+                    setTracks(newTracks);
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                    setAudioReady(prev => prev + 1);
+                }
 
                 if (!isAppNativeLoad && activeSetlist?.songs) {
                     const allSongs = activeSetlist.songs;
@@ -1643,6 +1754,8 @@ export default function Multitrack() {
                 }
                 return;
             }
+
+            if (songLoadToken.current !== myLoadToken) return;
 
             setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
@@ -1669,24 +1782,32 @@ export default function Multitrack() {
                 if (isAppNativeLoad) {
                     let ti = 0;
                     for (const tr of downloadableTracks) {
+                        if (songLoadToken.current !== myLoadToken) {
+                            console.log('[LOAD_NATIVE] Cancelled by newer song/setlist selection');
+                            return;
+                        }
                         ti++;
                         console.log(`[QUEUE] processing track ${ti}/${downloadableTracks.length}`);
                         await prepareStagger();
+                        if (songLoadToken.current !== myLoadToken) return;
 
                         let finalPath = '';
                         const blob = null;
+                        const flacUrl = tr.normalizedUrl || tr.normalizedB2Url;
                         const useFlacStem = nativeFormatPlan?.useFullFlac === true
                             && tr.normalizedReady === true
-                            && tr.normalizedUrl;
+                            && !!flacUrl;
                         try {
                             if (useFlacStem) {
                                 const flacCached = await NativeEngine.isNormalizedDownloaded(song.id, tr.name);
+                                if (songLoadToken.current !== myLoadToken) return;
                                 if (flacCached) {
                                     console.log('[QUEUE] getUri start');
                                     finalPath = await NativeEngine.getNormalizedPath(song.id, tr.name);
                                     console.log('[QUEUE] getUri done');
                                 } else {
-                                    const dl = await fetchBlobNative(tr.normalizedUrl);
+                                    const dl = await fetchBlobNative(flacUrl);
+                                    if (songLoadToken.current !== myLoadToken) return;
                                     if (dl) {
                                         finalPath = await NativeEngine.saveTrackBlob(dl, `${song.id}_${tr.name}.flac`);
                                         await NativeEngine.invalidateLegacyCache(song.id, tr.name);
@@ -1694,12 +1815,14 @@ export default function Multitrack() {
                                 }
                             } else {
                                 const alreadyHasFile = await NativeEngine.isTrackDownloaded(song.id, tr.name);
+                                if (songLoadToken.current !== myLoadToken) return;
                                 if (alreadyHasFile) {
                                     console.log('[QUEUE] getUri start');
                                     finalPath = await NativeEngine.getTrackPath(song.id, tr.name);
                                     console.log('[QUEUE] getUri done');
                                 } else {
                                     const dl = await fetchBlobNative(tr.url);
+                                    if (songLoadToken.current !== myLoadToken) return;
                                     if (dl) {
                                         finalPath = await NativeEngine.saveTrackBlob(dl, `${song.id}_${tr.name}.mp3`);
                                     }
@@ -1707,6 +1830,7 @@ export default function Multitrack() {
                             }
                         } catch (e) { console.error("Error loading track file native:", tr.name, e); }
 
+                        if (songLoadToken.current !== myLoadToken) return;
                         const audioBuf = null;
                         trackBuffers.set(tr.name, { path: finalPath, audioBuf, rawBuf: blob });
                         loadedCount++;
@@ -1720,6 +1844,7 @@ export default function Multitrack() {
                         await prepareYield();
                         console.log('[QUEUE] delay inserted');
                     }
+                    if (songLoadToken.current !== myLoadToken) return;
                     console.log('[DOWNLOAD] done');
                     setNativeLoadProgress({
                         songId: song.id,
@@ -1795,7 +1920,9 @@ export default function Multitrack() {
                     console.log('[LOAD] start local session');
                     await prepareYield();
                 }
+                if (songLoadToken.current !== myLoadToken) return;
                 await audioEngine.addTracksBatch(batchMove);
+                if (songLoadToken.current !== myLoadToken) return;
                 if (isAppNativeLoad) {
                     await prepareYield();
                     console.log('[LOAD] ready');
@@ -1815,16 +1942,27 @@ export default function Multitrack() {
                     if (bufDur2 > 1) audioEngine._durationHint = bufDur2;
                 }
 
-                setTracks(newTracksList);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                setAudioReady(prev => prev + 1);
+                if (songLoadToken.current === myLoadToken) {
+                    setTracks(newTracksList);
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+                    setAudioReady(prev => prev + 1);
+
+                    const currentMode = localStorage.getItem('mixer_panMode') || 'stereo';
+                    newTracksList.forEach(t => {
+                        const isClickGuide = isMixerClickStem(t.name) || isMixerGuideStem(t.name);
+                        const pan = (currentMode === 'split') ? (isClickGuide ? -1.0 : 1.0) : 0.0;
+                        audioEngine.setTrackPan(t.id, pan);
+                    });
+                }
 
             } catch (err) {
                 console.error(`[ERROR] No se pudo cargar "${song.name}":`, err);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                if (songLoadToken.current === myLoadToken) {
+                    setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+                }
             }
         } finally {
-            if (isAppNativeLoad) {
+            if (isAppNativeLoad && songLoadToken.current === myLoadToken) {
                 isPreparingSong = false;
                 setNativePrepareBusy(false);
                 audioEngine.setSongPreparationActive(false);
@@ -1847,6 +1985,7 @@ export default function Multitrack() {
     const handleEmailAuthSubmit = async (e) => {
         e.preventDefault();
         setLoginError('');
+        const wasRegistering = loginIsRegister;
         try {
             if (loginIsRegister) {
                 await createUserWithEmailAndPassword(auth, loginEmail, loginPassword);
@@ -1856,6 +1995,9 @@ export default function Multitrack() {
             setShowLoginModal(false);
             setLoginEmail('');
             setLoginPassword('');
+            if (wasRegistering && isAppNative) {
+                setShowWelcomeModal(true);
+            }
             // Automatically handled by the useEffect on [currentUser], but we double call it just in case
             if (typeof window !== 'undefined' && isAppNative) {
                 await ScreenOrientation.lock({ orientation: 'landscape' });
@@ -2505,6 +2647,81 @@ export default function Multitrack() {
                 </div>
             )}
 
+            {/* ── NATIVE SUBSCRIPTION MODAL (Google Play Compliant) ── */}
+            {showNativePlanModal && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)', padding: '20px' }}>
+                    <div style={{ background: '#1c1c1e', padding: '28px', borderRadius: '16px', maxWidth: '420px', width: '100%', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.6)', color: 'white', textAlign: 'center' }}>
+                        <button onClick={() => setShowNativePlanModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
+                        <div style={{ display: 'inline-block', padding: '6px 14px', borderRadius: '20px', background: 'rgba(0,210,211,0.15)', color: '#00d2d3', fontWeight: '800', fontSize: '0.85rem', marginBottom: '14px' }}>
+                            Plan Actual: {(userPlanId || 'FREE').toUpperCase()}
+                        </div>
+                        <h3 style={{ margin: '0 0 10px', fontSize: '1.25rem', fontWeight: '800' }}>Desbloquea Todo el Catálogo VIP</h3>
+                        <p style={{ color: '#94a3b8', fontSize: '0.85rem', lineHeight: '1.5', margin: '0 0 18px' }}>
+                            Disfruta de cientos de multitracks oficiales, almacenamiento en la nube y compatibilidad en todas tus plataformas (Android, iPad, Mac y Windows).
+                        </p>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '10px', padding: '12px 16px', textAlign: 'left', marginBottom: '18px', fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.6' }}>
+                            <div>✨ Catálogo Global VIP completo sin límites</div>
+                            <div>☁️ Sube y sincroniza tus propios temas</div>
+                            <div>🔒 Pagos y suscripciones 100% seguros</div>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '14px', lineHeight: '1.4' }}>
+                            Por políticas de Google Play, las suscripciones se completan de forma segura desde nuestro sitio web oficial.
+                        </div>
+                        <button
+                            onClick={() => {
+                                const emailParam = currentUser?.email ? `?email=${encodeURIComponent(currentUser.email)}` : '';
+                                window.open(`https://zionstage.live/#/subscribe${emailParam}`, '_system');
+                                setShowNativePlanModal(false);
+                            }}
+                            style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #00d2d3, #0984e3)', border: 'none', borderRadius: '10px', color: 'white', fontWeight: '800', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(0,210,211,0.3)' }}
+                        >
+                            <Globe size={18} />
+                            Suscribirme en zionstage.live
+                        </button>
+                        <button
+                            onClick={() => setShowNativePlanModal(false)}
+                            style={{ width: '100%', padding: '10px', background: 'transparent', border: 'none', color: '#64748b', fontSize: '0.85rem', cursor: 'pointer', marginTop: '8px' }}
+                        >
+                            Continuar en la App
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── WELCOME MODAL FOR NEW REGISTERED USERS ── */}
+            {showWelcomeModal && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)', padding: '20px' }}>
+                    <div style={{ background: '#1c1c1e', padding: '28px', borderRadius: '16px', maxWidth: '420px', width: '100%', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.6)', color: 'white', textAlign: 'center' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🎉</div>
+                        <h3 style={{ margin: '0 0 10px', fontSize: '1.3rem', fontWeight: '800' }}>¡Bienvenido a Zion Stage!</h3>
+                        <p style={{ color: '#94a3b8', fontSize: '0.88rem', lineHeight: '1.5', margin: '0 0 16px' }}>
+                            Tu cuenta ha sido creada exitosamente en el <strong>Plan FREE</strong>. Ya puedes cargar tus pistas y mezclar en vivo.
+                        </p>
+                        <p style={{ color: '#cbd5e1', fontSize: '0.82rem', lineHeight: '1.4', margin: '0 0 20px', background: 'rgba(255,255,255,0.05)', padding: '10px 14px', borderRadius: '8px' }}>
+                            Si deseas desbloquear el catálogo de canciones VIP o ampliar tu espacio, puedes adquirir tu suscripción en <strong>zionstage.live</strong>.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button
+                                onClick={() => setShowWelcomeModal(false)}
+                                style={{ width: '100%', padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '10px', color: 'black', fontWeight: '800', fontSize: '0.95rem', cursor: 'pointer' }}
+                            >
+                                Empezar a Mezclar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const emailParam = currentUser?.email ? `?email=${encodeURIComponent(currentUser.email)}` : '';
+                                    window.open(`https://zionstage.live/#/subscribe${emailParam}`, '_system');
+                                    setShowWelcomeModal(false);
+                                }}
+                                style={{ width: '100%', padding: '12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', color: '#00d2d3', fontWeight: '700', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                            >
+                                <Globe size={16} /> Ver Planes en zionstage.live
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ΓöÇΓöÇ PRELOADER OVERLAY ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */}
             {showPreloader && (
                 <div style={{
@@ -2721,12 +2938,9 @@ export default function Multitrack() {
 
             {/* PRIME TOP TRANSPORT HEADER */}
             <div className="transport-bar" style={appUpdateOffer ? { marginTop: '52px' } : undefined}>
-                <div style={{ position: 'absolute', top: '2px', left: '50%', transform: 'translateX(-50%)', fontSize: '10px', color: '#ffea00', fontWeight: 'bold', zIndex: 1000, pointerEvents: 'none', background: 'rgba(0,0,0,0.5)', padding: '0 8px', borderRadius: '4px', letterSpacing: '1px' }}>
-                    V{CURRENT_VERSION} - ZION STAGE ({isAppNative ? 'ZION CORE C++' : (audioEngine.isWASMReady ? 'ZION CORE C++ WASM' : 'WEB AUDIO ENGINE')})
-                </div>
                 {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
                 {(() => {
-                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online'];
+                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online','universal_pro'];
                     const isVip = VIP_IDS.includes(userPlanId);
                     const planLabels = {
                         'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP ⭐',
@@ -2734,26 +2948,32 @@ export default function Multitrack() {
                         'free': 'FREE', 'std1': 'BÁSICO', 'std2': 'ESTÁNDAR',
                         'std3': 'PLUS', 'zion_desktop_pro_local': 'PRO PC',
                         'seller': 'VENDEDOR',
-                        'universal_pro': 'UNIVERSAL PRO ⭐',
+                        'universal_pro': 'UP ⭐',
                     };
                     const label = planLabels[userPlanId] || (userPlanId ? userPlanId.toUpperCase() : 'FREE');
                     return (
                         <div
-                            onClick={() => navigate('/dashboard')}
+                            onClick={() => {
+                                if (isAppNative) {
+                                    setShowNativePlanModal(true);
+                                } else {
+                                    navigate('/dashboard');
+                                }
+                            }}
                             title="Ver mi plan"
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '6px',
-                                height: '34px',
-                                padding: '0 12px',
+                                gap: '4px',
+                                height: '32px',
+                                padding: '0 8px',
                                 borderRadius: '999px',
                                 border: isVip
                                     ? '1px solid rgba(241,196,15,0.6)'
-                                    : '1px solid rgba(100,116,139,0.45)',
+                                    : darkMode ? '1px solid rgba(100,116,139,0.45)' : '1px solid #dbe2e6',
                                 background: isVip
                                     ? 'linear-gradient(135deg, rgba(241,196,15,0.18), rgba(230,126,34,0.14))'
-                                    : 'rgba(15,23,42,0.85)',
+                                    : darkMode ? 'rgba(15,23,42,0.85)' : '#ffffff',
                                 cursor: 'pointer',
                                 flexShrink: 0,
                                 transition: 'all 0.2s',
@@ -2765,7 +2985,7 @@ export default function Multitrack() {
                                 fontSize: '0.72rem',
                                 fontWeight: 900,
                                 letterSpacing: '0.06em',
-                                color: isVip ? '#f1c40f' : '#94a3b8',
+                                color: isVip ? '#f1c40f' : darkMode ? '#94a3b8' : '#334155',
                                 lineHeight: 1,
                                 whiteSpace: 'nowrap',
                             }}>
@@ -2795,7 +3015,7 @@ export default function Multitrack() {
                         padding: '0 6px',
                         height: '38px',
                         flex: '1 1 0',
-                        minWidth: 0,
+                        minWidth: '110px',
                         maxWidth: 'min(240px, 32vw)',
                     }}
                 >
@@ -2945,7 +3165,6 @@ export default function Multitrack() {
                             <QrCode size={20} />
                         </button>
                     )}
-                    <button className="transport-btn" title={t('multitrack.rewind')} onClick={handleRewind}><RefreshCw size={20} /></button>
                     <button
                         className={`transport-btn ${isSettingsOpen ? 'active' : ''}`}
                         onClick={() => setIsSettingsOpen(o => !o)}
@@ -3505,55 +3724,59 @@ export default function Multitrack() {
                     }}
                 >
                     {/* Active Setlist Panel */}
-                    <div className="setlist-panel" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px', flexShrink: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <ListMusic size={20} color="#00bcd4" />
-                                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '800' }}>{activeSetlist?.name || 'Lista de Canciones'}</h3>
+                    <div className="setlist-panel" style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px', marginBottom: '8px', flexShrink: 0, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: '1 1 auto', overflow: 'hidden' }}>
+                                <ListMusic size={18} color="#00bcd4" style={{ flexShrink: 0 }} />
+                                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {activeSetlist?.name || 'Lista de Canciones'}
+                                </h3>
                             </div>
-                            <div style={{ display: 'flex', gap: '6px' }}>
+                            <div style={{ display: 'flex', gap: '4px', flexShrink: 0, alignItems: 'center' }}>
                                 {activeSongId && currentUser && (
                                     <button
                                         onClick={handleSaveMix}
-                                        style={{ background: 'transparent', border: '1px solid #00bcd4', color: '#00bcd4', padding: '6px 12px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}
+                                        style={{ background: 'transparent', border: '1px solid #00bcd4', color: '#00bcd4', padding: '3px 7px', borderRadius: '5px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.7rem', cursor: 'pointer', fontWeight: 'bold' }}
                                         title="Guardar Mezcla de Canción Actual"
                                     >
-                                        <Save size={16} /> Guardar Mix
+                                        <Save size={13} /> Mix
                                     </button>
                                 )}
                                 <button
                                     onClick={() => setIsLibraryMenuOpen(true)}
                                     style={{
-                                        background: 'rgba(155, 89, 182, 0.1)',
+                                        background: 'rgba(155, 89, 182, 0.12)',
                                         color: '#9b59b6',
                                         border: '1px solid rgba(155, 89, 182, 0.3)',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.72rem',
+                                        borderRadius: '5px',
+                                        padding: '3px 7px',
+                                        fontSize: '0.7rem',
                                         fontWeight: '800',
                                         cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
                                         transition: '0.2s'
                                     }}
                                     onMouseEnter={e => { e.currentTarget.style.background = '#9b59b6'; e.currentTarget.style.color = 'white'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(155, 89, 182, 0.1)'; e.currentTarget.style.color = '#9b59b6'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(155, 89, 182, 0.12)'; e.currentTarget.style.color = '#9b59b6'; }}
                                 >
                                     +Canciones
                                 </button>
                                 <button
                                     onClick={() => setIsSetlistMenuOpen(true)}
                                     style={{
-                                        background: 'rgba(0, 188, 212, 0.1)',
+                                        background: 'rgba(0, 188, 212, 0.12)',
                                         color: '#00bcd4',
                                         border: '1px solid rgba(0, 188, 212, 0.3)',
-                                        borderRadius: '6px',
-                                        padding: '4px 10px',
-                                        fontSize: '0.72rem',
+                                        borderRadius: '5px',
+                                        padding: '3px 7px',
+                                        fontSize: '0.7rem',
                                         fontWeight: '800',
                                         cursor: 'pointer',
+                                        whiteSpace: 'nowrap',
                                         transition: '0.2s'
                                     }}
                                     onMouseEnter={e => { e.currentTarget.style.background = '#00bcd4'; e.currentTarget.style.color = 'white'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0, 188, 212, 0.1)'; e.currentTarget.style.color = '#00bcd4'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0, 188, 212, 0.12)'; e.currentTarget.style.color = '#00bcd4'; }}
                                 >
                                     +Setlist
                                 </button>
@@ -3561,9 +3784,9 @@ export default function Multitrack() {
                         </div>
                         <div className="setlist-songs-scroll" style={{ flex: 1, minHeight: 0, overflowX: 'hidden', overflowY: 'auto' }}>
                             {!activeSetlist ? (
-                                <div style={{ textAlign: 'center', padding: '20px', color: '#999' }}>
-                                    <p>No hay un setlist activo.</p>
-                                    <button onClick={() => setIsSetlistMenuOpen(true)} className="action-btn">Mis Setlists</button>
+                                <div style={{ textAlign: 'center', padding: '16px', color: '#999' }}>
+                                    <p style={{ margin: '0 0 10px', fontSize: '0.85rem' }}>No hay un setlist activo.</p>
+                                    <button onClick={() => setIsSetlistMenuOpen(true)} className="action-btn" style={{ padding: '6px 14px', fontSize: '0.8rem' }}>Mis Setlists</button>
                                 </div>
                             ) : (
                                 <DndContext
@@ -3576,7 +3799,7 @@ export default function Multitrack() {
                                         items={(activeSetlist.songs || []).map(s => s.id)}
                                         strategy={verticalListSortingStrategy}
                                     >
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                             {(activeSetlist.songs || []).map((song, idx) => (
                                                 <SortableSongItem
                                                     key={song.id}
@@ -3596,40 +3819,67 @@ export default function Multitrack() {
                         </div>
                     </div>
 
-                    <div className="pads-panel" style={{ flexShrink: 0, marginTop: 'auto', height: 'auto', minHeight: '120px' }}>
-                        <div className="pads-header" style={{ marginBottom: '10px' }}>
-                            <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '45px', height: '45px' }}>
-                                <Power size={22} />
-                            </button>
-                            <div className="pad-title-section">
-                                <h4 className="pad-title">Ambient Pads</h4>
-                                <div className="pad-subtitle" style={{ fontSize: '0.7rem' }}>Fundamental Pads</div>
+                    <div className="pads-panel" style={{ flexShrink: 0, marginTop: 'auto', height: 'auto', minHeight: isPadsCollapsed ? '38px' : '90px', padding: '8px 10px', borderTop: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid #dbe2e6' }}>
+                        <div className="pads-header" style={{ marginBottom: isPadsCollapsed ? '0' : '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button className={`pad-power-btn ${padActive ? 'active' : ''}`} onClick={() => setPadActive(!padActive)} style={{ width: '30px', height: '30px', minWidth: '30px', borderRadius: '6px' }} title="Encender/Apagar Pads">
+                                    <Power size={15} />
+                                </button>
+                                <div className="pad-title-section" style={{ minWidth: 0 }}>
+                                    <h4 className="pad-title" style={{ fontSize: '0.78rem', margin: 0, whiteSpace: 'nowrap' }}>
+                                        Pads {padActive && <span style={{ color: '#00bcd4', fontWeight: '900' }}>({padKey})</span>}
+                                    </h4>
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, margin: '0 12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flex: 1, maxWidth: '140px' }}>
                                 <input
                                     type="range" min="0" max="1" step="0.01"
                                     value={padVolume}
                                     onChange={e => setPadVolume(parseFloat(e.target.value))}
-                                    style={{ flex: 1, accentColor: '#00bcd4', height: '4px' }}
+                                    style={{ flex: 1, accentColor: '#00bcd4', height: '3px' }}
                                     title={`Volumen: ${Math.round(padVolume * 100)}%`}
                                 />
-                                <span style={{ fontSize: '0.6rem', color: '#00bcd4', minWidth: '24px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
+                                <span style={{ fontSize: '0.58rem', color: '#00bcd4', minWidth: '22px', textAlign: 'right' }}>{Math.round(padVolume * 100)}%</span>
                             </div>
-                            <div className="pad-pitch-control">
-                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))}>-</button>
-                                <div className="pad-pitch-val">{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
-                                <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))}>+</button>
-                            </div>
+                            <button
+                                onClick={() => setIsPadsCollapsed(!isPadsCollapsed)}
+                                style={{
+                                    background: darkMode ? 'rgba(255,255,255,0.06)' : '#e2e8f0',
+                                    border: darkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid #cbd5e1',
+                                    borderRadius: '5px',
+                                    color: darkMode ? '#bbb' : '#475569',
+                                    padding: '2px 6px',
+                                    cursor: 'pointer',
+                                    fontSize: '0.65rem',
+                                    fontWeight: '700',
+                                    whiteSpace: 'nowrap'
+                                }}
+                                title={isPadsCollapsed ? "Expandir panel de pads" : "Colapsar pads para ver más canciones"}
+                            >
+                                {isPadsCollapsed ? '▲ Pads' : '▼ Mini'}
+                            </button>
                         </div>
-                        <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)', gap: '5px' }}>
-                            {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
-                                <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '28px', fontSize: '0.75rem' }}>{k}</button>
-                            ))}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                            <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '32px', height: '32px' }}>M</button>
-                            <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '32px', height: '32px' }}>S</button>
-                        </div>
+                        {!isPadsCollapsed && (
+                            <>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '5px' }}>
+                                    <div className="pad-pitch-control" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                        <span style={{ fontSize: '0.62rem', color: darkMode ? '#888' : '#64748b' }}>Octava:</span>
+                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.max(-1, p - 1))} style={{ width: '20px', height: '20px', fontSize: '0.7rem' }}>-</button>
+                                        <div className="pad-pitch-val" style={{ fontSize: '0.7rem', minWidth: '18px', textAlign: 'center' }}>{padPitch > 0 ? `+${padPitch}` : padPitch}</div>
+                                        <button className="pad-pitch-btn" onClick={() => setPadPitch(p => Math.min(1, p + 1))} style={{ width: '20px', height: '20px', fontSize: '0.7rem' }}>+</button>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                        <button className={`pad-ms-btn ${padMute ? 'm-active' : ''}`} onClick={() => setPadMute(!padMute)} style={{ width: '24px', height: '24px', fontSize: '0.65rem' }}>M</button>
+                                        <button className={`pad-ms-btn ${padSolo ? 's-active' : ''}`} onClick={() => setPadSolo(!padSolo)} style={{ width: '24px', height: '24px', fontSize: '0.65rem' }}>S</button>
+                                    </div>
+                                </div>
+                                <div className="pad-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)', gap: '3px' }}>
+                                    {['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'].map(k => (
+                                        <button key={k} className={`pad-key-btn ${padKey === k ? 'active' : ''}`} onClick={() => setPadKey(k)} style={{ height: '24px', fontSize: '0.7rem', padding: '0' }}>{k}</button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </aside>
             </div>
@@ -3683,6 +3933,54 @@ export default function Multitrack() {
                     </div>
                 </div>
 
+                {/* ── 2. Paneo y Salida de Audio ─────────────────────── */}
+                <div className="settings-section">
+                    <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+                        <div className="settings-label">
+                            <div className="settings-icon-wrap" style={{ background: '#f0f8ff' }}>
+                                <Headphones size={16} color="#4299e1" />
+                            </div>
+                            <div>
+                                <div className="settings-title">Salida de Audio y Paneo</div>
+                                <div className="settings-sub">Enrutamiento para consola / monitores</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '10px' }}>
+                        {[
+                            { id: 'split', label: 'L Click / R Pistas', desc: 'Click y Guía por L, pistas musicales por R' },
+                            { id: 'stereo', label: 'Estéreo', desc: 'Separación estéreo natural' },
+                            { id: 'mono', label: 'Mono', desc: 'Todo centrado' }
+                        ].map(opt => (
+                            <button
+                                key={opt.id}
+                                onClick={() => handleSetAudioRoutingMode(opt.id)}
+                                title={opt.desc}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px 4px',
+                                    borderRadius: '8px',
+                                    border: panMode === opt.id ? '2px solid #00bcd4' : '1px solid rgba(255,255,255,0.1)',
+                                    background: panMode === opt.id ? 'rgba(0,188,212,0.15)' : (darkMode ? '#1e293b' : '#f8f9fa'),
+                                    color: panMode === opt.id ? '#00bcd4' : (darkMode ? '#e2e8f0' : '#475569'),
+                                    fontWeight: panMode === opt.id ? '800' : '600',
+                                    fontSize: '0.72rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    textAlign: 'center'
+                                }}
+                            >
+                                {panMode === opt.id && <Check size={12} />}
+                                <span>{opt.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
 
                 {/* ── 3. Tamaño de fuente ────────────────────────────── */}
                 <div className="settings-section">
@@ -3698,7 +3996,7 @@ export default function Multitrack() {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
-                                onClick={() => setAppFontSize(f => Math.max(11, f - 1))}
+                                onClick={() => setAppFontSize(f => Math.max(8, f - 1))}
                                 style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e2e8f0', background: darkMode ? '#3a4a5a' : 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >-</button>
                             <span style={{ fontWeight: '800', fontSize: '1rem', minWidth: '32px', textAlign: 'center', color: '#00bcd4' }}>{appFontSize}</span>
@@ -3766,7 +4064,8 @@ export default function Multitrack() {
                         onClick={() => {
                             setDarkMode(false);
                             setPanMode('mono');
-                            setAppFontSize(14);
+                            setAppFontSize(10);
+                            localStorage.setItem('mixer_appFontSize', '10');
                             setDynamicClick(false);
                             stopDynamicClick();
                         }}
@@ -4040,25 +4339,25 @@ const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isAct
     return (
         <div
             ref={setNodeRef}
-            style={{ ...style, cursor: 'pointer' }}
+            style={{ ...style, cursor: 'pointer', padding: '5px 8px' }}
             className={`setlist-song-item ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
             onClick={onSelect}
         >
-            <div className="song-item-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <div className="song-item-header" style={{ fontSize: '0.8rem', lineHeight: '1.2' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
                     <div {...attributes} {...listeners} style={{ cursor: 'grab', display: 'flex', alignItems: 'center', opacity: 0.5, touchAction: 'none' }} onClick={(e) => e.stopPropagation()}>
-                        <GripVertical size={16} />
+                        <GripVertical size={14} />
                     </div>
-                    <span className="song-index-badge">{idx + 1}</span>
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <span className="song-index-badge" style={{ minWidth: '18px', height: '18px', fontSize: '0.62rem' }}>{idx + 1}</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '700' }}>
                         {song.name}
                     </span>
                 </div>
-                <span style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                <span style={{ display: 'flex', gap: '3px', alignItems: 'center', flexShrink: 0 }}>
                     {pStatus === 'loading' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f39c12', boxShadow: '0 0 5px #f39c12' }} />
-                            <span style={{ fontSize: '0.6rem', color: '#f39c12', fontWeight: '800', textTransform: 'none' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#f39c12', boxShadow: '0 0 4px #f39c12' }} />
+                            <span style={{ fontSize: '0.58rem', color: '#f39c12', fontWeight: '800', textTransform: 'none' }}>
                                 {loadProgress?.phase
                                     ? nativeLoadPhaseLabelEs(loadProgress.phase, loadProgress.loaded, loadProgress.total)
                                     : (loadProgress
@@ -4068,15 +4367,15 @@ const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isAct
                         </div>
                     )}
                     {pStatus === 'ready' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(46, 204, 113, 0.1)', padding: '2px 6px', borderRadius: '10px' }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#2ecc71', boxShadow: '0 0 8px #2ecc71' }} />
-                            <span style={{ fontSize: '0.6rem', color: '#2ecc71', fontWeight: '800', textTransform: 'uppercase' }}>Ready</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(46, 204, 113, 0.1)', padding: '1px 5px', borderRadius: '8px' }}>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#2ecc71', boxShadow: '0 0 6px #2ecc71' }} />
+                            <span style={{ fontSize: '0.58rem', color: '#2ecc71', fontWeight: '800', textTransform: 'uppercase' }}>Ready</span>
                         </div>
                     )}
                     {!pStatus && !isActive && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.6 }}>
-                            <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ff5252' }} />
-                            <span style={{ fontSize: '0.6rem', color: '#ff5252', fontWeight: '800', textTransform: 'uppercase' }}>Off</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.5 }}>
+                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ff5252' }} />
+                            <span style={{ fontSize: '0.58rem', color: '#ff5252', fontWeight: '800', textTransform: 'uppercase' }}>Off</span>
                         </div>
                     )}
                     <button
@@ -4092,23 +4391,23 @@ const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isAct
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            padding: '4px',
-                            marginLeft: '4px',
+                            padding: '2px',
+                            marginLeft: '2px',
                             opacity: 0.7
                         }}
                         title="Eliminar del setlist"
                     >
-                        <Trash2 size={16} />
+                        <Trash2 size={14} />
                     </button>
                 </span>
             </div>
-            <div className="song-item-meta" style={{ marginLeft: '24px' }}>
+            <div className="song-item-meta" style={{ marginLeft: '20px', fontSize: '0.64rem', marginTop: '2px', lineHeight: '1.1' }}>
                 {song.artist && `${song.artist} • `}
                 {rowSongKey && `${rowSongKey} • `}
                 {song.tempo && `${song.tempo} BPM`}
             </div>
             {pStatus === 'loading' && loadProgress && loadProgress.total > 0 && isActive && loadProgress.phase === 'downloading' && (
-                <div style={{ margin: '4px 0 2px 24px', height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                <div style={{ margin: '3px 0 1px 20px', height: '2px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
                     <div style={{
                         height: '100%',
                         width: `${Math.round((loadProgress.loaded / loadProgress.total) * 100)}%`,

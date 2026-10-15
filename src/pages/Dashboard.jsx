@@ -382,7 +382,8 @@ function Dashboard() {
             } else {
                 setUserSongs([]);
                 setUserSetlists([]);
-                navigate('/');
+                const q = typeof window !== 'undefined' && window.location.search ? window.location.search : '';
+                navigate('/subscribe' + q);
             }
         });
         return () => { unsubAuth(); unsubSongs(); unsubSetlists(); unsubUser(); };
@@ -702,6 +703,15 @@ function Dashboard() {
     };
 
     const handlePrepareStripePayment = async (plan, couponOverride) => {
+        // En App Nativa (Android / iOS), Google Play y Apple prohíben procesar pagos directos con Stripe dentro del WebView.
+        // Redirigimos al usuario al sitio web oficial para completar el pago de forma segura y cumplir las normativas.
+        if (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.()) {
+            const emailParam = currentUser?.email ? `?email=${encodeURIComponent(currentUser.email)}` : '';
+            window.open(`https://zionstage.live/#/subscribe${emailParam}`, '_system');
+            setIsPricingModalOpen(false);
+            return;
+        }
+
         const couponToUse = (couponOverride !== undefined ? couponOverride : dashboardCouponInput).trim();
         setPendingPaymentPlan(plan);
         setIsProcessingStripe(true);
@@ -1697,6 +1707,11 @@ function Dashboard() {
                                 </div>
                             ) : (
                                 <div>
+                                    {typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() && (
+                                        <div style={{ background: 'rgba(0, 210, 211, 0.12)', border: '1px solid rgba(0, 210, 211, 0.3)', borderRadius: '12px', padding: '12px 18px', marginBottom: '25px', textAlign: 'center', color: '#00d2d3', fontSize: '0.88rem', lineHeight: '1.4' }}>
+                                            🔒 Por normativas de Google Play, las suscripciones se completan de forma 100% segura en nuestro sitio web oficial. Al pulsar en un plan serás redirigido a <strong>zionstage.live</strong>.
+                                        </div>
+                                    )}
                                     <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
                                         <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
                                             <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Mensual</button>

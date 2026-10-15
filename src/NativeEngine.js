@@ -92,6 +92,8 @@ async function getFilePath(filename) {
 
 // Cache to avoid spamming 'stat' on missing files
 const fileCache = new Set();
+const verifiedValidFiles = new Set();
+const checkedExtensions = new Set();
 let cacheInitialized = false;
 
 // Minimum file size in bytes to consider a track valid (avoids partial/corrupt downloads).
@@ -112,23 +114,29 @@ function isStatMissingFileError(err) {
 
 /**
  * Returns true only if the file exists AND has at least MIN_VALID_TRACK_BYTES bytes.
- * This prevents a partial/truncated download from blocking a fresh re-download.
+ * Uses verifiedValidFiles in-memory Set for instantaneous O(1) lookups.
  */
 async function fileExists(filename) {
+    if (verifiedValidFiles.has(filename)) {
+        return true;
+    }
+
     if (fileCache.has(filename)) {
-        // Even if cached, verify it is still valid on disk (size check).
+        // Cached in directory listing — verify size once and cache in verifiedValidFiles
         try {
             const info = await Filesystem.stat({ path: filename, directory: Directory.Data });
             const size = info?.size ?? 0;
             if (size < MIN_VALID_TRACK_BYTES) {
-                // Corrupted / partial download — evict from cache so it gets re-downloaded.
                 fileCache.delete(filename);
+                verifiedValidFiles.delete(filename);
                 console.warn(`[NativeEngine] fileExists: '${filename}' too small (${size}B), evicting cache.`);
                 return false;
             }
+            verifiedValidFiles.add(filename);
             return true;
         } catch (err) {
             fileCache.delete(filename);
+            verifiedValidFiles.delete(filename);
             return false;
         }
     }
@@ -144,6 +152,7 @@ async function fileExists(filename) {
             return false;
         }
         fileCache.add(filename);
+        verifiedValidFiles.add(filename);
         return true;
     } catch (err) {
         if (!isStatMissingFileError(err)) {
@@ -206,8 +215,15 @@ async function detectAudioExtension(blob, defaultExt = '.mp3') {
 
 async function autoFixFileExtension(songId, trackName) {
     const baseFilename = `${songId}_${trackName}`;
+    if (checkedExtensions.has(baseFilename)) return;
+    checkedExtensions.add(baseFilename);
+
+    // If WAV or FLAC already exists, no need to inspect MP3
+    if (verifiedValidFiles.has(`${baseFilename}.wav`) || verifiedValidFiles.has(`${baseFilename}.flac`)) {
+        return;
+    }
+
     const mp3Filename = `${baseFilename}.mp3`;
-    
     if (!(await fileExists(mp3Filename))) {
         return;
     }
@@ -228,6 +244,7 @@ async function autoFixFileExtension(songId, trackName) {
             try {
                 await Filesystem.deleteFile({ path: newFilename, directory: Directory.Data });
                 fileCache.delete(newFilename);
+                verifiedValidFiles.delete(newFilename);
             } catch {}
             
             await Filesystem.rename({
@@ -236,7 +253,9 @@ async function autoFixFileExtension(songId, trackName) {
                 directory: Directory.Data,
             });
             fileCache.delete(mp3Filename);
+            verifiedValidFiles.delete(mp3Filename);
             fileCache.add(newFilename);
+            verifiedValidFiles.add(newFilename);
             console.log(`[NativeEngine] autoFixFileExtension: Corrected mismatched extension for ${mp3Filename} -> ${newFilename}`);
         }
     } catch (err) {
@@ -247,13 +266,17 @@ async function autoFixFileExtension(songId, trackName) {
 export const NativeEngine = {
     /**
      * Checks if a track is already in the phone storage.
-     * Use this to avoid downloading again.
+     * Uses verifiedValidFiles for 0ms in-memory response when downloaded.
      */
     isTrackDownloaded: async (songId, trackName) => {
+        const base = `${songId}_${trackName}`;
+        if (verifiedValidFiles.has(`${base}.mp3`) || verifiedValidFiles.has(`${base}.wav`) || verifiedValidFiles.has(`${base}.flac`)) {
+            return true;
+        }
         await autoFixFileExtension(songId, trackName);
-        if (await fileExists(`${songId}_${trackName}.mp3`)) return true;
-        if (await fileExists(`${songId}_${trackName}.wav`)) return true;
-        if (await fileExists(`${songId}_${trackName}.flac`)) return true;
+        if (await fileExists(`${base}.mp3`)) return true;
+        if (await fileExists(`${base}.wav`)) return true;
+        if (await fileExists(`${base}.flac`)) return true;
         return false;
     },
 
@@ -261,12 +284,17 @@ export const NativeEngine = {
      * Gets the direct path to a track for the C++ engine.
      */
     getTrackPath: async (songId, trackName) => {
+        const base = `${songId}_${trackName}`;
+        if (verifiedValidFiles.has(`${base}.wav`)) return await getFilePath(`${base}.wav`);
+        if (verifiedValidFiles.has(`${base}.flac`)) return await getFilePath(`${base}.flac`);
+        if (verifiedValidFiles.has(`${base}.mp3`)) return await getFilePath(`${base}.mp3`);
+
         await autoFixFileExtension(songId, trackName);
-        const wavFilename = `${songId}_${trackName}.wav`;
+        const wavFilename = `${base}.wav`;
         if (await fileExists(wavFilename)) return await getFilePath(wavFilename);
-        const flacFilename = `${songId}_${trackName}.flac`;
+        const flacFilename = `${base}.flac`;
         if (await fileExists(flacFilename)) return await getFilePath(flacFilename);
-        const mp3Filename = `${songId}_${trackName}.mp3`;
+        const mp3Filename = `${base}.mp3`;
         return await getFilePath(mp3Filename);
     },
 
@@ -349,6 +377,10 @@ export const NativeEngine = {
         }
 
         fileCache.add(finalFilename);
+        verifiedValidFiles.add(finalFilename);
+        if (finalFilename.lastIndexOf('.') > 0) {
+            checkedExtensions.add(finalFilename.slice(0, finalFilename.lastIndexOf('.')));
+        }
         return await getFilePath(finalFilename);
     },
 
@@ -623,6 +655,7 @@ export const NativeEngine = {
         try {
             await Filesystem.deleteFile({ path: mp3Filename, directory: Directory.Data });
             fileCache.delete(mp3Filename);
+            verifiedValidFiles.delete(mp3Filename);
             console.log('[NativeEngine] Legacy MP3 deleted:', mp3Filename);
         } catch {
             // File didn't exist — nothing to do.
@@ -630,6 +663,7 @@ export const NativeEngine = {
         try {
             await Filesystem.deleteFile({ path: wavFilename, directory: Directory.Data });
             fileCache.delete(wavFilename);
+            verifiedValidFiles.delete(wavFilename);
             console.log('[NativeEngine] Legacy WAV deleted:', wavFilename);
         } catch {
             // File didn't exist — nothing to do.

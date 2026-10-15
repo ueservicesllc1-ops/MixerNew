@@ -1449,7 +1449,11 @@ export default function Multitrack({ session }) {
     const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
-    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
+    const [appFontSize, setAppFontSize] = useState(() => {
+        const saved = localStorage.getItem('mixer_appFontSize');
+        if (!saved || saved === '14') return 10;
+        return parseInt(saved);
+    });
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
 
@@ -5557,7 +5561,7 @@ export default function Multitrack({ session }) {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                             <button
-                                onClick={() => setAppFontSize(f => Math.max(11, f - 1))}
+                                onClick={() => setAppFontSize(f => Math.max(8, f - 1))}
                                 style={{ width: '32px', height: '32px', borderRadius: '8px', border: '1px solid #e2e8f0', background: darkMode ? '#3a4a5a' : 'white', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                             >-</button>
                             <span style={{ fontWeight: '800', fontSize: '1rem', minWidth: '32px', textAlign: 'center', color: '#00bcd4' }}>{appFontSize}</span>
@@ -5625,7 +5629,8 @@ export default function Multitrack({ session }) {
                         onClick={() => {
                             setDarkMode(false);
                             setPanMode('mono');
-                            setAppFontSize(14);
+                            setAppFontSize(10);
+                            localStorage.setItem('mixer_appFontSize', '10');
                             setDynamicClick(false);
                             stopDynamicClick();
                         }}

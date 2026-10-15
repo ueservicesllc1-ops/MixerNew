@@ -53,6 +53,8 @@ body {
   max-width: 100%;
   overflow-x: hidden;
   transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: #ebf0f4;
+  color: #3f4e5e;
 }
 
 body.dark-mode {
@@ -181,7 +183,14 @@ div:has(> .avatar-overlay):hover {
   padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
   box-sizing: border-box;
   overflow: hidden;
+  background-color: #ebf0f4;
+  color: #3f4e5e;
   /* Prevent body scroll, use child scroll */
+}
+
+body.dark-mode .multitrack-layout {
+  background-color: #0f172a;
+  color: #e2e8f0;
 }
 
 /* Multitrack (#/multitrack y #/desktop): columna central + sidebar con altura completa */
@@ -316,14 +325,51 @@ div:has(> .avatar-overlay):hover {
 }
 
 @media (max-width: 1100px) {
-  .multitrack-main-layout .transport-bar {
-    padding: 6px 10px;
-    gap: 10px;
+  .multitrack-main-layout .transport-bar,
+  .multitrack-layout .transport-bar {
+    padding: 4px 8px;
+    gap: 6px;
+    min-height: 44px;
   }
 
-  .multitrack-main-layout .audio-info {
-    flex-wrap: wrap;
-    row-gap: 6px;
+  .transport-bar .controls-group.multitrack-main-transport {
+    gap: 6px;
+  }
+
+  .transport-bar .controls-group.multitrack-main-transport .transport-btn {
+    width: 44px !important;
+    height: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    border-radius: 8px !important;
+  }
+
+  .transport-bar .controls-group.multitrack-main-transport .transport-btn svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .transport-bar .transport-btn {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .master-fader-mini {
+    min-width: 110px !important;
+    max-width: 170px !important;
+    height: 34px !important;
+    padding: 0 4px !important;
+  }
+
+  .multitrack-main-layout .audio-info,
+  .multitrack-layout .audio-info {
+    gap: 2px;
+    padding: 0 4px;
+  }
+
+  .multitrack-layout .sidebar.desktop-only {
+    width: clamp(230px, 28vw, 360px) !important;
+    min-width: 210px !important;
   }
 }
 
@@ -607,11 +653,11 @@ body.dark-mode .audio-info button {
 .waveform-section {
   width: 100%;
   height: 96px;
-  background: #0f172a;
+  background: #ffffff;
   border-radius: 12px;
   margin-bottom: 8px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: var(--shadow-soft);
+  border: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -619,6 +665,12 @@ body.dark-mode .audio-info button {
   position: relative;
   flex-shrink: 0;
   transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+body.dark-mode .waveform-section {
+  background: #0f172a;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 .waveform-section:hover {
@@ -1580,9 +1632,9 @@ body.dark-mode .right-panel-item {
 
 /* INNER SETLIST SONGS */
 .setlist-song-item {
-  padding: 8px 12px;
+  padding: 5px 8px;
   background: white;
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid rgba(0, 0, 0, 0.05);
@@ -1620,7 +1672,8 @@ body.dark-mode .right-panel-item {
 
 .song-item-header {
   font-weight: 800;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
   color: #4a5568;
   display: flex;
   justify-content: space-between;
@@ -1631,12 +1684,12 @@ body.dark-mode .right-panel-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
+  min-width: 18px;
+  height: 18px;
   background: #edf2f7;
   color: #718096;
-  font-size: 0.7rem;
-  border-radius: 6px;
+  font-size: 0.62rem;
+  border-radius: 5px;
   font-weight: 900;
   flex-shrink: 0;
 }
@@ -1656,9 +1709,11 @@ body.dark-mode .song-index-badge {
 }
 
 .song-item-meta {
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   color: #a0aec0;
   font-weight: 500;
+  line-height: 1.1;
+  margin-top: 1px;
 }
 
 .setlist-song-item.active .song-item-meta {

@@ -676,10 +676,10 @@ export default function Landing() {
                             {t('nav.windows')}
                         </span>
                         <span
-                            onClick={() => document.getElementById('precios')?.scrollIntoView({ behavior: 'smooth' })}
-                            style={{ cursor: 'pointer', color: '#94a3b8', transition: 'color 0.2s', textDecoration: 'none' }}
-                            onMouseEnter={e => e.target.style.color = '#f1c40f'}
-                            onMouseLeave={e => e.target.style.color = '#94a3b8'}
+                            onClick={() => navigate('/subscribe')}
+                            style={{ cursor: 'pointer', color: '#f1c40f', transition: 'color 0.2s', textDecoration: 'none', fontWeight: 'bold' }}
+                            onMouseEnter={e => e.target.style.color = '#fff'}
+                            onMouseLeave={e => e.target.style.color = '#f1c40f'}
                         >
                             {t('nav.prices')}
                         </span>
@@ -1306,6 +1306,29 @@ export default function Landing() {
                                 </div>
                             );
                         })}
+                    </div>
+
+                    <div style={{ textAlign: 'center', marginTop: '45px' }}>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/subscribe')}
+                            style={{
+                                padding: '16px 36px',
+                                borderRadius: '30px',
+                                border: 'none',
+                                background: 'linear-gradient(135deg, #00d2d3, #0984e3)',
+                                color: 'white',
+                                fontWeight: 800,
+                                fontSize: '1.05rem',
+                                cursor: 'pointer',
+                                boxShadow: '0 8px 30px rgba(0,210,211,0.3)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '10px'
+                            }}
+                        >
+                            <Sparkles size={20} /> Ver Planes y Activar Suscripción
+                        </button>
                     </div>
                 </div>
             </section >

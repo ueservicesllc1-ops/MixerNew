@@ -76,8 +76,10 @@ static bool utf8ContainsKeywordInsensitive(const std::string& hay, const char* n
 /** Click / guía / guide stems → one output side; everything else → the other (see clickGuideOnLeft). */
 static bool classifyStemClickOrGuide(const std::string& id, const std::string& path) {
     const std::string blob = id + " " + path;
-    return utf8ContainsKeywordInsensitive(blob, "click") || utf8ContainsKeywordInsensitive(blob, "guia") ||
-           utf8ContainsKeywordInsensitive(blob, "guide");
+    return utf8ContainsKeywordInsensitive(blob, "click") || utf8ContainsKeywordInsensitive(blob, "clik") ||
+           utf8ContainsKeywordInsensitive(blob, "clic") || utf8ContainsKeywordInsensitive(blob, "metronom") ||
+           utf8ContainsKeywordInsensitive(blob, "guia") || utf8ContainsKeywordInsensitive(blob, "guide") ||
+           utf8ContainsKeywordInsensitive(blob, "cue");
 }
 
 /** Stable build: realtime tempo (SoundTouch tempo + Tempo Lab) off; pitch post-mix unchanged. */
@@ -432,15 +434,26 @@ struct NextGenMultitrackEngine::Impl {
             } else if (panVal > 0.f) {
                 panL = 1.f - panVal;
             }
+
+            const bool isHardSplit = (panVal <= -0.99f || panVal >= 0.99f);
+
             for (ma_uint32 f = 0; f < nFrames; ++f) {
-                const float L = mix_temp_[(size_t)f * 2];
-                const float R = mix_temp_[(size_t)f * 2 + 1];
-                const float m = 0.5f * (L + R);
-                const float pk = std::max(std::fabs(L), std::fabs(R)) * gAbs;
+                const float inL = mix_temp_[(size_t)f * 2];
+                const float inR = mix_temp_[(size_t)f * 2 + 1];
+                const float pk = std::max(std::fabs(inL), std::fabs(inR)) * gAbs;
                 if (pk > blockPeak) blockPeak = pk;
+
                 const size_t base = (size_t)f * 2;
-                preMix_[base + 0] += m * g * panL;
-                preMix_[base + 1] += m * g * panR;
+                if (isHardSplit) {
+                    // Split mode: mix mono to assigned channel
+                    const float m = 0.5f * (inL + inR);
+                    preMix_[base + 0] += m * g * panL;
+                    preMix_[base + 1] += m * g * panR;
+                } else {
+                    // Natural Stereo mode: retain original L & R phase and separation
+                    preMix_[base + 0] += inL * g * panL;
+                    preMix_[base + 1] += inR * g * panR;
+                }
             }
             {
                 const float prev = stem->vuPeak.load(std::memory_order_relaxed);
@@ -501,7 +514,7 @@ struct NextGenMultitrackEngine::Impl {
                 ch->solo.store(false);
                 ch->ended.store(false);
                 ch->routeClickGuide = classifyStemClickOrGuide(ch->id, ch->path);
-                ch->pan.store(ch->routeClickGuide ? -1.f : 1.f);
+                ch->pan.store(0.f);
 
                 ma_decoder_config decCfg = ma_decoder_config_init(ma_format_f32, kChannels, kSampleRate);
                 NGD("decoder init: id=%s path=%s", ch->id.c_str(), ch->path.c_str());
@@ -516,27 +529,8 @@ struct NextGenMultitrackEngine::Impl {
                     ch->lengthFrames = len;
                     if (len > duration_frames) duration_frames = len;
                 }
-
-                // ── MP3 encoder-delay trim ────────────────────────────────────────────
-                // LAME and most MP3 encoders prepend 576–1152 garbage/silence frames
-                // (encoder delay).  Web browsers trim these automatically via iTunSMPB
-                // ID3 tags; miniaudio does not.  Seek past them so every stem on
-                // Android starts at the same true position 0 as on the web app.
-                // 1152 frames @ 44100 Hz = ~26 ms — inaudible and safe for all encoders.
-                static constexpr ma_uint64 kEncoderDelayFrames = 1152;
-                if (ch->lengthFrames > kEncoderDelayFrames * 2) {
-                    ma_result sr = ma_decoder_seek_to_pcm_frame(&ch->decoder, kEncoderDelayFrames);
-                    if (sr != MA_SUCCESS) {
-                        // Non-fatal: fallback to frame 0 (old behavior)
-                        NGD("encoder-delay seek failed (%d) for %s — playing from frame 0",
-                            (int)sr, ch->id.c_str());
-                        ma_decoder_seek_to_pcm_frame(&ch->decoder, 0);
-                    } else {
-                        NGD("encoder-delay trim: skipped %llu frames for %s",
-                            (unsigned long long)kEncoderDelayFrames, ch->id.c_str());
-                    }
-                }
-                // ─────────────────────────────────────────────────────────────────────
+                // All stems start at frame 0 (natural beginning of file, guaranteed lockstep sync for all stems regardless of WAV, FLAC, or MP3)
+                ma_decoder_seek_to_pcm_frame(&ch->decoder, 0);
 
                 NGD("decoder OK: id=%s lenFrames=%llu", ch->id.c_str(), (unsigned long long)ch->lengthFrames);
                 if (ch->routeClickGuide) {
@@ -596,11 +590,7 @@ struct NextGenMultitrackEngine::Impl {
         transport.store(0);
         for (auto& up : stems_) {
             if (!up || !up->decoderOk) continue;
-            // Seek to encoder-delay-trimmed start (same as initial load).
-            static constexpr ma_uint64 kEncoderDelayFrames = 1152;
-            const ma_uint64 startFrame = (up->lengthFrames > kEncoderDelayFrames * 2)
-                                         ? kEncoderDelayFrames : 0;
-            ma_decoder_seek_to_pcm_frame(&up->decoder, startFrame);
+            ma_decoder_seek_to_pcm_frame(&up->decoder, 0);
             up->ended.store(false);
         }
         playhead_frames.store(0);
@@ -643,10 +633,7 @@ struct NextGenMultitrackEngine::Impl {
         if (seconds < 0.0) seconds = 0.0;
         if (duration_frames > 0 && seconds > durationSec) seconds = durationSec;
 
-        // Add encoder delay offset so seek position 0 still skips predelay garbage.
-        static constexpr ma_uint64 kEncoderDelayFrames = 1152;
-        const ma_uint64 delayOffset = kEncoderDelayFrames; // always offset (stems too short = no seek on load)
-        const ma_uint64 seekFrame = (ma_uint64)(seconds * (double)kSampleRate + 0.5) + delayOffset;
+        const ma_uint64 seekFrame = (ma_uint64)(seconds * (double)kSampleRate + 0.5);
 
         // Reposition each stem decoder. Independent decoders → parallel seeks reduce wall time vs
         // sequential (common delay source: MP3/FLAC internal seek + disk).
@@ -667,7 +654,7 @@ struct NextGenMultitrackEngine::Impl {
             f.get();
         }
 
-        playhead_frames.store(seekFrame - delayOffset); // report UI position without offset
+        playhead_frames.store(seekFrame);
         pitch_st_.clear();
         st_pending_.clear(); // flush drain buffer after seek to avoid pre-seek audio leaking
         pitch_applied_st_.store(1e6f);
