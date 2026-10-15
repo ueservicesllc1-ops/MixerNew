@@ -743,6 +743,7 @@ export default function Multitrack() {
     }, []);
 
     // ΓöÇΓöÇ PADS SYSTEM STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    const [masterVolume, setMasterVolume] = useState(1);
     const [padActive, setPadActive] = useState(false);
     const [padKey, setPadKey] = useState('C');
     const [padPitch, setPadPitch] = useState(0);
@@ -2371,7 +2372,6 @@ export default function Multitrack() {
         }
     };
 
-    const [masterVolume, setMasterVolume] = useState(1);
     const handleMasterVolume = (e) => {
         const val = parseFloat(e.target.value);
         setMasterVolume(val);
