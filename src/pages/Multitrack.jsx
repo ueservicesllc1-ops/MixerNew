@@ -208,195 +208,439 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
         );
     }, [libraryTab, librarySongs, globalSongs, searchQuery, shouldHideFromVipGlobal]);
 
+    const globalSongsCount = React.useMemo(() => (
+        globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length
+    ), [globalSongs, shouldHideFromVipGlobal]);
+
     return (
         <div className={`library-drawer ${isOpen ? 'open' : ''}`}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2>Pistas en la Nube</h2>
-                <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: '2.5rem', cursor: 'pointer', color: '#666', padding: '10px' }}>&times;</button>
-            </div>
+            <div className="library-split-layout">
+                {/* ── PANEL IZQUIERDO: Búsqueda, Filtros y Pestañas ── */}
+                <div className="library-left-sidebar">
+                    {/* Header Izquierdo */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{
+                                width: '38px', height: '38px', borderRadius: '10px',
+                                background: 'linear-gradient(135deg, #9b59b6, #8e44ad)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                color: '#fff', boxShadow: '0 4px 10px rgba(155, 89, 182, 0.3)'
+                            }}>
+                                <Globe size={20} />
+                            </div>
+                            <div>
+                                <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>Pistas en la Nube</h2>
+                                <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                    {activeSetlist?.name ? `Destino: ${activeSetlist.name}` : 'Catálogo multitrack'}
+                                </div>
+                            </div>
+                        </div>
+                        {/* Botón cerrar visible para móviles */}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="library-mobile-close-btn"
+                            title="Cerrar"
+                            style={{
+                                background: 'transparent',
+                                border: 'none',
+                                fontSize: '2rem',
+                                cursor: 'pointer',
+                                color: '#94a3b8',
+                                padding: '4px 8px',
+                                lineHeight: 1
+                            }}
+                        >
+                            &times;
+                        </button>
+                    </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-                {/* TABS CON CONTADOR SIEMPRE VISIBLE Y BOTON SINCRONIZAR */}
-                <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', background: '#f0f0f0', padding: '4px', borderRadius: '8px', alignItems: 'center' }}>
-                    <button
-                        onClick={() => onTabChange('mine')}
-                        style={{ flex: 1, padding: '9px', background: libraryTab === 'mine' ? '#00d2d3' : 'transparent', color: libraryTab === 'mine' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                    >
-                        🎵 Mi Librería ({librarySongs.length})
-                    </button>
-                    <button
-                        onClick={() => onTabChange('global')}
-                        style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                    >
-                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
-                    </button>
+                    {/* TABS: Mi Librería / Global VIP */}
+                    <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', background: 'rgba(0,0,0,0.05)', padding: '4px', borderRadius: '10px' }}>
+                        <button
+                            type="button"
+                            onClick={() => onTabChange('mine')}
+                            style={{
+                                flex: 1,
+                                padding: '10px 6px',
+                                background: libraryTab === 'mine' ? 'linear-gradient(135deg, #00d2d3, #00b4d8)' : 'transparent',
+                                color: libraryTab === 'mine' ? '#ffffff' : '#64748b',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontWeight: '700',
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                boxShadow: libraryTab === 'mine' ? '0 2px 8px rgba(0, 210, 211, 0.35)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px'
+                            }}
+                        >
+                            <span>🎵 Mi Librería</span>
+                            <span style={{
+                                fontSize: '0.7rem',
+                                padding: '2px 6px',
+                                borderRadius: '10px',
+                                background: libraryTab === 'mine' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
+                                color: libraryTab === 'mine' ? '#ffffff' : '#64748b'
+                            }}>
+                                {librarySongs.length}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onTabChange('global')}
+                            style={{
+                                flex: 1,
+                                padding: '10px 6px',
+                                background: libraryTab === 'global' ? 'linear-gradient(135deg, #9b59b6, #8e44ad)' : 'transparent',
+                                color: libraryTab === 'global' ? '#ffffff' : '#64748b',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontWeight: '700',
+                                fontSize: '0.8rem',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s',
+                                boxShadow: libraryTab === 'global' ? '0 2px 8px rgba(155, 89, 182, 0.35)' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '5px'
+                            }}
+                        >
+                            <span>🌐 Global VIP</span>
+                            <span style={{
+                                fontSize: '0.7rem',
+                                padding: '2px 6px',
+                                borderRadius: '10px',
+                                background: libraryTab === 'global' ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.06)',
+                                color: libraryTab === 'global' ? '#ffffff' : '#64748b'
+                            }}>
+                                {globalSongsCount}
+                            </span>
+                        </button>
+                    </div>
+
+                    {/* Botón Sincronizar */}
                     {onSyncGlobal && (
                         <button
+                            type="button"
                             onClick={onSyncGlobal}
                             disabled={globalCatalogLoading}
                             title="Sincronizar nuevas canciones desde la nube"
                             style={{
-                                padding: '9px 12px',
-                                background: '#e2e8f0',
-                                color: '#334155',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontWeight: 'bold',
+                                width: '100%',
+                                padding: '8px 12px',
+                                background: 'rgba(0, 188, 212, 0.08)',
+                                color: '#00bcd4',
+                                border: '1px solid rgba(0, 188, 212, 0.25)',
+                                borderRadius: '8px',
+                                fontWeight: '700',
                                 fontSize: '0.78rem',
                                 cursor: globalCatalogLoading ? 'default' : 'pointer',
                                 display: 'flex',
                                 alignItems: 'center',
-                                gap: '4px',
+                                justifyContent: 'center',
+                                gap: '6px',
                                 transition: '0.2s',
-                                opacity: globalCatalogLoading ? 0.6 : 1
+                                opacity: globalCatalogLoading ? 0.6 : 1,
+                                marginBottom: '14px'
                             }}
                         >
-                            <RefreshCw size={13} className={globalCatalogLoading ? 'animate-spin' : ''} />
-                            <span>{globalCatalogLoading ? '...' : 'Sincronizar'}</span>
+                            <RefreshCw size={14} className={globalCatalogLoading ? 'animate-spin' : ''} />
+                            <span>{globalCatalogLoading ? 'Sincronizando...' : 'Sincronizar Catálogo'}</span>
                         </button>
                     )}
-                </div>
 
-                {/* Buscador */}
-                <div style={{ marginBottom: '12px', position: 'relative' }}>
-                    <input
-                        type="text"
-                        placeholder={libraryTab === 'mine' ? "Buscar en mi librería..." : "Buscar pistas Global (VIP)..."}
-                        value={searchQuery}
-                        onChange={e => onSearchChange(e.target.value)}
-                        style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e2e8f0', background: '#fff', color: '#333', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => onSearchChange('')}
-                            style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
-                        >
-                            <X size={16} />
-                        </button>
-                    )}
-                </div>
-
-                <div style={{ flex: 1, backgroundColor: '#fafafa', borderRadius: '8px', border: '1px dashed #ccc', padding: '10px', overflowY: 'auto' }}>
-                    {!currentUser ? (
-                        <div style={{ textAlign: 'center', color: '#888', marginTop: '20px', fontSize: '0.9rem' }}>
-                            Debes iniciar sesión para ver la librería.
+                    {/* BUSCADOR (Lado izquierdo, para escribir con teclado a la izquierda) */}
+                    <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: '700', color: '#64748b', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            Buscar Canción
                         </div>
-                    ) : globalCatalogLoading ? (
-                        <div style={{ textAlign: 'center', color: '#666', marginTop: '40px', fontSize: '0.95rem' }}>
-                            Cargando catálogo Global…
-                        </div>
-                    ) : baseSongs.length === 0 ? (
-                        <div style={{ textAlign: 'center', color: '#666', marginTop: '30px', padding: '0 20px' }}>
-                            {searchQuery ? (
-                                <div style={{ fontSize: '0.9rem' }}>No se encontraron coincidencias para "{searchQuery}".</div>
-                            ) : libraryTab === 'mine' ? (
-                                <>
-                                    <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
-                                    {!isAppNative && (
-                                        <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
-                                            Para subir tus propias canciones, ingresa desde tu computadora a:<br />
-                                            <a href="https://zionstage.live/#/dashboard" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>zionstage.live</a>
-                                        </div>
-                                    )}
-                                </>
-                            ) : libraryTab === 'global' && globalCatalogDocCount > 0 ? (
-                                <div style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#555' }}>
-                                    Hay {globalCatalogDocCount} tema(s) en el catálogo Global VIP, pero ninguno trae{' '}
-                                    <strong>pistas multitrack</strong> en Firestore. Solo se listan canciones con al menos una pista.
-                                </div>
-                            ) : (
-                                <div style={{ fontSize: '0.9rem', lineHeight: 1.45, color: '#555' }}>
-                                    No hay canciones Global VIP con pistas. Las publicadas en el marketplace aparecen aquí cuando tienen{' '}
-                                    <code style={{ fontSize: '0.85rem' }}>isGlobal</code> y archivos en <code style={{ fontSize: '0.85rem' }}>tracks</code>.
-                                </div>
+                        <form onSubmit={(e) => { e.preventDefault(); }} style={{ position: 'relative', margin: 0 }}>
+                            <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
+                                <Search size={18} />
+                            </div>
+                            <input
+                                id="library-search-input"
+                                type="text"
+                                placeholder={libraryTab === 'mine' ? "Buscar en mi librería..." : "Buscar pistas Global (VIP)..."}
+                                value={searchQuery}
+                                onChange={e => onSearchChange(e.target.value)}
+                                enterKeyHint="search"
+                                autoComplete="off"
+                                autoCorrect="off"
+                                spellCheck="false"
+                                className="library-search-input"
+                                style={{
+                                    width: '100%',
+                                    padding: '11px 36px 11px 38px',
+                                    borderRadius: '10px',
+                                    border: '1.5px solid #cbd5e1',
+                                    background: '#ffffff',
+                                    color: '#1e293b',
+                                    fontSize: '0.92rem',
+                                    outline: 'none',
+                                    boxSizing: 'border-box',
+                                    transition: 'all 0.2s',
+                                    boxShadow: '0 2px 4px rgba(0,0,0,0.03)'
+                                }}
+                            />
+                            {searchQuery && (
+                                <button
+                                    type="button"
+                                    onClick={() => onSearchChange('')}
+                                    title="Borrar texto"
+                                    style={{
+                                        position: 'absolute',
+                                        right: '8px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        border: 'none',
+                                        background: 'rgba(0,0,0,0.06)',
+                                        borderRadius: '50%',
+                                        color: '#64748b',
+                                        cursor: 'pointer',
+                                        width: '24px',
+                                        height: '24px',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        padding: 0
+                                    }}
+                                >
+                                    <X size={14} />
+                                </button>
                             )}
+                        </form>
+                    </div>
+
+                    {/* Guía / Tip / Resumen */}
+                    <div style={{
+                        marginTop: 'auto',
+                        padding: '12px 14px',
+                        borderRadius: '10px',
+                        background: 'rgba(155, 89, 182, 0.06)',
+                        border: '1px solid rgba(155, 89, 182, 0.18)',
+                        fontSize: '0.78rem',
+                        color: '#64748b',
+                        lineHeight: '1.45'
+                    }}>
+                        <div style={{ fontWeight: '700', color: '#9b59b6', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span>✨ Búsqueda en tiempo real</span>
                         </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            {baseSongs.map(song => {
-                                const qState = downloadQueueState[song.id];
-                                const isDownloading = qState?.status === 'downloading' || downloadProgress?.songId === song.id;
-                                const isQueued = qState?.status === 'queued';
-                                const isCompleted = qState?.status === 'completed';
-                                const isError = qState?.status === 'error';
-                                const isOtherUser = song.userId !== currentUser?.uid;
-                                const listSongKey = getSongMusicalKey(song);
+                        <div>
+                            Escribe aquí y verás los resultados a la derecha para seleccionarlos directamente sin que el teclado los tape.
+                        </div>
+                        {activeSetlist && (
+                            <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed rgba(155, 89, 182, 0.2)', fontSize: '0.74rem' }}>
+                                <span>Añadir a: </span>
+                                <strong style={{ color: '#0ea5e9' }}>{activeSetlist.name}</strong>
+                            </div>
+                        )}
+                    </div>
+                </div>
 
-                                // Si la canción ya está en el setlist activo o se acaba de completar
-                                const isInSetlist = activeSetlist?.songs?.some(s => s.id === song.id) || isCompleted;
+                {/* ── PANEL DERECHO: Resultados de la Búsqueda ── */}
+                <div className="library-right-results">
+                    {/* Header de Resultados */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ fontSize: '1.1rem', fontWeight: 800 }}>
+                                {searchQuery ? `Resultados para "${searchQuery}"` : (libraryTab === 'mine' ? 'Mis Canciones' : 'Catálogo Global VIP')}
+                            </span>
+                            <span style={{
+                                fontSize: '0.78rem',
+                                padding: '3px 10px',
+                                borderRadius: '12px',
+                                background: 'rgba(155, 89, 182, 0.12)',
+                                color: '#9b59b6',
+                                fontWeight: 700
+                            }}>
+                                {baseSongs.length} {baseSongs.length === 1 ? 'canción' : 'canciones'}
+                            </span>
+                        </div>
 
-                                let btnText = '➕ Añadir';
-                                let btnBg = '#2ecc71';
-                                let btnDisabled = false;
+                        {/* Botón Cerrar (grande, fácil de tocar en tablet) */}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            title="Cerrar (ESC)"
+                            style={{
+                                width: '42px',
+                                height: '42px',
+                                borderRadius: '10px',
+                                background: 'rgba(0,0,0,0.06)',
+                                border: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                color: '#64748b',
+                                transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)'; e.currentTarget.style.color = '#ef4444'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = '#64748b'; }}
+                        >
+                            <X size={22} />
+                        </button>
+                    </div>
 
-                                if (isDownloading) {
-                                    btnText = '⏳ Bajando...';
-                                    btnBg = '#f39c12';
-                                    btnDisabled = true;
-                                } else if (isQueued) {
-                                    btnText = qState?.text || '🕒 En cola';
-                                    btnBg = '#3498db';
-                                    btnDisabled = true;
-                                } else if (isInSetlist) {
-                                    btnText = '✓ En Setlist';
-                                    btnBg = '#27ae60';
-                                    btnDisabled = true;
-                                } else if (isError) {
-                                    btnText = '⚠️ Reintentar';
-                                    btnBg = '#e74c3c';
-                                    btnDisabled = false;
-                                }
-
-                                const progressMsg = isDownloading
-                                    ? (qState?.text || downloadProgress?.text || 'Bajando pistas...')
-                                    : isQueued
-                                        ? (qState?.text || 'En cola de descarga...')
-                                        : isError
-                                            ? (qState?.text || 'Error en descarga')
-                                            : null;
-
-                                return (
-                                    <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
-                                        <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
-                                            <h4 style={{ margin: '0 0 3px 0', color: '#333', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.name}</h4>
-                                            <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                                                {isOtherUser && song.uploadedBy && <span style={{ color: '#9b59b6', fontWeight: 'bold', marginRight: '6px' }}>👤 {song.uploadedBy}</span>}
-                                                {song.artist && `${song.artist} • `}
-                                                {listSongKey && `${listSongKey} • `}
-                                                {song.tempo && `${song.tempo} BPM`}
-                                            </div>
-                                            {progressMsg && (
-                                                <div style={{ color: isError ? '#e74c3c' : isQueued ? '#3498db' : '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                                    {progressMsg}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <button
-                                            style={{
-                                                background: btnBg,
-                                                color: 'white',
-                                                border: 'none',
-                                                padding: '8px 12px',
-                                                borderRadius: '6px',
-                                                cursor: btnDisabled ? 'default' : 'pointer',
-                                                fontSize: '0.8rem',
-                                                fontWeight: 'bold',
-                                                whiteSpace: 'nowrap',
-                                                flexShrink: 0,
-                                                transition: 'all 0.2s',
-                                                opacity: btnDisabled && !isDownloading && !isQueued ? 0.8 : 1
-                                            }}
-                                            title="Añadir a Setlist y Guardar Local"
-                                            onClick={() => !btnDisabled && onDownloadAdd(song)}
-                                            disabled={btnDisabled}
-                                        >
-                                            {btnText}
-                                        </button>
+                    {/* Contenedor de Resultados con Scroll */}
+                    <div className="library-results-scroll">
+                        {!currentUser ? (
+                            <div style={{ textAlign: 'center', color: '#888', marginTop: '40px', fontSize: '0.95rem' }}>
+                                Debes iniciar sesión para ver la librería.
+                            </div>
+                        ) : globalCatalogLoading ? (
+                            <div style={{ textAlign: 'center', color: '#666', marginTop: '60px', fontSize: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                <RefreshCw size={28} className="animate-spin" style={{ color: '#9b59b6' }} />
+                                <span>Cargando catálogo Global VIP…</span>
+                            </div>
+                        ) : baseSongs.length === 0 ? (
+                            <div style={{ textAlign: 'center', color: '#666', marginTop: '50px', padding: '0 20px' }}>
+                                {searchQuery ? (
+                                    <div>
+                                        <div style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '6px' }}>No se encontraron canciones</div>
+                                        <div style={{ fontSize: '0.9rem', color: '#888' }}>No hay coincidencias para "{searchQuery}". Intenta con otro término o borra la búsqueda.</div>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    )}
+                                ) : libraryTab === 'mine' ? (
+                                    <>
+                                        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '10px' }}>Tu librería está vacía</div>
+                                        {!isAppNative && (
+                                            <div style={{ fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                                Para subir tus propias canciones, ingresa desde tu computadora a:<br />
+                                                <a href="https://zionstage.live/#/dashboard" target="_blank" rel="noreferrer" style={{ color: '#00bcd4', fontWeight: 'bold', textDecoration: 'none', display: 'inline-block', marginTop: '8px', fontSize: '1rem' }}>zionstage.live</a>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : libraryTab === 'global' && globalCatalogDocCount > 0 ? (
+                                    <div style={{ fontSize: '0.9rem', lineHeight: 1.5, color: '#555' }}>
+                                        Hay {globalCatalogDocCount} tema(s) en el catálogo Global VIP, pero ninguno trae{' '}
+                                        <strong>pistas multitrack</strong> en Firestore. Solo se listan canciones con al menos una pista.
+                                    </div>
+                                ) : (
+                                    <div style={{ fontSize: '0.9rem', lineHeight: 1.45, color: '#555' }}>
+                                        No hay canciones Global VIP con pistas. Las publicadas en el marketplace aparecen aquí cuando tienen{' '}
+                                        <code style={{ fontSize: '0.85rem' }}>isGlobal</code> y archivos en <code style={{ fontSize: '0.85rem' }}>tracks</code>.
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', paddingBottom: '250px' }}>
+                                {baseSongs.map(song => {
+                                    const qState = downloadQueueState[song.id];
+                                    const isDownloading = qState?.status === 'downloading' || downloadProgress?.songId === song.id;
+                                    const isQueued = qState?.status === 'queued';
+                                    const isCompleted = qState?.status === 'completed';
+                                    const isError = qState?.status === 'error';
+                                    const isOtherUser = song.userId !== currentUser?.uid;
+                                    const listSongKey = getSongMusicalKey(song);
+
+                                    const isInSetlist = activeSetlist?.songs?.some(s => s.id === song.id) || isCompleted;
+
+                                    let btnText = '➕ Añadir';
+                                    let btnBg = 'linear-gradient(135deg, #2ecc71, #27ae60)';
+                                    let btnDisabled = false;
+
+                                    if (isDownloading) {
+                                        btnText = '⏳ Bajando...';
+                                        btnBg = 'linear-gradient(135deg, #f39c12, #e67e22)';
+                                        btnDisabled = true;
+                                    } else if (isQueued) {
+                                        btnText = qState?.text || '🕒 En cola';
+                                        btnBg = 'linear-gradient(135deg, #3498db, #2980b9)';
+                                        btnDisabled = true;
+                                    } else if (isInSetlist) {
+                                        btnText = '✓ En Setlist';
+                                        btnBg = '#27ae60';
+                                        btnDisabled = true;
+                                    } else if (isError) {
+                                        btnText = '⚠️ Reintentar';
+                                        btnBg = 'linear-gradient(135deg, #e74c3c, #c0392b)';
+                                        btnDisabled = false;
+                                    }
+
+                                    const progressMsg = isDownloading
+                                        ? (qState?.text || downloadProgress?.text || 'Bajando pistas...')
+                                        : isQueued
+                                            ? (qState?.text || 'En cola de descarga...')
+                                            : isError
+                                                ? (qState?.text || 'Error en descarga')
+                                                : null;
+
+                                    return (
+                                        <div
+                                            key={song.id}
+                                            className="library-song-card"
+                                        >
+                                            <div style={{ flex: 1, minWidth: 0, paddingRight: '12px' }}>
+                                                <h4 style={{ margin: '0 0 5px 0', fontSize: '1rem', fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    {song.name}
+                                                </h4>
+                                                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', fontSize: '0.76rem', color: '#64748b' }}>
+                                                    {isOtherUser && song.uploadedBy && (
+                                                        <span style={{ color: '#9b59b6', fontWeight: 700, background: 'rgba(155, 89, 182, 0.1)', padding: '2px 7px', borderRadius: '4px' }}>
+                                                            👤 {song.uploadedBy}
+                                                        </span>
+                                                    )}
+                                                    {song.artist && (
+                                                        <span style={{ fontWeight: 600, color: '#475569' }}>
+                                                            {song.artist}
+                                                        </span>
+                                                    )}
+                                                    {listSongKey && (
+                                                        <span style={{ background: 'rgba(0, 188, 212, 0.1)', color: '#0097a7', padding: '2px 7px', borderRadius: '4px', fontWeight: 700 }}>
+                                                            🎹 {listSongKey}
+                                                        </span>
+                                                    )}
+                                                    {song.tempo && (
+                                                        <span style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#059669', padding: '2px 7px', borderRadius: '4px', fontWeight: 700 }}>
+                                                            ⏱️ {song.tempo} BPM
+                                                        </span>
+                                                    )}
+                                                    {Array.isArray(song.tracks) && song.tracks.length > 0 && (
+                                                        <span style={{ color: '#94a3b8' }}>
+                                                            🎛️ {song.tracks.length} pistas
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {progressMsg && (
+                                                    <div style={{ color: isError ? '#e74c3c' : isQueued ? '#3498db' : '#00d2d3', fontSize: '0.72rem', fontWeight: 'bold', marginTop: '6px' }}>
+                                                        {progressMsg}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                style={{
+                                                    background: btnBg,
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    padding: '9px 16px',
+                                                    borderRadius: '8px',
+                                                    cursor: btnDisabled ? 'default' : 'pointer',
+                                                    fontSize: '0.84rem',
+                                                    fontWeight: 'bold',
+                                                    whiteSpace: 'nowrap',
+                                                    flexShrink: 0,
+                                                    transition: 'all 0.15s',
+                                                    opacity: btnDisabled && !isDownloading && !isQueued ? 0.85 : 1,
+                                                    boxShadow: btnDisabled ? 'none' : '0 2px 6px rgba(0,0,0,0.1)'
+                                                }}
+                                                title="Añadir a Setlist y Guardar Local"
+                                                onClick={() => !btnDisabled && onDownloadAdd(song)}
+                                                disabled={btnDisabled}
+                                            >
+                                                {btnText}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
