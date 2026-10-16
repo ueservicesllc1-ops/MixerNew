@@ -23,7 +23,6 @@ const DesktopMultitrack = lazy(() => import('./pages/DesktopMultitrack'))
 const Academy    = lazy(() => import('./pages/Academy'))
 const Manual     = lazy(() => import('./pages/Manual'))
 const NextGenTest = lazy(() => import('./pages/NextGenTest'))
-const Subscribe = lazy(() => import('./pages/Subscribe'))
 
 import { DesktopSessionService } from './desktop/DesktopSessionService'
 import DesktopLoginGate from './desktop/DesktopLoginGate'
@@ -105,12 +104,6 @@ function App() {
             element={(native || pwa) ? <Navigate to="/multitrack" replace /> : <Landing />}
           />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/subscribe" element={<Subscribe />} />
-          <Route path="/upgrade" element={<Subscribe />} />
-          <Route path="/planes" element={<Subscribe />} />
-          <Route path="/precios" element={<Subscribe />} />
-          <Route path="/pricing" element={<Subscribe />} />
-          <Route path="/login-planes" element={<Subscribe />} />
           <Route path="/multitrack" element={<Multitrack />} />
           <Route path="/desktop" element={<DesktopWrapper />} />
           {/* Isolated NextGen native engine manual test — not part of production multitrack flow */}
