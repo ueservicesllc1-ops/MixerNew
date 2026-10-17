@@ -26,6 +26,7 @@ dist-ssr
 android/
 apk_extracted/
 *.apk
+*.aab
 *.zip
 *.idsig
 
