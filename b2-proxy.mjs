@@ -16,6 +16,13 @@ import admin from 'firebase-admin';
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
+process.on('uncaughtException', (err) => {
+    console.error('🚨 [UNCAUGHT EXCEPTION]', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('🚨 [UNHANDLED REJECTION]', reason?.message || reason);
+});
+
 // URL pública de este servidor (Railway). Used to build normalizedUrl proxy links.
 const PROXY_SELF = process.env.PROXY_URL || 'https://mixernew-production.up.railway.app';
 
@@ -713,13 +720,15 @@ const handleDownload = async (req, res) => {
         url = url.trim();
         console.log(`[PROXY] Descargando audio desde: ${url}`);
         
-        // Identity: si B2/CDN devuelve gzip y fetch descomprime, reenviar el Content-Length
-        // del origen puede NO coincidir con los bytes reales del stream → .exe/.apk corruptos
-        // (MZ válido pero instalador roto). No reenviar Content-Length; dejar chunked al cliente.
+        const fetchHeaders = { 'Accept-Encoding': 'identity' };
+        if (req.headers.range) {
+            fetchHeaders['Range'] = req.headers.range;
+        }
+
         const response = await fetch(url, {
-            headers: { 'Accept-Encoding': 'identity' },
+            headers: fetchHeaders,
         });
-        if (!response.ok) {
+        if (!response.ok && response.status !== 206) {
             console.error(`[PROXY] B2 devolvió error ${response.status} para: ${url}`);
             throw new Error(`B2 Error ${response.status}`);
         }
@@ -750,12 +759,17 @@ const handleDownload = async (req, res) => {
             'Access-Control-Allow-Origin': origin || '*',
             'Vary': 'Origin',
             'Cache-Control': 'no-store, no-cache, must-revalidate',
+            'Accept-Ranges': 'bytes',
         };
         if (origin) {
             headers['Access-Control-Allow-Credentials'] = 'true';
         }
+        const cl = response.headers.get('content-length');
+        if (cl) headers['Content-Length'] = cl;
+        const cr = response.headers.get('content-range');
+        if (cr) headers['Content-Range'] = cr;
+
         if (isApk) {
-            // Force browser/device to download instead of trying to render
             const fileName = url.split('/').pop().split('?')[0] || 'zion-stage.apk';
             headers['Content-Disposition'] = `attachment; filename="${fileName}"`;
         }
@@ -763,18 +777,36 @@ const handleDownload = async (req, res) => {
             const fileName = url.split('/').pop().split('?')[0] || 'ZionStage-Setup.exe';
             headers['Content-Disposition'] = `attachment; filename="${fileName}"`;
         }
+
+        if (response.status === 206) {
+            res.status(206);
+        }
         res.set(headers);
 
-        // node-fetch v3 usa web streams, necesitamos transformarlos para Express (Node streams)
-        if (response.body && response.body.pipe) {
-            // Si por alguna razón es un stream de Node (v2 behavior)
-            response.body.pipe(res);
-        } else if (response.body) {
-            // Comportamiento estándar de node-fetch v3 (web streams)
-            Readable.fromWeb(response.body).pipe(res);
-        } else {
+        const stream = (response.body && response.body.pipe)
+            ? response.body
+            : (response.body ? Readable.fromWeb(response.body) : null);
+
+        if (!stream) {
             throw new Error("Cuerpo de respuesta vacío");
         }
+
+        stream.on('error', (err) => {
+            console.warn('[PROXY STREAM ERROR]', err.message);
+            if (!res.headersSent) {
+                res.status(502).end();
+            } else {
+                res.destroy();
+            }
+        });
+
+        res.on('close', () => {
+            if (typeof stream.destroy === 'function') {
+                stream.destroy();
+            }
+        });
+
+        stream.pipe(res);
     } catch (error) {
         console.error("🚨 Error detallado en proxy download:", {
             message: error.message,

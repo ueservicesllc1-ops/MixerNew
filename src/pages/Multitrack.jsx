@@ -1245,20 +1245,19 @@ export default function Multitrack() {
                             : await LocalFileManager.getTrackLocal(song.id, tr.name);
 
                         if (!rawBuf) {
-                            try {
-                                const downloadUrl = useFlacWeb ? tr.normalizedUrl
-                                    : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
-                                const res = await fetch(downloadUrl);
-                                if (res && res.ok) rawBuf = await res.blob();
-                            } catch (e) {
-                                console.warn(`[PRELOAD] Proxy falló para ${tr.name}, probando directo:`, e?.message);
-                            }
-                            // Fallback directo a la URL de B2 si el proxy tuvo error de red/CORS
-                            if (!rawBuf && tr.url) {
+                            for (let attempt = 1; attempt <= 3; attempt++) {
                                 try {
-                                    const directRes = await fetch(tr.url);
-                                    if (directRes && directRes.ok) rawBuf = await directRes.blob();
-                                } catch { }
+                                    const downloadUrl = useFlacWeb ? tr.normalizedUrl
+                                        : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                                    const res = await fetch(downloadUrl);
+                                    if (res && res.ok) {
+                                        rawBuf = await res.blob();
+                                        if (rawBuf && rawBuf.size > 500) break;
+                                    }
+                                } catch (e) {
+                                    console.warn(`[PRELOAD] Intento ${attempt} falló para ${tr.name}:`, e?.message);
+                                }
+                                if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
                             }
                             if (!rawBuf) return;
                             if (useFlacWeb) {
@@ -1371,19 +1370,24 @@ export default function Multitrack() {
                 }
 
                 /**
-                 * Descarga una pista via Railway proxy con fallback directo.
+                 * Descarga una pista via Railway proxy con reintentos para archivos pesados.
                  */
-                const downloadBlob = async () => {
-                    try {
-                        const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                        if (r.ok) return await r.blob();
-                    } catch (e) {
-                        console.warn(`[DOWNLOAD] Proxy falló para ${tr.name}, probando directo:`, e?.message);
+                const downloadBlob = async (maxAttempts = 3) => {
+                    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+                        try {
+                            const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                            if (r.ok) {
+                                const b = await r.blob();
+                                if (b && b.size > 500) return b;
+                            }
+                            console.warn(`[DOWNLOAD] Intento ${attempt} status ${r?.status} para ${tr.name}`);
+                        } catch (e) {
+                            console.warn(`[DOWNLOAD] Intento ${attempt} error para ${tr.name}:`, e?.message);
+                        }
+                        if (attempt < maxAttempts) {
+                            await new Promise(res => setTimeout(res, 1200 * attempt));
+                        }
                     }
-                    try {
-                        const rDirect = await fetch(tr.url);
-                        if (rDirect.ok) return await rDirect.blob();
-                    } catch { }
                     throw new Error(`Error descargando ${tr.name}`);
                 };
 
