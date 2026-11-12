@@ -281,7 +281,18 @@ class AudioEngine {
             this._wasmTrackCount = 0;
             this._trackMeta.clear();
             for (const t of tracksArray) {
-                if (t.isVisualOnly) continue;
+                if (t.isVisualOnly) {
+                    if (t.audioBuffer) {
+                        this._trackMeta.set(t.id, {
+                            buffer: t.audioBuffer,
+                            volume: 0,
+                            muted: true,
+                            solo: false,
+                            isVisualOnly: true,
+                        });
+                    }
+                    continue;
+                }
                 const buffer = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
                 if (buffer) {
                     this._trackMeta.set(t.id, {

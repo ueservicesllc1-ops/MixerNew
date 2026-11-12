@@ -57,14 +57,20 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
     useEffect(() => {
         if (!songId) return;
         setPeakDuration(0);
-        const saved = localStorage.getItem(`peaks_${songId}`);
+        try { localStorage.removeItem(`peaks_${songId}`); } catch {}
+        const saved = localStorage.getItem(`peaks_v2_${songId}`);
         if (saved) {
-            setPeaks(new Float32Array(JSON.parse(saved)));
-            setStatusInfo({ isReal: true, source: 'ONDA GUARDADA', color: '#10b981' });
-        } else {
-            setPeaks(null);
-            setStatusInfo({ isReal: false, source: 'Analizando...', color: '#64748b' });
+            try {
+                const arr = JSON.parse(saved);
+                if (Array.isArray(arr) && arr.length >= 100) {
+                    setPeaks(new Float32Array(arr));
+                    setStatusInfo({ isReal: true, source: 'ONDA REAL', color: '#10b981' });
+                    return;
+                }
+            } catch {}
         }
+        setPeaks(null);
+        setStatusInfo({ isReal: false, source: 'Analizando...', color: '#64748b' });
     }, [songId]);
 
     // Periodically try to analyze buffers if not loaded yet
@@ -72,13 +78,13 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         if (!songId) return;
         if (suppressHeavyWork) return;
 
-        const pickBufferFromEngine = () => {
+        const collectBuffersFromEngine = () => {
             const buffers = [];
             const pushFromMap = (map) => {
                 if (!map || map.size === 0) return;
                 for (const [id, t] of map.entries()) {
                     if (!t || !t.buffer || typeof t.buffer.getChannelData !== 'function') continue;
-                    buffers.push({ id, buf: t.buffer });
+                    buffers.push({ id: String(id), buf: t.buffer });
                 }
             };
             if (isNative) {
@@ -89,57 +95,89 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                     pushFromMap(audioEngine._trackMeta);
                 }
             }
-            if (buffers.length === 0) return null;
-
-            let bufferToUse = null;
-            let bestScore = -1;
-
-            for (const { id, buf } of buffers) {
-                const name = String(id).toLowerCase();
-                let score = 10;
-                if (name.includes('__previewmix')) score = 100;
-                else if (name.includes('drum')) score = 50;
-                else if (name.includes('bat')) score = 50;
-
-                if (score > bestScore) {
-                    bestScore = score;
-                    bufferToUse = buf;
-                }
-            }
-            return bufferToUse;
+            return buffers;
         };
 
-        const buildPeaksFromBuffer = (bufferToUse) => {
-            const data = bufferToUse.getChannelData(0);
+        const buildPeaksFromBuffers = (buffersList) => {
+            if (!buffersList || buffersList.length === 0) return;
+
+            const previewMix = buffersList.find(b => String(b.id || '').toLowerCase().includes('__previewmix'));
+            const listToUse = previewMix ? [previewMix] : buffersList.filter(b => {
+                const s = String(b.id || '').toLowerCase();
+                return !s.includes('click') && !s.includes('clic') && !s.includes('metronom') &&
+                       !s.includes('guia') && !s.includes('guía') && !s.includes('guide') && !s.includes('cue');
+            });
+
+            const finalStems = listToUse.length > 0 ? listToUse : buffersList;
             const displayW = 800;
             const realP = new Float32Array(displayW);
-            const step = Math.max(1, Math.floor(data.length / displayW));
+
+            const stemChannels = finalStems.map(s => {
+                try {
+                    return {
+                        data: s.buf.getChannelData(0),
+                        len: s.buf.length,
+                        duration: s.buf.duration || 0
+                    };
+                } catch {
+                    return null;
+                }
+            }).filter(Boolean);
+
+            if (stemChannels.length === 0) return;
+
+            const maxLen = Math.max(...stemChannels.map(s => s.len));
+            const maxDur = Math.max(...stemChannels.map(s => s.duration));
+            if (maxLen <= 0) return;
+
+            const step = Math.max(1, Math.floor(maxLen / displayW));
+            const sampleStride = Math.max(1, Math.floor(step / 16));
 
             for (let i = 0; i < displayW; i++) {
-                let max = 0;
-                for (let j = 0; j < step; j += Math.max(1, Math.floor(step / 10))) {
+                let blockPeak = 0;
+                for (let j = 0; j < step; j += sampleStride) {
                     const idx = i * step + j;
-                    if (idx >= data.length) break;
-                    const v = Math.abs(data[idx]);
-                    if (v > max) max = v;
+                    if (idx >= maxLen) break;
+
+                    let instSum = 0;
+                    for (let s = 0; s < stemChannels.length; s++) {
+                        const d = stemChannels[s].data;
+                        if (idx < d.length) {
+                            instSum += Math.abs(d[idx]);
+                        }
+                    }
+                    if (instSum > blockPeak) blockPeak = instSum;
                 }
-                realP[i] = max;
+                realP[i] = blockPeak;
             }
 
-            const m = Math.max(...realP);
-            if (m > 0) for (let i = 0; i < realP.length; i++) realP[i] /= m;
+            let m = 0;
+            for (let i = 0; i < realP.length; i++) {
+                if (realP[i] > m) m = realP[i];
+            }
+            if (m > 0) {
+                for (let i = 0; i < realP.length; i++) {
+                    realP[i] /= m;
+                }
+            }
 
-            setPeakDuration(bufferToUse.duration || 0);
+            setPeakDuration(maxDur);
             setPeaks(realP);
-            localStorage.setItem(`peaks_${songId}`, JSON.stringify(Array.from(realP)));
-            setStatusInfo({ isReal: true, source: 'ONDA GENERADA', color: '#00e5ff' });
+            try {
+                localStorage.setItem(`peaks_v2_${songId}`, JSON.stringify(Array.from(realP)));
+            } catch {}
+            setStatusInfo({ isReal: true, source: previewMix ? 'PREVIEW MIX' : 'ONDA REAL', color: '#00e5ff' });
         };
 
         const updateWaveform = async () => {
-            let bufferToUse = pickBufferFromEngine();
+            const engineBuffers = collectBuffersFromEngine();
+            if (engineBuffers.length > 0) {
+                buildPeaksFromBuffers(engineBuffers);
+                return;
+            }
 
             // Desktop / Native: __PreviewMix desde disco + decodeAudioData
-            if (!bufferToUse && (isNative || window.zionNative) && !suppressHeavyWork) {
+            if ((isNative || window.zionNative) && !suppressHeavyWork) {
                 try {
                     await new Promise((r) => setTimeout(r, 0));
 
@@ -196,14 +234,13 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
                     }
 
                     if (ab) {
-                        bufferToUse = await decodeArrayBufferToAudioBuffer(ab);
+                        const bufferToUse = await decodeArrayBufferToAudioBuffer(ab);
+                        if (bufferToUse) buildPeaksFromBuffers([{ id: '__PreviewMix', buf: bufferToUse }]);
                     }
                 } catch (e) {
                     console.warn('[WAVEFORM] decode failed', e);
                 }
             }
-
-            if (bufferToUse) buildPeaksFromBuffer(bufferToUse);
         };
 
         if (!peaks) {
