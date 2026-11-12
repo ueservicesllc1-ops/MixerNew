@@ -724,16 +724,36 @@ const handleDownload = async (req, res) => {
             throw new Error(`B2 Error ${response.status}`);
         }
 
-        const contentType = response.headers.get('content-type') || 'audio/mpeg';
-        const isApk = url.includes('.apk') || contentType.includes('android');
-        const isExe = url.includes('.exe') || /octet-stream|x-msdownload|application\/.*installer/i.test(contentType || '');
+        const rawCt = (response.headers.get('content-type') || '').toLowerCase();
+        const urlLower = url.toLowerCase();
+        const isApk = urlLower.includes('.apk') || rawCt.includes('android');
+        const isExe = urlLower.includes('.exe') || /x-msdownload|application\/.*installer/i.test(rawCt);
+
+        let finalContentType = rawCt || 'audio/mpeg';
+        if (isApk) {
+            finalContentType = 'application/vnd.android.package-archive';
+        } else if (isExe) {
+            finalContentType = 'application/vnd.microsoft.portable-executable';
+        } else if (urlLower.includes('.mp3')) {
+            finalContentType = 'audio/mpeg';
+        } else if (urlLower.includes('.wav')) {
+            finalContentType = 'audio/wav';
+        } else if (urlLower.includes('.flac')) {
+            finalContentType = 'audio/flac';
+        } else if (rawCt.includes('octet-stream')) {
+            finalContentType = 'audio/mpeg';
+        }
+
+        const origin = req.headers.origin;
         const headers = {
-            'Content-Type': isApk
-                ? 'application/vnd.android.package-archive'
-                : (isExe ? 'application/vnd.microsoft.portable-executable' : contentType),
-            'Access-Control-Allow-Origin': '*',
+            'Content-Type': finalContentType,
+            'Access-Control-Allow-Origin': origin || '*',
+            'Vary': 'Origin',
             'Cache-Control': 'no-store, no-cache, must-revalidate',
         };
+        if (origin) {
+            headers['Access-Control-Allow-Credentials'] = 'true';
+        }
         if (isApk) {
             // Force browser/device to download instead of trying to render
             const fileName = url.split('/').pop().split('?')[0] || 'zion-stage.apk';
