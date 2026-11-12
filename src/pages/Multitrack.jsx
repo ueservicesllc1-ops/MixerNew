@@ -165,6 +165,45 @@ function pickNewerMeta(a, b) {
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
+/**
+ * Descarga un archivo grande en trozos Range (8 MB) con reintento por trozo.
+ * Evita que una sola conexión de 100+ MB se corte (net::ERR_FAILED).
+ * Si el servidor no soporta Range (responde 200), usa ese cuerpo completo.
+ */
+async function fetchBlobChunked(url, { chunkSize = 8 * 1024 * 1024, retries = 4 } = {}) {
+    const fetchRange = async (start, end) => {
+        let lastErr;
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const r = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
+                if (r.status === 206 || r.status === 200) return r;
+                lastErr = new Error(`HTTP ${r.status}`);
+            } catch (e) {
+                lastErr = e;
+            }
+            await new Promise((res) => setTimeout(res, 800 * attempt));
+        }
+        throw lastErr || new Error('fetch failed');
+    };
+
+    const first = await fetchRange(0, chunkSize - 1);
+    if (first.status === 200) return await first.blob(); // sin soporte Range
+    const m = /\/(\d+)\s*$/.exec(first.headers.get('content-range') || '');
+    const total = m ? parseInt(m[1], 10) : 0;
+    const parts = [await first.blob()];
+    let pos = parts[0].size;
+    if (!total) return parts[0];
+    while (pos < total) {
+        const end = Math.min(pos + chunkSize, total) - 1;
+        const r = await fetchRange(pos, end);
+        const b = await r.blob();
+        if (!b.size) throw new Error('chunk vacío');
+        parts.push(b);
+        pos += b.size;
+    }
+    return new Blob(parts, { type: parts[0].type });
+}
+
 // ─── KEY TRANSPOSITION ────────────────────────────────────────────────────────
 const CHROMATIC = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const FLAT_TO_SHARP = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
@@ -1249,11 +1288,8 @@ export default function Multitrack() {
                                 try {
                                     const downloadUrl = useFlacWeb ? tr.normalizedUrl
                                         : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
-                                    const res = await fetch(downloadUrl);
-                                    if (res && res.ok) {
-                                        rawBuf = await res.blob();
-                                        if (rawBuf && rawBuf.size > 500) break;
-                                    }
+                                    rawBuf = await fetchBlobChunked(downloadUrl);
+                                    if (rawBuf && rawBuf.size > 500) break;
                                 } catch (e) {
                                     console.warn(`[PRELOAD] Intento ${attempt} falló para ${tr.name}:`, e?.message);
                                 }
@@ -1375,12 +1411,9 @@ export default function Multitrack() {
                 const downloadBlob = async (maxAttempts = 3) => {
                     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
                         try {
-                            const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                            if (r.ok) {
-                                const b = await r.blob();
-                                if (b && b.size > 500) return b;
-                            }
-                            console.warn(`[DOWNLOAD] Intento ${attempt} status ${r?.status} para ${tr.name}`);
+                            const b = await fetchBlobChunked(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                            if (b && b.size > 500) return b;
+                            console.warn(`[DOWNLOAD] Intento ${attempt} contenido vacío para ${tr.name}`);
                         } catch (e) {
                             console.warn(`[DOWNLOAD] Intento ${attempt} error para ${tr.name}:`, e?.message);
                         }
