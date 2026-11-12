@@ -562,7 +562,9 @@ class AudioEngine {
             const chanR = m.chanR || (m.buffer && m.buffer.numberOfChannels > 1 ? m.buffer.getChannelData(1) : chanL);
 
             const sr = m.buffer?.sampleRate || 44100;
-            const currentPos = this.getCurrentPosition();
+            const currentPos = (this.isWASMReady && this.wasm?.getCurrentPosition)
+                ? this.wasm.getCurrentPosition()
+                : this.getCurrentTime();
             const centerIdx = Math.floor(currentPos * sr);
             const trackLen = chanL.length;
             if (centerIdx < 0 || centerIdx >= trackLen) return 0;
@@ -1025,6 +1027,10 @@ class AudioEngine {
         const current = this.getCurrentTime();
         if (this.onProgress) this.onProgress(current);
         for (const fn of this._progressListeners) fn(current);
+    }
+
+    getCurrentPosition() {
+        return this.getCurrentTime();
     }
 
     getCurrentTime() {
