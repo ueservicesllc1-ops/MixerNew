@@ -57,8 +57,12 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
     useEffect(() => {
         if (!songId) return;
         setPeakDuration(0);
-        try { localStorage.removeItem(`peaks_${songId}`); } catch {}
-        const saved = localStorage.getItem(`peaks_v2_${songId}`);
+        try {
+            localStorage.removeItem(`peaks_${songId}`);
+            localStorage.removeItem(`peaks_v2_${songId}`);
+            localStorage.removeItem(`peaks_v3_${songId}`);
+        } catch {}
+        const saved = localStorage.getItem(`peaks_v4_${songId}`);
         if (saved) {
             try {
                 const arr = JSON.parse(saved);
@@ -77,14 +81,23 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
     useEffect(() => {
         if (!songId) return;
         if (suppressHeavyWork) return;
+        // Esperar a que Multitrack termine de cargar todos los stems de ESTA canción (no placeholders)
+        if (!isNative && !isZionElectronDesktop) {
+            if (!tracks || tracks.length === 0 || tracks.some(t => t.isPlaceholder)) {
+                return;
+            }
+        }
 
         const collectBuffersFromEngine = () => {
             const buffers = [];
+            const prefix = `${songId}_`;
             const pushFromMap = (map) => {
                 if (!map || map.size === 0) return;
                 for (const [id, t] of map.entries()) {
+                    const key = String(id);
+                    if (!key.startsWith(prefix)) continue;
                     if (!t || !t.buffer || typeof t.buffer.getChannelData !== 'function') continue;
-                    buffers.push({ id: String(id), buf: t.buffer });
+                    buffers.push({ id: key, buf: t.buffer });
                 }
             };
             if (isNative) {
@@ -101,21 +114,30 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         const buildPeaksFromBuffers = (buffersList) => {
             if (!buffersList || buffersList.length === 0) return;
 
-            const previewMix = buffersList.find(b => String(b.id || '').toLowerCase().includes('__previewmix'));
-            const listToUse = previewMix ? [previewMix] : buffersList.filter(b => {
+            // Excluir Click, Guía y Cues para que la onda refleje únicamente la música real
+            const musicalBuffers = buffersList.filter(b => {
                 const s = String(b.id || '').toLowerCase();
-                return !s.includes('click') && !s.includes('clic') && !s.includes('metronom') &&
+                return !s.includes('__previewmix') &&
+                       !s.includes('click') && !s.includes('clic') && !s.includes('metronom') &&
                        !s.includes('guia') && !s.includes('guía') && !s.includes('guide') && !s.includes('cue');
             });
 
-            const finalStems = listToUse.length > 0 ? listToUse : buffersList;
-            const displayW = 800;
+            const previewMix = buffersList.find(b => String(b.id || '').toLowerCase().includes('__previewmix'));
+            // Preferir la suma de todos los stems musicales si están en RAM; si solo hay PreviewMix (ej. Desktop), usar PreviewMix
+            const finalStems = musicalBuffers.length > 0
+                ? musicalBuffers
+                : (previewMix ? [previewMix] : buffersList);
+
+            const displayW = 1000;
             const realP = new Float32Array(displayW);
 
             const stemChannels = finalStems.map(s => {
                 try {
+                    const ch0 = s.buf.getChannelData(0);
+                    const ch1 = s.buf.numberOfChannels > 1 ? s.buf.getChannelData(1) : ch0;
                     return {
-                        data: s.buf.getChannelData(0),
+                        ch0,
+                        ch1,
                         len: s.buf.length,
                         duration: s.buf.duration || 0
                     };
@@ -131,24 +153,29 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
             if (maxLen <= 0) return;
 
             const step = Math.max(1, Math.floor(maxLen / displayW));
-            const sampleStride = Math.max(1, Math.floor(step / 16));
+            const sampleStride = Math.max(1, Math.floor(step / 64));
 
             for (let i = 0; i < displayW; i++) {
-                let blockPeak = 0;
+                let sumSq = 0;
+                let count = 0;
                 for (let j = 0; j < step; j += sampleStride) {
                     const idx = i * step + j;
                     if (idx >= maxLen) break;
 
-                    let instSum = 0;
+                    let mixL = 0;
+                    let mixR = 0;
                     for (let s = 0; s < stemChannels.length; s++) {
-                        const d = stemChannels[s].data;
-                        if (idx < d.length) {
-                            instSum += Math.abs(d[idx]);
+                        const sc = stemChannels[s];
+                        if (idx < sc.len) {
+                            mixL += sc.ch0[idx];
+                            mixR += sc.ch1[idx];
                         }
                     }
-                    if (instSum > blockPeak) blockPeak = instSum;
+                    const mono = (mixL + mixR) * 0.5;
+                    sumSq += mono * mono;
+                    count++;
                 }
-                realP[i] = blockPeak;
+                realP[i] = count > 0 ? Math.sqrt(sumSq / count) : 0;
             }
 
             let m = 0;
@@ -157,16 +184,16 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
             }
             if (m > 0) {
                 for (let i = 0; i < realP.length; i++) {
-                    realP[i] /= m;
+                    realP[i] = Math.min(1, realP[i] / m);
                 }
             }
 
             setPeakDuration(maxDur);
             setPeaks(realP);
             try {
-                localStorage.setItem(`peaks_v2_${songId}`, JSON.stringify(Array.from(realP)));
+                localStorage.setItem(`peaks_v4_${songId}`, JSON.stringify(Array.from(realP)));
             } catch {}
-            setStatusInfo({ isReal: true, source: previewMix ? 'PREVIEW MIX' : 'ONDA REAL', color: '#00e5ff' });
+            setStatusInfo({ isReal: true, source: `ONDA REAL (${finalStems.length} PISTAS)`, color: '#00e5ff' });
         };
 
         const updateWaveform = async () => {
