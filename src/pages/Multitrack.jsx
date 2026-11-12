@@ -165,48 +165,9 @@ function pickNewerMeta(a, b) {
 
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
-/**
- * Descarga un archivo grande en trozos Range (8 MB) con reintento por trozo.
- * Evita que una sola conexión de 100+ MB se corte (net::ERR_FAILED).
- * Si el servidor no soporta Range (responde 200), usa ese cuerpo completo.
- */
-async function fetchBlobChunked(url, { chunkSize = 8 * 1024 * 1024, retries = 4 } = {}) {
-    const fetchRange = async (start, end) => {
-        let lastErr;
-        for (let attempt = 1; attempt <= retries; attempt++) {
-            try {
-                const r = await fetch(url, { headers: { Range: `bytes=${start}-${end}` } });
-                if (r.status === 206 || r.status === 200) return r;
-                lastErr = new Error(`HTTP ${r.status}`);
-            } catch (e) {
-                lastErr = e;
-            }
-            await new Promise((res) => setTimeout(res, 800 * attempt));
-        }
-        throw lastErr || new Error('fetch failed');
-    };
-
-    const first = await fetchRange(0, chunkSize - 1);
-    if (first.status === 200) return await first.blob(); // sin soporte Range
-    const m = /\/(\d+)\s*$/.exec(first.headers.get('content-range') || '');
-    const total = m ? parseInt(m[1], 10) : 0;
-    const parts = [await first.blob()];
-    let pos = parts[0].size;
-    if (!total) return parts[0];
-    while (pos < total) {
-        const end = Math.min(pos + chunkSize, total) - 1;
-        const r = await fetchRange(pos, end);
-        const b = await r.blob();
-        if (!b.size) throw new Error('chunk vacío');
-        parts.push(b);
-        pos += b.size;
-    }
-    return new Blob(parts, { type: parts[0].type });
-}
-
 // ─── KEY TRANSPOSITION ────────────────────────────────────────────────────────
-const CHROMATIC = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const FLAT_TO_SHARP = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
+const CHROMATIC = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const FLAT_TO_SHARP = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
 function transposeKey(baseKey, semitones) {
     if (!baseKey || semitones === 0) return baseKey;
     const isMinor = baseKey.endsWith('m');
@@ -684,9 +645,9 @@ export default function Multitrack() {
                 /* no romper React.lazy / reconciliación si console recibe tipos raros */
             }
         };
-        console.log = (...a) => { try { origLog(...a); } catch (_) { } try { push('log', a); } catch (_) { } };
-        console.error = (...a) => { try { origErr(...a); } catch (_) { } try { push('err', a); } catch (_) { } };
-        console.warn = (...a) => { try { origWarn(...a); } catch (_) { } try { push('warn', a); } catch (_) { } };
+        console.log = (...a) => { try { origLog(...a); } catch (_) {} try { push('log', a); } catch (_) {} };
+        console.error = (...a) => { try { origErr(...a); } catch (_) {} try { push('err', a); } catch (_) {} };
+        console.warn = (...a) => { try { origWarn(...a); } catch (_) {} try { push('warn', a); } catch (_) {} };
         return () => { console.log = origLog; console.error = origErr; console.warn = origWarn; };
     }, []);
 
@@ -1057,7 +1018,7 @@ export default function Multitrack() {
                 });
 
                 // Global VIP: solo docs con isGlobal (marketplace / catálogo publicado). La UI filtra las que tienen tracks[].
-                let unsubGlobal = () => { };
+                let unsubGlobal = () => {};
                 if (!isAppNative) {
                     // Query 1: Multitracks — docs with a tracks[] array (user-uploaded ZIPs)
                     const qMT = query(
@@ -1065,7 +1026,7 @@ export default function Multitrack() {
                         where('tracks', '!=', null),
                         limit(800)
                     );
-
+                    
                     // Query 2: Marketplace / Global explicitly marked
                     const qG = query(
                         collection(db, 'songs'),
@@ -1078,7 +1039,7 @@ export default function Multitrack() {
 
                     let resultsMT = [];
                     let resultsG = [];
-
+                    
                     const updateMerged = () => {
                         const all = [...resultsMT];
                         resultsG.forEach(g => {
@@ -1190,7 +1151,7 @@ export default function Multitrack() {
                     ),
                     limit(400)
                 );
-
+                
                 const [snapMT, snapG] = await Promise.all([getDocs(qMT), getDocs(qG)]);
                 const songs = [];
                 snapMT.forEach(d => songs.push({ id: d.id, ...d.data() }));
@@ -1284,24 +1245,19 @@ export default function Multitrack() {
                             : await LocalFileManager.getTrackLocal(song.id, tr.name);
 
                         if (!rawBuf) {
-                            for (let attempt = 1; attempt <= 3; attempt++) {
-                                try {
-                                    const downloadUrl = useFlacWeb ? tr.normalizedUrl
-                                        : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
-                                    rawBuf = await fetchBlobChunked(downloadUrl);
-                                    if (rawBuf && rawBuf.size > 500) break;
-                                } catch (e) {
-                                    console.warn(`[PRELOAD] Intento ${attempt} falló para ${tr.name}:`, e?.message);
+                            const downloadUrl = useFlacWeb ? tr.normalizedUrl
+                                : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                            const res = await fetch(downloadUrl);
+                            if (!res.ok) return;
+                            rawBuf = await res.blob();
+                            if (rawBuf) {
+                                if (useFlacWeb) {
+                                    await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                                    // Remove stale v1 entry if present
+                                    await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                } else {
+                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                                 }
-                                if (attempt < 3) await new Promise(r => setTimeout(r, 1000 * attempt));
-                            }
-                            if (!rawBuf) return;
-                            if (useFlacWeb) {
-                                await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
-                                // Remove stale v1 entry if present
-                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                            } else {
-                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
                             }
                         }
 
@@ -1406,22 +1362,12 @@ export default function Multitrack() {
                 }
 
                 /**
-                 * Descarga una pista via Railway proxy con reintentos para archivos pesados.
+                 * Descarga una pista via Railway proxy.
                  */
-                const downloadBlob = async (maxAttempts = 3) => {
-                    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-                        try {
-                            const b = await fetchBlobChunked(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                            if (b && b.size > 500) return b;
-                            console.warn(`[DOWNLOAD] Intento ${attempt} contenido vacío para ${tr.name}`);
-                        } catch (e) {
-                            console.warn(`[DOWNLOAD] Intento ${attempt} error para ${tr.name}:`, e?.message);
-                        }
-                        if (attempt < maxAttempts) {
-                            await new Promise(res => setTimeout(res, 1200 * attempt));
-                        }
-                    }
-                    throw new Error(`Error descargando ${tr.name}`);
+                const downloadBlob = async () => {
+                    const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                    if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
+                    return await r.blob();
                 };
 
                 if (isAppNative) {
@@ -1557,7 +1503,7 @@ export default function Multitrack() {
         await audioEngine.stop();
         setIsPlaying(false);
         progressRef.current = 0;
-
+        
         const isAppNativeLoad = typeof window !== 'undefined' && !!isAppNative;
 
         if (isAppNativeLoad && isPreparingSong) {
@@ -1801,12 +1747,6 @@ export default function Multitrack() {
                                     const res = await fetch(downloadUrl);
                                     if (res.ok) rawBuf = await res.blob();
                                 } catch { /* ignore */ }
-                                if (!rawBuf && tr.url) {
-                                    try {
-                                        const directRes = await fetch(tr.url);
-                                        if (directRes && directRes.ok) rawBuf = await directRes.blob();
-                                    } catch { }
-                                }
                                 if (rawBuf) {
                                     if (useFlacWeb) {
                                         await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
@@ -1978,10 +1918,10 @@ export default function Multitrack() {
     /** Misma idea que la onda nativa: `ready`, motor libre, stems reales cargados. */
     const canStartPlayback = Boolean(
         activeSongId &&
-        tracksReadyForEngine &&
-        preloadStatus[activeSongId] === 'ready' &&
-        !nativePrepareBusy &&
-        !loadBlockingPlayback,
+            tracksReadyForEngine &&
+            preloadStatus[activeSongId] === 'ready' &&
+            !nativePrepareBusy &&
+            !loadBlockingPlayback,
     );
 
     const handlePlay = async () => {
@@ -2540,8 +2480,8 @@ export default function Multitrack() {
                                 <input type="password" placeholder="Contraseña" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
                                 {!loginIsRegister && (
                                     <div style={{ textAlign: 'right' }}>
-                                        <span
-                                            onClick={handleForgotPasswordMultitrack}
+                                        <span 
+                                            onClick={handleForgotPasswordMultitrack} 
                                             style={{ fontSize: '0.75rem', color: '#00d2d3', cursor: 'pointer', textDecoration: 'underline' }}
                                         >
                                             ¿Olvidaste tu contraseña?
@@ -2786,7 +2726,7 @@ export default function Multitrack() {
                 </div>
                 {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
                 {(() => {
-                    const VIP_IDS = ['vip1', 'vip2', 'vip3', 'zion_desktop_pro_online'];
+                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online'];
                     const isVip = VIP_IDS.includes(userPlanId);
                     const planLabels = {
                         'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP ⭐',
@@ -3180,14 +3120,14 @@ export default function Multitrack() {
                         markers={localMarkerOverrides[activeSong?.id] || activeSong?.markers || (() => { try { return JSON.parse(localStorage.getItem(`markers_${activeSong?.id}`) || '[]'); } catch { return []; } })()}
                         onUpdateMarkers={async (newMarkers) => {
                             if (!activeSong?.id) return;
-
+                            
                             // Optimistic UI Update 
                             setLocalMarkerOverrides(prev => ({ ...prev, [activeSong.id]: newMarkers }));
-
+                            
                             // Always save to local cache as fallback for global / read-only tracks
                             try {
                                 localStorage.setItem(`markers_${activeSong.id}`, JSON.stringify(newMarkers));
-                            } catch (e) { }
+                            } catch (e) {}
 
                             try {
                                 // Attempt cloud sync (will fail if user isn't owner of the track)
@@ -3314,14 +3254,14 @@ export default function Multitrack() {
                                                 {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
                                             </div>
                                         )}
-
+                                        
                                         {(activeTab === 'lyrics' || activeTab === 'chords') && (
                                             <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', marginLeft: '2px', marginRight: '10px' }}>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <div style={{ position: 'relative', width: '250px', transform: 'translateX(-40px)', marginLeft: '0px' }}>
                                                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                                                        <input
-                                                            type="text"
+                                                        <input 
+                                                            type="text" 
                                                             placeholder={`Buscar otra ${activeTab === 'lyrics' ? 'letra' : 'progresion'}...`}
                                                             value={quickTextSearch}
                                                             onChange={(e) => setQuickTextSearch(e.target.value)}
@@ -3338,7 +3278,7 @@ export default function Multitrack() {
                                                         />
                                                     </div>
                                                     {viewedSongId !== activeSongId && (
-                                                        <button
+                                                        <button 
                                                             onClick={() => { setViewedSongId(activeSongId); setQuickTextSearch(''); setIsSearchingTexts(false); }}
                                                             style={{ padding: '0 15px', background: 'rgba(0,188,212,0.1)', color: '#00bcd4', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', cursor: 'pointer' }}
                                                         >
@@ -3349,18 +3289,18 @@ export default function Multitrack() {
 
                                                 {/* Resultados rápidos del buscador */}
                                                 {isSearchingTexts && quickTextSearch && (
-                                                    <div style={{
-                                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                                                        background: '#1c1c1e', border: '1px solid #333', borderRadius: '8px',
-                                                        marginTop: '5px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
-                                                        maxHeight: '250px', overflowY: 'auto'
+                                                    <div style={{ 
+                                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, 
+                                                        background: '#1c1c1e', border: '1px solid #333', borderRadius: '8px', 
+                                                        marginTop: '5px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', 
+                                                        maxHeight: '250px', overflowY: 'auto' 
                                                     }}>
                                                         {[...globalSongs, ...librarySongs]
                                                             .filter(s => s.name.toLowerCase().includes(quickTextSearch.toLowerCase()) || (s.artist || '').toLowerCase().includes(quickTextSearch.toLowerCase()))
                                                             .slice(0, 10)
                                                             .map(song => (
-                                                                <div
-                                                                    key={song.id}
+                                                                <div 
+                                                                    key={song.id} 
                                                                     onClick={() => { setViewedSongId(song.id); setQuickTextSearch(''); setIsSearchingTexts(false); }}
                                                                     style={{ padding: '12px 15px', borderBottom: '1px solid #333', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                                                                     onMouseEnter={e => e.currentTarget.style.background = '#2c2c2e'}
@@ -3464,7 +3404,7 @@ export default function Multitrack() {
                                                 <div style={{ width: '180px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto', padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '6px' }}>Instrumento</div>
                                                     {activePartituras.length === 0 ? (
-                                                        <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 6px', lineHeight: 1.5 }}>No hay partituras para esta canción.<br />Súbelas desde el Dashboard.</div>
+                                                        <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 6px', lineHeight: 1.5 }}>No hay partituras para esta canción.<br/>Súbelas desde el Dashboard.</div>
                                                     ) : (
                                                         activePartituras.map(p => (
                                                             <button
@@ -3503,27 +3443,27 @@ export default function Multitrack() {
                                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                                     {selectedPartitura ? (
                                                         <>
-                                                            {/* Toolbar bar above PDF */}
-                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#111', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                                                                <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '700' }}>
-                                                                    {selectedPartitura.instrument}
-                                                                </span>
-                                                                <button
-                                                                    onClick={() => setPvFullscreen(true)}
-                                                                    title="Pantalla completa"
-                                                                    style={{ background: 'rgba(0,188,212,0.15)', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', color: '#00bcd4', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
-                                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,188,212,0.3)'}
-                                                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,188,212,0.15)'}
-                                                                >
-                                                                    ⛶ Pantalla Completa
-                                                                </button>
-                                                            </div>
-                                                            <iframe
-                                                                key={selectedPartitura.id}
-                                                                src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0'}
-                                                                title={`Partitura ${selectedPartitura.instrument}`}
-                                                                style={{ flex: 1, border: 'none', width: '100%', height: '100%', background: 'white' }}
-                                                            />
+                                                        {/* Toolbar bar above PDF */}
+                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#111', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                                                            <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '700' }}>
+                                                                {selectedPartitura.instrument}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => setPvFullscreen(true)}
+                                                                title="Pantalla completa"
+                                                                style={{ background: 'rgba(0,188,212,0.15)', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', color: '#00bcd4', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
+                                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,188,212,0.3)'}
+                                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,188,212,0.15)'}
+                                                            >
+                                                                ⛶ Pantalla Completa
+                                                            </button>
+                                                        </div>
+                                                        <iframe
+                                                            key={selectedPartitura.id}
+                                                            src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0'}
+                                                            title={`Partitura ${selectedPartitura.instrument}`}
+                                                            style={{ flex: 1, border: 'none', width: '100%', height: '100%', background: 'white' }}
+                                                        />
                                                         </>
                                                     ) : (
                                                         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', flexDirection: 'column', gap: '12px' }}>
@@ -3540,8 +3480,8 @@ export default function Multitrack() {
                                 </div>
                             ) : (
                                 <div className="mixer-wrapper">
-                                    <Mixer
-                                        tracks={tracks}
+                                    <Mixer 
+                                        tracks={tracks} 
                                         mixSettings={activeSetlist?.mixSettings?.[activeSongId] || {}}
                                         onStateChange={(id, state) => {
                                             currentMixState.current[id] = state;
@@ -4066,8 +4006,8 @@ export default function Multitrack() {
                 </div>
             )}
         </div>
-    );
-}
+        );
+    }
 
 const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect, onRemove }) {
     const {
