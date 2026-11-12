@@ -266,11 +266,15 @@ fun PartiturasView(
                                 settings.displayZoomControls = false
                                 webChromeClient = WebChromeClient()
                                 webViewClient = WebViewClient()
+                                tag = viewerUrl
                                 loadUrl(viewerUrl)
                             }
                         },
                         update = { webView ->
-                            webView.loadUrl(viewerUrl)
+                            if (webView.tag != viewerUrl) {
+                                webView.tag = viewerUrl
+                                webView.loadUrl(viewerUrl)
+                            }
                         },
                         modifier = Modifier.fillMaxSize()
                     )

@@ -66,26 +66,32 @@ class PadEngine private constructor(private val context: Context) {
             _isPlaying.value = true
             activePlayer = newPlayer
 
-            // Crossfade over 1500ms
-            val steps = 30
-            val stepDelay = 50L
-            val targetVol = _volume.value
+            try {
+                // Crossfade over 1500ms
+                val steps = 30
+                val stepDelay = 50L
+                val targetVol = _volume.value
 
-            newPlayer.setVolume(0f, 0f)
-            newPlayer.start()
+                newPlayer.setVolume(0f, 0f)
+                newPlayer.start()
 
-            for (i in 1..steps) {
-                val progress = i.toFloat() / steps
-                val newVol = progress * targetVol
-                val oldVol = (1f - progress) * targetVol
+                for (i in 1..steps) {
+                    val progress = i.toFloat() / steps
+                    val newVol = progress * targetVol
+                    val oldVol = (1f - progress) * targetVol
 
-                newPlayer.setVolume(newVol, newVol)
-                oldPlayer?.setVolume(oldVol, oldVol)
-                delay(stepDelay)
+                    newPlayer.setVolume(newVol, newVol)
+                    oldPlayer?.setVolume(oldVol, oldVol)
+                    delay(stepDelay)
+                }
+            } finally {
+                try {
+                    oldPlayer?.stop()
+                } catch (_: Exception) {}
+                try {
+                    oldPlayer?.release()
+                } catch (_: Exception) {}
             }
-
-            oldPlayer?.stop()
-            oldPlayer?.release()
         }
     }
 
@@ -93,22 +99,30 @@ class PadEngine private constructor(private val context: Context) {
         fadeJob?.cancel()
         fadeJob = scope.launch {
             val player = activePlayer ?: return@launch
-            val steps = 20
-            val stepDelay = 40L
-            val initialVol = _volume.value
+            try {
+                val steps = 20
+                val stepDelay = 40L
+                val initialVol = _volume.value
 
-            for (i in 1..steps) {
-                val progress = 1f - (i.toFloat() / steps)
-                val vol = progress * initialVol
-                player.setVolume(vol, vol)
-                delay(stepDelay)
+                for (i in 1..steps) {
+                    val progress = 1f - (i.toFloat() / steps)
+                    val vol = progress * initialVol
+                    player.setVolume(vol, vol)
+                    delay(stepDelay)
+                }
+            } finally {
+                try {
+                    player.stop()
+                } catch (_: Exception) {}
+                try {
+                    player.release()
+                } catch (_: Exception) {}
+                if (activePlayer == player) {
+                    activePlayer = null
+                    _activeKey.value = null
+                    _isPlaying.value = false
+                }
             }
-
-            player.stop()
-            player.release()
-            activePlayer = null
-            _activeKey.value = null
-            _isPlaying.value = false
         }
     }
 

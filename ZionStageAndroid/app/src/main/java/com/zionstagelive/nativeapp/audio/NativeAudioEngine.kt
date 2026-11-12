@@ -199,7 +199,8 @@ object NativeAudioEngine {
                         }
                     } catch (_: Exception) {}
                 }
-                delay(33) // ~30 fps UI update is ultra-smooth and light on CPU
+                val pollInterval = if (_isPlaying.value) 33L else 200L
+                delay(pollInterval)
             }
         }
     }

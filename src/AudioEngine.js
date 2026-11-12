@@ -54,6 +54,7 @@ class AudioEngine {
         this._levelPollInterval = null;
         this._songPreparationActive = false;
         this._durationHint = 0;
+        this.masterVolume = 1.0;
         /** Stems loaded into Zion WASM (Electron desktop mixer). */
         this._wasmTrackCount = 0;
         /** Desktop WASM: throttled [VU] console logs (~3/s). */
@@ -359,12 +360,17 @@ class AudioEngine {
             if (!options.isVisualOnly) {
                 const buf = await this._loadTrackToWASM(id, audioBuffer, sourceData);
                 if (buf) {
+                    const chanL = buf.getChannelData(0);
+                    const chanR = buf.numberOfChannels > 1 ? buf.getChannelData(1) : chanL;
                     this._trackMeta.set(id, {
                         buffer: buf,
+                        chanL,
+                        chanR,
                         volume: 1,
                         muted: false,
                         solo: false,
                         isVisualOnly: false,
+                        smoothedPeak: 0
                     });
                 }
             }
@@ -444,6 +450,7 @@ class AudioEngine {
     // ---- Volume / Mute / Solo / Pan ----
     setMasterVolume(vol) {
         const v = Math.max(0, Math.min(1, isFinite(vol) ? vol : 1));
+        this.masterVolume = v;
         if (IS_DESKTOP) {
             DesktopAudioBridge.setMasterVolume(v);
             return;
@@ -459,7 +466,11 @@ class AudioEngine {
             if (m) { m.volume = vol; DesktopAudioBridge.setTrackVolume(id, vol); }
             return;
         }
-        if (this.isWASMReady && this.wasm) { this.wasm.setTrackVolume(id, vol); }
+        if (this.isWASMReady && this.wasm) {
+            const m = this._trackMeta.get(id);
+            if (m) m.volume = vol;
+            this.wasm.setTrackVolume(id, vol);
+        }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.volume = vol; getNative().then(n => n.setTrackVolume(id, vol)); } }
         else { const t = this.tracks.get(id); if (t) { t.volume = vol; this._updateMuteSoloState(); } }
     }
@@ -470,7 +481,11 @@ class AudioEngine {
             if (m) { m.muted = val; DesktopAudioBridge.setTrackMute(id, val); }
             return;
         }
-        if (this.isWASMReady && this.wasm) { this.wasm.setTrackMute(id, val); }
+        if (this.isWASMReady && this.wasm) {
+            const m = this._trackMeta.get(id);
+            if (m) m.muted = val;
+            this.wasm.setTrackMute(id, val);
+        }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.muted = val; getNative().then(n => n.setTrackMute(id, val)); } }
         else { const t = this.tracks.get(id); if (t) { t.muted = val; this._updateMuteSoloState(); } }
     }
@@ -488,7 +503,11 @@ class AudioEngine {
             if (m) { m.solo = val; DesktopAudioBridge.setTrackSolo(id, val); }
             return;
         }
-        if (this.isWASMReady && this.wasm) { this.wasm.setTrackSolo(id, val); }
+        if (this.isWASMReady && this.wasm) {
+            const m = this._trackMeta.get(id);
+            if (m) m.solo = val;
+            this.wasm.setTrackSolo(id, val);
+        }
         else if (IS_NATIVE) { const m = this._trackMeta.get(id); if (m) { m.solo = val; getNative().then(n => n.setTrackSolo?.(id, val)); } }
         else { const t = this.tracks.get(id); if (t) { t.solo = val; this._updateMuteSoloState(); } }
     }
@@ -513,19 +532,57 @@ class AudioEngine {
             if (!m || m.muted) return 0;
             return this._nativeLevels.get(id) ?? 0;
         }
-        if (this.isWASMReady && this.wasm?.getTrackMeterPeak) {
+        if (this.isWASMReady && this.wasm) {
             if (!this.isPlaying) return 0;
-            if (this._wasmVuPollInterval && this._wasmVuPeakMap.has(id)) {
-                const p = this._wasmVuPeakMap.get(id);
-                return Math.min(1, Math.max(0, typeof p === 'number' ? p : 0));
+            if (typeof this.wasm.getTrackMeterPeak === 'function') {
+                if (this._wasmVuPollInterval && this._wasmVuPeakMap.has(id)) {
+                    const p = this._wasmVuPeakMap.get(id);
+                    return Math.min(1, Math.max(0, typeof p === 'number' ? p : 0));
+                }
+                try {
+                    const p = this.wasm.getTrackMeterPeak(id);
+                    if (typeof p === 'number' && Number.isFinite(p)) return Math.min(1, Math.max(0, p));
+                } catch {
+                    return 0;
+                }
             }
-            try {
-                const p = this.wasm.getTrackMeterPeak(id);
-                if (typeof p !== 'number' || !Number.isFinite(p)) return 0;
-                return Math.min(1, Math.max(0, p));
-            } catch {
-                return 0;
+
+            // Fallback para WASM cuando getTrackMeterPeak no está en el binario compilado:
+            const m = this._trackMeta.get(id);
+            if (!m || m.muted || m.isVisualOnly) return 0;
+
+            let anySolo = false;
+            for (const [, meta] of this._trackMeta) {
+                if (meta.solo) { anySolo = true; break; }
             }
+            if (anySolo && !m.solo) return 0;
+
+            const chanL = m.chanL || (m.buffer ? m.buffer.getChannelData(0) : null);
+            if (!chanL) return 0;
+            const chanR = m.chanR || (m.buffer && m.buffer.numberOfChannels > 1 ? m.buffer.getChannelData(1) : chanL);
+
+            const sr = m.buffer?.sampleRate || 44100;
+            const currentPos = this.getCurrentPosition();
+            const centerIdx = Math.floor(currentPos * sr);
+            const trackLen = chanL.length;
+            if (centerIdx < 0 || centerIdx >= trackLen) return 0;
+
+            const win = 1024;
+            const start = Math.max(0, centerIdx - (win >> 1));
+            const end = Math.min(trackLen, start + win);
+
+            let max = 0;
+            for (let i = start; i < end; i += 4) {
+                const absL = Math.abs(chanL[i]);
+                const absR = Math.abs(chanR[i]);
+                if (absL > max) max = absL;
+                if (absR > max) max = absR;
+            }
+
+            const vol = (m.volume ?? 1) * (this.masterVolume ?? 1);
+            const instant = max * vol;
+            m.smoothedPeak = (m.smoothedPeak ?? 0) * 0.75 + instant * 0.25;
+            return Math.min(1, Math.max(0, m.smoothedPeak));
         }
         if (!this.isPlaying) return 0;
         if (IS_NATIVE) { const m = this._trackMeta.get(id); if (!m || m.muted) return 0; return this._nativeLevels.get(id) ?? 0; }

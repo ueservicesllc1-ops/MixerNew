@@ -265,10 +265,10 @@ class DownloadManager(private val context: Context) {
             }.awaitAll().filterNotNull()
         }
 
-        if (readyStems.isEmpty() && total > 0) {
+        if (readyStems.size < total && total > 0) {
             _songProgressMap.value = _songProgressMap.value - song.id
             withContext(Dispatchers.Main) {
-                task.onError?.invoke("Error al descargar pistas de ${song.title}")
+                task.onError?.invoke("Descarga incompleta (${readyStems.size}/$total pistas) para ${song.title}. Verifica la conexión.")
             }
             return
         }
@@ -313,6 +313,9 @@ class DownloadManager(private val context: Context) {
             if (tempFile.exists() && tempFile.length() > 512) {
                 if (destFile.exists()) destFile.delete()
                 tempFile.renameTo(destFile)
+            }
+            if (!destFile.exists() || destFile.length() < 512) {
+                throw java.io.IOException("Error descargando pista o archivo inválido (${destFile.name})")
             }
         } finally {
             if (tempFile.exists()) tempFile.delete()

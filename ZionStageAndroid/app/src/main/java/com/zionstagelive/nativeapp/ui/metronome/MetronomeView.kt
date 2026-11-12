@@ -48,46 +48,25 @@ fun MetronomeView(
 
     val coroutineScope = rememberCoroutineScope()
     var metronomeJob by remember { mutableStateOf<Job?>(null) }
+    // Pre-allocated static AudioTracks for Accent, Quarter, and Sub-beat
+    val audioTracks = remember {
+        object {
+            var accentTrack: AudioTrack? = null
+            var quarterTrack: AudioTrack? = null
+            var subTrack: AudioTrack? = null
+            var currentSoundType: String = ""
 
-    fun playClickSound(isAccent: Boolean, isSub: Boolean) {
-        coroutineScope.launch(Dispatchers.Default) {
-            try {
-                val nodeVol = when {
-                    isSub -> volSub
-                    isAccent -> volAccent
-                    else -> volQuarter
-                } * masterVol
-
-                if (nodeVol <= 0.01f) return@launch
-
-                val sampleRate = 44100
-                val durationMs = when (clickSound) {
-                    "digital" -> 15
-                    "woodblock" -> 35
-                    else -> 45
-                }
+            private fun createTrack(freq: Double, durationMs: Int, sampleRate: Int = 44100): AudioTrack {
                 val numSamples = (sampleRate * (durationMs / 1000.0)).toInt()
-
-                val freq = when (clickSound) {
-                    "woodblock" -> if (isAccent) 1200.0 else if (isSub) 600.0 else 800.0
-                    "digital" -> if (isAccent) 2000.0 else if (isSub) 800.0 else 1000.0
-                    else -> if (isAccent) 880.0 else if (isSub) 330.0 else 440.0
-                }
-
-                // Stereo buffer: Left channel, Right channel
-                val leftGain = ((1f - pan) / 2f).coerceIn(0f, 1f) * nodeVol
-                val rightGain = ((1f + pan) / 2f).coerceIn(0f, 1f) * nodeVol
                 val buffer = ShortArray(numSamples * 2)
-
                 for (i in 0 until numSamples) {
                     val angle = 2.0 * Math.PI * i / (sampleRate / freq)
                     val decay = 1.0 - (i.toDouble() / numSamples)
-                    val sample = (sin(angle) * decay * Short.MAX_VALUE).toInt()
-                    buffer[i * 2] = (sample * leftGain).toInt().toShort()
-                    buffer[i * 2 + 1] = (sample * rightGain).toInt().toShort()
+                    val sample = (sin(angle) * decay * (Short.MAX_VALUE * 0.95)).toInt().toShort()
+                    buffer[i * 2] = sample
+                    buffer[i * 2 + 1] = sample
                 }
-
-                val audioTrack = AudioTrack.Builder()
+                val track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
                             .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -104,16 +83,85 @@ fun MetronomeView(
                     .setBufferSizeInBytes(buffer.size * 2)
                     .setTransferMode(AudioTrack.MODE_STATIC)
                     .build()
+                track.write(buffer, 0, buffer.size)
+                return track
+            }
 
-                audioTrack.write(buffer, 0, buffer.size)
-                audioTrack.play()
-                delay(durationMs + 20L)
-                audioTrack.stop()
-                audioTrack.release()
-            } catch (e: Exception) {
-                // Ignore audio generation glitches
+            fun setupTracks(sound: String) {
+                if (currentSoundType == sound && accentTrack != null) return
+                release()
+                currentSoundType = sound
+                try {
+                    val durationMs = when (sound) {
+                        "digital" -> 15
+                        "woodblock" -> 35
+                        else -> 45
+                    }
+                    val (fAccent, fQuarter, fSub) = when (sound) {
+                        "woodblock" -> Triple(1200.0, 800.0, 600.0)
+                        "digital" -> Triple(2000.0, 1000.0, 800.0)
+                        else -> Triple(880.0, 440.0, 330.0)
+                    }
+                    accentTrack = createTrack(fAccent, durationMs)
+                    quarterTrack = createTrack(fQuarter, durationMs)
+                    subTrack = createTrack(fSub, durationMs)
+                } catch (_: Exception) {}
+            }
+
+            @Suppress("DEPRECATION")
+            fun play(isAccent: Boolean, isSub: Boolean, vol: Float, panVal: Float) {
+                if (vol <= 0.01f) return
+                val track = when {
+                    isAccent -> accentTrack
+                    isSub -> subTrack
+                    else -> quarterTrack
+                } ?: return
+
+                val leftGain = ((1f - panVal) / 2f).coerceIn(0f, 1f) * vol
+                val rightGain = ((1f + panVal) / 2f).coerceIn(0f, 1f) * vol
+
+                try {
+                    track.setStereoVolume(leftGain, rightGain)
+                    track.stop()
+                    track.reloadStaticData()
+                    track.play()
+                } catch (_: Exception) {}
+            }
+
+            fun release() {
+                try {
+                    accentTrack?.stop()
+                    accentTrack?.release()
+                } catch (_: Exception) {}
+                accentTrack = null
+
+                try {
+                    quarterTrack?.stop()
+                    quarterTrack?.release()
+                } catch (_: Exception) {}
+                quarterTrack = null
+
+                try {
+                    subTrack?.stop()
+                    subTrack?.release()
+                } catch (_: Exception) {}
+                subTrack = null
+                currentSoundType = ""
             }
         }
+    }
+
+    LaunchedEffect(clickSound) {
+        audioTracks.setupTracks(clickSound)
+    }
+
+    fun playClickSound(isAccent: Boolean, isSub: Boolean) {
+        val nodeVol = when {
+            isSub -> volSub
+            isAccent -> volAccent
+            else -> volQuarter
+        } * masterVol
+        audioTracks.play(isAccent, isSub, nodeVol, pan)
     }
 
     LaunchedEffect(isPlaying, tempo, beatsPerBar, subType, volAccent, volQuarter, volSub, pan, masterVol, clickSound) {
@@ -141,6 +189,7 @@ fun MetronomeView(
     DisposableEffect(Unit) {
         onDispose {
             metronomeJob?.cancel()
+            audioTracks.release()
         }
     }
 
