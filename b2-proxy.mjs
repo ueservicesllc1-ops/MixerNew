@@ -1057,9 +1057,12 @@ app.post('/api/upload', upload.single('audioFile'), async (req, res) => {
 
         const b2BaseLower = path.basename(b2Lower);
         const sniffExe = multerLocalPath && fileStartsWithPE_MZ(multerLocalPath);
+        // IMPORTANTE: NO tratar 'application/octet-stream' como .exe. Los navegadores/multer lo
+        // asignan a cualquier archivo sin tipo MIME (p. ej. un .wav), lo que hacía que los stems
+        // se subieran crudos (WAV de 110 MB) saltándose la conversión a MP3/FLAC.
+        // Un instalador se detecta por su firma real (MZ) o por su extensión.
         const isExe = sniffExe ||
             file.mimetype === 'application/x-msdownload' ||
-            file.mimetype === 'application/octet-stream' ||
             file.mimetype === 'application/vnd.microsoft.portable-executable' ||
             origLower.endsWith('.exe') ||
             b2Lower.endsWith('.exe') ||
