@@ -11,13 +11,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         FirebaseApp.configure()
         
         let contentView = MainView()
+            .preferredColorScheme(.dark)
 
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIHostingController(rootView: contentView)
+        window.overrideUserInterfaceStyle = .dark
+        let hostingController = UIHostingController(rootView: contentView)
+        hostingController.overrideUserInterfaceStyle = .dark
+        window.rootViewController = hostingController
         self.window = window
         window.makeKeyAndVisible()
         
         return true
+    }
+
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        return .landscape
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {

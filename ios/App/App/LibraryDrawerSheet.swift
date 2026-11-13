@@ -13,6 +13,7 @@ struct LibraryDrawerSheet: View {
     @State private var isLoading: Bool = false
     @State private var addedSongIds: Set<String> = []
     
+    var isEmbedded: Bool = false
     var onAddSongToSetlist: ((Song) -> Void)? = nil
     
     private let db = Firestore.firestore()
@@ -32,68 +33,89 @@ struct LibraryDrawerSheet: View {
             // Header
             HStack {
                 Text("🎵 Pistas en la Nube")
-                    .font(.headline.bold())
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(Color.zionTextPrimary)
                 Spacer()
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(Color.zionTextSecondary)
-                }
-            }
-            .padding()
-            .background(Color.zionPanel)
-            
-            // Tabs: Mi Librería vs Global (VIP)
-            HStack(spacing: 8) {
-                Button(action: { libraryTab = "mine" }) {
-                    HStack {
-                        Image(systemName: "music.note")
-                        Text("Mi Librería (\(mySongs.count))")
-                    }
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(libraryTab == "mine" ? Color.zionCyan : Color.zionPanelLight)
-                    .foregroundColor(libraryTab == "mine" ? .black : Color.zionTextSecondary)
-                    .cornerRadius(8)
-                }
-                
-                Button(action: { libraryTab = "global" }) {
-                    HStack {
-                        Image(systemName: "globe")
-                        Text("Global VIP (\(globalSongs.count))")
-                    }
-                    .font(.system(size: 13, weight: .bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(libraryTab == "global" ? Color.purple : Color.zionPanelLight)
-                    .foregroundColor(libraryTab == "global" ? .white : Color.zionTextSecondary)
-                    .cornerRadius(8)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-            .background(Color.zionBackground)
-            
-            // Search Input
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(Color.zionTextSecondary)
-                TextField(libraryTab == "mine" ? "Buscar en mi librería..." : "Buscar en Global VIP...", text: $searchQuery)
-                    .foregroundColor(Color.zionTextPrimary)
-                if !searchQuery.isEmpty {
-                    Button(action: { searchQuery = "" }) {
+                if !isEmbedded {
+                    Button(action: { presentationMode.wrappedValue.dismiss() }) {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
                             .foregroundColor(Color.zionTextSecondary)
                     }
                 }
             }
-            .padding(10)
-            .background(Color.zionPanelLight)
-            .cornerRadius(8)
-            .padding(.horizontal)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.zionPanel)
+            
+            // Tabs: Mi Librería vs Global (VIP) + Search Input on same row when compact
+            HStack(spacing: 8) {
+                Button(action: { libraryTab = "mine" }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "music.note")
+                        Text("Mi Librería (\(mySongs.count))")
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(libraryTab == "mine" ? Color.zionCyan : Color.zionPanelLight)
+                    .foregroundColor(libraryTab == "mine" ? .black : Color.zionTextSecondary)
+                    .cornerRadius(6)
+                }
+                
+                Button(action: { libraryTab = "global" }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "globe")
+                        Text("Global VIP (\(globalSongs.count))")
+                    }
+                    .font(.system(size: 12, weight: .bold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(libraryTab == "global" ? Color.purple : Color.zionPanelLight)
+                    .foregroundColor(libraryTab == "global" ? .white : Color.zionTextSecondary)
+                    .cornerRadius(6)
+                }
+                
+                // Search Input
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(Color.zionCyan)
+                        .font(.system(size: 12))
+                    
+                    ZStack(alignment: .leading) {
+                        if searchQuery.isEmpty {
+                            Text(libraryTab == "mine" ? "Buscar en mi librería..." : "Buscar en Global VIP...")
+                                .foregroundColor(Color(white: 0.7))
+                                .font(.system(size: 12))
+                        }
+                        TextField("", text: $searchQuery)
+                            .foregroundColor(.white)
+                            .font(.system(size: 12, weight: .medium))
+                            .accentColor(Color.zionCyan)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                    }
+                    
+                    if !searchQuery.isEmpty {
+                        Button(action: { searchQuery = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(Color.zionTextSecondary)
+                                .font(.system(size: 12))
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(red: 0.14, green: 0.19, blue: 0.29))
+                .cornerRadius(6)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.zionCyan.opacity(0.35), lineWidth: 1)
+                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.zionBackground)
             
             // Song List
             if isLoading {
@@ -110,7 +132,7 @@ struct LibraryDrawerSheet: View {
                 VStack(spacing: 8) {
                     Spacer()
                     Image(systemName: "music.note.slash")
-                        .font(.largeTitle)
+                        .font(.title2)
                         .foregroundColor(Color.zionTextSecondary)
                     Text("No se encontraron canciones")
                         .font(.subheadline.bold())
@@ -119,12 +141,12 @@ struct LibraryDrawerSheet: View {
                 }
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 6) {
                         ForEach(filteredSongs) { song in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(song.name)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(.system(size: 13, weight: .bold))
                                         .foregroundColor(Color.zionTextPrimary)
                                     Text("\(song.artist ?? "Artista") • \(song.key ?? "C") • \(song.bpm != nil ? "\(Int(song.bpm!))" : "120") BPM")
                                         .font(.system(size: 11))
@@ -134,33 +156,39 @@ struct LibraryDrawerSheet: View {
                                 Spacer()
                                 
                                 Button(action: {
+                                    if let tracks = song.tracks, !tracks.isEmpty {
+                                        AudioEngineViewModel.shared.currentSong = song
+                                        AudioEngineViewModel.shared.loadTracks(tracks)
+                                    }
                                     addedSongIds.insert(song.id)
                                     onAddSongToSetlist?(song)
                                 }) {
                                     HStack(spacing: 4) {
                                         Image(systemName: addedSongIds.contains(song.id) ? "checkmark" : "plus")
-                                        Text(addedSongIds.contains(song.id) ? "Añadido" : "➕ Añadir")
+                                        Text(addedSongIds.contains(song.id) ? "Añadido" : "Añadir / Cargar")
                                     }
                                     .font(.system(size: 11, weight: .bold))
                                     .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
+                                    .padding(.vertical, 5)
                                     .background(addedSongIds.contains(song.id) ? Color.green : Color.zionCyan)
                                     .foregroundColor(addedSongIds.contains(song.id) ? .white : .black)
                                     .cornerRadius(6)
                                 }
                             }
-                            .padding(10)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
                             .background(Color.zionPanel)
                             .cornerRadius(8)
                             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.zionBorderSubtle, lineWidth: 1))
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
                 }
             }
         }
         .background(Color.zionBackground.ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .onAppear {
             fetchSongs()
         }
@@ -170,15 +198,13 @@ struct LibraryDrawerSheet: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         isLoading = true
         
-        // 1. Fetch User Songs ("mine")
         db.collection("songs")
             .whereField("userId", isEqualTo: uid)
-            .getDocuments { snapshot, error in
+            .getDocuments { snapshot, _ in
                 if let docs = snapshot?.documents {
                     self.mySongs = docs.compactMap { self.parseSong(doc: $0) }
                 }
                 
-                // 2. Fetch Global VIP Songs ("global") and forSale songs
                 self.db.collection("songs")
                     .whereField("isGlobal", isEqualTo: true)
                     .getDocuments { globalSnap, _ in
@@ -201,7 +227,6 @@ struct LibraryDrawerSheet: View {
                                             allDocs.append(contentsOf: tDocs)
                                         }
                                         
-                                        // Remove duplicates
                                         var uniqueDocs: [QueryDocumentSnapshot] = []
                                         var seen = Set<String>()
                                         for doc in allDocs {
@@ -213,10 +238,8 @@ struct LibraryDrawerSheet: View {
                                         
                                         let allParsed = uniqueDocs.compactMap { self.parseSong(doc: $0) }
                                         
-                                        // Only keep those that actually have tracks!
                                         self.globalSongs = allParsed.filter { song in
                                             let songUserId = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["userId"] as? String
-                                            // Only show if it's not the user's own song, or if it's global/sale
                                             if songUserId == uid {
                                                 let isGlob = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["isGlobal"] as? Bool ?? false
                                                 let forSale = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["forSale"] as? Bool ?? false
@@ -242,7 +265,6 @@ struct LibraryDrawerSheet: View {
         
         var parsedTracks: [SongTrack] = []
         
-        // 1. Array format
         let rawArray = (data["tracks"] as? [[String: Any]]) ?? 
                        (data["stems"] as? [[String: Any]]) ?? 
                        (data["audioFiles"] as? [[String: Any]]) ?? 
@@ -263,7 +285,6 @@ struct LibraryDrawerSheet: View {
             }
         }
         
-        // 2. Dictionary format
         if parsedTracks.isEmpty {
             let rawDict = (data["tracks"] as? [String: Any]) ?? (data["stems"] as? [String: Any]) ?? [:]
             for (key, val) in rawDict {
