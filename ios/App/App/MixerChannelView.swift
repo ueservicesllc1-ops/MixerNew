@@ -126,7 +126,7 @@ struct MixerChannelView: View {
                 .lineLimit(1)
         }
         .padding(compact ? 5 : 8)
-        .frame(maxWidth: channelWidth ?? .infinity)
+        .frame(width: channelWidth ?? (compact ? 98 : 148))
         .background(Color.zionPanel)
         .cornerRadius(10)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.zionBorderSubtle, lineWidth: 1))

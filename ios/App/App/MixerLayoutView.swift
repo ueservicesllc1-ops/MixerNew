@@ -333,31 +333,43 @@ struct MixerLayoutView: View {
                                     }
                                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 } else {
-                                    // Multi-row grid (2 or 3 rows depending on track count, just like iPad & desktop design)
-                                    let trackCount = engine.loadedTracks.count
-                                    let colsCount: Int = {
-                                        if trackCount <= 8 { return 4 }
-                                        if trackCount <= 10 { return 5 }
-                                        return 6
-                                    }()
-                                    let targetRows: CGFloat = trackCount > 12 ? (isCompact ? 2.0 : 3.0) : 2.0
-                                    let gridSpacing: CGFloat = isCompact ? 6 : 8
-                                    let rowAvailHeight = (availHeight - 12 - (gridSpacing * (targetRows - 1))) / targetRows
-                                    let gridFaderHeight = max(52, rowAvailHeight - (isCompact ? 62 : 84))
-                                    let gridColumns = Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: colsCount)
-                                    
-                                    ScrollView(.vertical, showsIndicators: true) {
-                                        LazyVGrid(columns: gridColumns, spacing: gridSpacing) {
-                                            ForEach(engine.loadedTracks) { track in
-                                                MixerChannelView(
-                                                    track: track,
-                                                    compact: isCompact || trackCount > 12,
-                                                    faderHeight: gridFaderHeight
-                                                )
+                                    if isCompact {
+                                        // En todos los teléfonos (iPhone): 1 sola fila visible con scroll
+                                        ScrollView(.horizontal, showsIndicators: true) {
+                                            HStack(alignment: .center, spacing: 6) {
+                                                ForEach(engine.loadedTracks) { track in
+                                                    MixerChannelView(
+                                                        track: track,
+                                                        compact: true,
+                                                        channelWidth: 98,
+                                                        faderHeight: calculatedFaderHeight
+                                                    )
+                                                }
                                             }
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .frame(minHeight: availHeight)
                                         }
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 6)
+                                    } else {
+                                        // En iPad / Tablet: Tamaño predeterminado con 2 filas visibles y las demás con scroll vertical
+                                        let ipadRowHeight = (availHeight - 24) / 2.0
+                                        let ipadFaderHeight = max(130, ipadRowHeight - 92)
+                                        ScrollView(.vertical, showsIndicators: true) {
+                                            LazyVGrid(
+                                                columns: [GridItem(.adaptive(minimum: 138, maximum: 175), spacing: 10)],
+                                                spacing: 10
+                                            ) {
+                                                ForEach(engine.loadedTracks) { track in
+                                                    MixerChannelView(
+                                                        track: track,
+                                                        compact: false,
+                                                        channelWidth: 148,
+                                                        faderHeight: ipadFaderHeight
+                                                    )
+                                                }
+                                            }
+                                            .padding(8)
+                                        }
                                     }
                                 }
                             }
