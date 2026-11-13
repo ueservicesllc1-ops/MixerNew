@@ -15,16 +15,13 @@ workflows:
           cd ios/App
           pod install
 
-      - name: Generate private key for signing certificate
-        script: |
-          ssh-keygen -t rsa -b 2048 -m PEM -f $CM_BUILD_DIR/cert_key -q -N ""
-
       - name: Fetch or create signing files
         script: |
+          chmod 600 $CM_BUILD_DIR/ios/appstore_cert_key.pem
           app-store-connect fetch-signing-files "com.zionstagelive.app.NJ5K877659" \
             --type IOS_APP_STORE \
             --create \
-            --certificate-key @file:$CM_BUILD_DIR/cert_key
+            --certificate-key @file:$CM_BUILD_DIR/ios/appstore_cert_key.pem
 
       - name: Set up keychain and code signing
         script: |
