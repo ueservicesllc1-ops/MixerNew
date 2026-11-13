@@ -39,8 +39,7 @@ workflows:
           set -e
           xcode-project build-ipa \
             --workspace "ios/App/App.xcworkspace" \
-            --scheme "App" \
-            --xcargs "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES IPHONEOS_DEPLOYMENT_TARGET=15.0"
+            --scheme "App"
 
     artifacts:
       - build/ios/ipa/*.ipa
