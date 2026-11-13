@@ -6,112 +6,87 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var showPassword = false
+    @FocusState private var focusedField: Field?
+    
+    enum Field: Hashable {
+        case email
+        case password
+    }
     
     let zionCyan = Color(red: 0.0, green: 0.74, blue: 0.83)
     let darkBackground = Color(red: 0.04, green: 0.06, blue: 0.11)
     let cardBackground = Color(red: 0.08, green: 0.11, blue: 0.18)
     let inputBackground = Color(red: 0.14, green: 0.19, blue: 0.29)
     
+    private func submitLogin() {
+        focusedField = nil
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanEmail.isEmpty, !password.isEmpty else { return }
+        authViewModel.login(email: cleanEmail, password: password)
+    }
+    
     var body: some View {
         GeometryReader { geo in
-            let isCompactHeight = geo.size.height < 500
+            // In landscape on iPhone, height is < 500pt (and shrinks to ~200pt when keyboard opens)
+            let isPhoneLandscape = geo.size.height < 500
+            let isKeyboardOpen = focusedField != nil && isPhoneLandscape
             
             ZStack {
-                darkBackground.ignoresSafeArea()
+                darkBackground
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        focusedField = nil
+                    }
                 
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: isCompactHeight ? 14 : 22) {
-                        // Header / Brand
+                    VStack(spacing: isKeyboardOpen ? 8 : (isPhoneLandscape ? 12 : 20)) {
+                        
+                        // Header / Brand (compacts automatically when keyboard is open in landscape)
                         HStack(spacing: 10) {
                             Image(systemName: "slider.vertical.3")
-                                .font(.system(size: isCompactHeight ? 24 : 32, weight: .bold))
+                                .font(.system(size: isKeyboardOpen ? 18 : (isPhoneLandscape ? 22 : 30), weight: .bold))
                                 .foregroundColor(zionCyan)
                             
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("ZION STAGE")
-                                    .font(.system(size: isCompactHeight ? 26 : 34, weight: .black, design: .rounded))
-                                    .foregroundColor(.white)
-                                Text("MULTITRACK LIVE PLAYER")
-                                    .font(.system(size: isCompactHeight ? 10 : 12, weight: .bold))
+                            Text("ZION STAGE")
+                                .font(.system(size: isKeyboardOpen ? 18 : (isPhoneLandscape ? 24 : 32), weight: .black, design: .rounded))
+                                .foregroundColor(.white)
+                            
+                            if !isKeyboardOpen {
+                                Text("•  LIVE MULTITRACK")
+                                    .font(.system(size: isPhoneLandscape ? 10 : 12, weight: .bold))
                                     .foregroundColor(zionCyan)
-                                    .tracking(1.5)
+                                    .tracking(1.2)
+                            }
+                            
+                            Spacer()
+                            
+                            if focusedField != nil {
+                                Button(action: { focusedField = nil }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "keyboard.chevron.compact.down")
+                                        Text("Ocultar")
+                                    }
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(zionCyan)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(zionCyan.opacity(0.15))
+                                    .cornerRadius(6)
+                                }
                             }
                         }
-                        .padding(.top, isCompactHeight ? 6 : 16)
                         
-                        // Input Fields
-                        VStack(spacing: isCompactHeight ? 10 : 14) {
-                            // Email Field
+                        // Input Fields: Side-by-side on iPhone landscape so both stay 100% visible above keyboard
+                        if isPhoneLandscape {
                             HStack(spacing: 10) {
-                                Image(systemName: "envelope.fill")
-                                    .foregroundColor(zionCyan)
-                                    .frame(width: 20)
-                                
-                                ZStack(alignment: .leading) {
-                                    if email.isEmpty {
-                                        Text("Correo electrónico")
-                                            .foregroundColor(Color(white: 0.75))
-                                            .font(.system(size: 15, weight: .medium))
-                                    }
-                                    TextField("", text: $email)
-                                        .foregroundColor(.white)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .accentColor(zionCyan)
-                                        .autocapitalization(.none)
-                                        .disableAutocorrection(true)
-                                        .keyboardType(.emailAddress)
-                                }
+                                emailInputField(compact: true)
+                                passwordInputField(compact: true)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, isCompactHeight ? 11 : 14)
-                            .background(inputBackground)
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(zionCyan.opacity(0.45), lineWidth: 1.2)
-                            )
-                            
-                            // Password Field
-                            HStack(spacing: 10) {
-                                Image(systemName: "lock.fill")
-                                    .foregroundColor(zionCyan)
-                                    .frame(width: 20)
-                                
-                                ZStack(alignment: .leading) {
-                                    if password.isEmpty {
-                                        Text("Contraseña")
-                                            .foregroundColor(Color(white: 0.75))
-                                            .font(.system(size: 15, weight: .medium))
-                                    }
-                                    if showPassword {
-                                        TextField("", text: $password)
-                                            .foregroundColor(.white)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .accentColor(zionCyan)
-                                            .autocapitalization(.none)
-                                            .disableAutocorrection(true)
-                                    } else {
-                                        SecureField("", text: $password)
-                                            .foregroundColor(.white)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .accentColor(zionCyan)
-                                    }
-                                }
-                                
-                                Button(action: { showPassword.toggle() }) {
-                                    Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
-                                        .foregroundColor(Color(white: 0.75))
-                                        .font(.system(size: 14))
-                                }
+                        } else {
+                            VStack(spacing: 14) {
+                                emailInputField(compact: false)
+                                passwordInputField(compact: false)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, isCompactHeight ? 11 : 14)
-                            .background(inputBackground)
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(zionCyan.opacity(0.45), lineWidth: 1.2)
-                            )
                         }
                         
                         if let errorMessage = authViewModel.errorMessage {
@@ -119,22 +94,21 @@ struct LoginView: View {
                                 .foregroundColor(Color(red: 1.0, green: 0.35, blue: 0.35))
                                 .font(.system(size: 12, weight: .semibold))
                                 .multilineTextAlignment(.center)
+                                .lineLimit(2)
                         }
                         
                         // Submit Button
-                        Button(action: {
-                            authViewModel.login(email: email.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
-                        }) {
+                        Button(action: submitLogin) {
                             HStack(spacing: 8) {
                                 if authViewModel.isAuthenticating {
                                     ProgressView()
                                         .progressViewStyle(CircularProgressViewStyle(tint: .black))
                                 }
                                 Text("INICIAR SESIÓN")
-                                    .font(.system(size: 15, weight: .black))
+                                    .font(.system(size: isPhoneLandscape ? 14 : 15, weight: .black))
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, isCompactHeight ? 12 : 15)
+                            .padding(.vertical, isKeyboardOpen ? 10 : (isPhoneLandscape ? 11 : 14))
                             .background(
                                 (email.isEmpty || password.isEmpty)
                                     ? zionCyan.opacity(0.4)
@@ -145,21 +119,119 @@ struct LoginView: View {
                         }
                         .disabled(authViewModel.isAuthenticating || email.isEmpty || password.isEmpty)
                     }
-                    .padding(isCompactHeight ? 20 : 28)
-                    .frame(maxWidth: 440)
+                    .padding(isKeyboardOpen ? 12 : (isPhoneLandscape ? 16 : 26))
+                    .frame(maxWidth: isPhoneLandscape ? 680 : 460)
                     .background(cardBackground)
-                    .cornerRadius(16)
+                    .cornerRadius(14)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.5), radius: 16, x: 0, y: 8)
+                    .shadow(color: .black.opacity(0.5), radius: 14, x: 0, y: 6)
                     .frame(maxWidth: .infinity, minHeight: geo.size.height)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 16)
                 }
             }
         }
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
+    }
+    
+    @ViewBuilder
+    private func emailInputField(compact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "envelope.fill")
+                .foregroundColor(zionCyan)
+                .font(.system(size: compact ? 13 : 15))
+                .frame(width: 18)
+            
+            ZStack(alignment: .leading) {
+                if email.isEmpty {
+                    Text("Correo electrónico")
+                        .foregroundColor(Color(white: 0.75))
+                        .font(.system(size: compact ? 14 : 15, weight: .medium))
+                        .lineLimit(1)
+                }
+                TextField("", text: $email)
+                    .focused($focusedField, equals: .email)
+                    .foregroundColor(.white)
+                    .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                    .accentColor(zionCyan)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        focusedField = .password
+                    }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, compact ? 10 : 13)
+        .background(inputBackground)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(focusedField == .email ? zionCyan : zionCyan.opacity(0.4), lineWidth: focusedField == .email ? 1.8 : 1.1)
+        )
+    }
+    
+    @ViewBuilder
+    private func passwordInputField(compact: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.fill")
+                .foregroundColor(zionCyan)
+                .font(.system(size: compact ? 13 : 15))
+                .frame(width: 18)
+            
+            ZStack(alignment: .leading) {
+                if password.isEmpty {
+                    Text("Contraseña")
+                        .foregroundColor(Color(white: 0.75))
+                        .font(.system(size: compact ? 14 : 15, weight: .medium))
+                        .lineLimit(1)
+                }
+                if showPassword {
+                    TextField("", text: $password)
+                        .focused($focusedField, equals: .password)
+                        .foregroundColor(.white)
+                        .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                        .accentColor(zionCyan)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                        .textContentType(.password)
+                        .submitLabel(.go)
+                        .onSubmit {
+                            submitLogin()
+                        }
+                } else {
+                    SecureField("", text: $password)
+                        .focused($focusedField, equals: .password)
+                        .foregroundColor(.white)
+                        .font(.system(size: compact ? 14 : 15, weight: .semibold))
+                        .accentColor(zionCyan)
+                        .textContentType(.password)
+                        .submitLabel(.go)
+                        .onSubmit {
+                            submitLogin()
+                        }
+                }
+            }
+            
+            Button(action: { showPassword.toggle() }) {
+                Image(systemName: showPassword ? "eye.slash.fill" : "eye.fill")
+                    .foregroundColor(Color(white: 0.75))
+                    .font(.system(size: 13))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, compact ? 10 : 13)
+        .background(inputBackground)
+        .cornerRadius(10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(focusedField == .password ? zionCyan : zionCyan.opacity(0.4), lineWidth: focusedField == .password ? 1.8 : 1.1)
+        )
     }
 }
