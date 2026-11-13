@@ -5,7 +5,8 @@ struct MixerChannelView: View {
     @ObservedObject var themeManager = ThemeManager.shared
     var track: SongTrack
     var compact: Bool = false
-    var faderHeight: CGFloat = 175
+    var channelWidth: CGFloat? = nil
+    var faderHeight: CGFloat = 140
     
     var isClickGuide: Bool {
         let n = (track.name ?? "").lowercased()
@@ -30,11 +31,11 @@ struct MixerChannelView: View {
         if isClickGuide {
             return Color(hex: "#ef4444")
         }
-        return Color(hex: "#00bcd4")
+        return Color(hex: "#4a5568")
     }
     
     var body: some View {
-        VStack(alignment: .center, spacing: compact ? 6 : 10) {
+        VStack(alignment: .center, spacing: compact ? 4 : 7) {
             
             // Header: Tappable LED dot + Track Name
             HStack(spacing: 4) {
@@ -47,35 +48,35 @@ struct MixerChannelView: View {
                 }) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(trackColor)
-                        .frame(width: compact ? 11 : 14, height: compact ? 8 : 10)
+                        .frame(width: compact ? 10 : 13, height: compact ? 7 : 9)
                         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.white.opacity(0.4), lineWidth: 1))
                 }
                 .buttonStyle(PlainButtonStyle())
                 
                 Text((track.name ?? "TRACK").uppercased())
-                    .font(.system(size: compact ? 10 : 11, weight: .bold))
+                    .font(.system(size: compact ? 9.5 : 11, weight: .bold))
                     .foregroundColor(Color.zionTextPrimary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
+                    .minimumScaleFactor(0.7)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 4)
             
             // Fader Area with Decibel text
-            HStack(spacing: compact ? 4 : 6) {
+            HStack(spacing: compact ? 3 : 6) {
                 // dB Scale
                 VStack {
-                    Text("+6").font(.system(size: compact ? 7 : 8))
+                    Text("+6").font(.system(size: compact ? 6.5 : 8))
                     Spacer()
-                    Text("0").font(.system(size: compact ? 7 : 8, weight: .bold)).foregroundColor(trackColor)
+                    Text("0").font(.system(size: compact ? 6.5 : 8, weight: .bold)).foregroundColor(trackColor)
                     Spacer()
-                    if !compact || faderHeight > 110 {
-                        Text("-10").font(.system(size: compact ? 7 : 8))
+                    if faderHeight > 90 {
+                        Text("-10").font(.system(size: compact ? 6.5 : 8))
                         Spacer()
                     }
-                    Text("-20").font(.system(size: compact ? 7 : 8))
+                    Text("-20").font(.system(size: compact ? 6.5 : 8))
                     Spacer()
-                    Text("-∞").font(.system(size: compact ? 7 : 8))
+                    Text("-∞").font(.system(size: compact ? 6.5 : 8))
                 }
                 .foregroundColor(Color.zionTextSecondary)
                 .frame(height: faderHeight)
@@ -90,15 +91,15 @@ struct MixerChannelView: View {
             }
             
             // M (Mute) / S (Solo) Buttons
-            HStack(spacing: compact ? 6 : 8) {
+            HStack(spacing: compact ? 4 : 6) {
                 let isMuted = engine.mutedStems.contains(track.id)
                 Button(action: {
                     engine.setTrackMute(id: track.id, muted: !isMuted)
                 }) {
                     Text("M")
-                        .font(.system(size: compact ? 12 : 13, weight: .black))
+                        .font(.system(size: compact ? 10.5 : 13, weight: .black))
                         .frame(maxWidth: .infinity)
-                        .frame(height: compact ? 26 : 32)
+                        .frame(height: compact ? 20 : 28)
                         .background(isMuted ? Color.zionRed : Color.zionPanelLight)
                         .foregroundColor(isMuted ? .white : Color.zionTextSecondary)
                         .cornerRadius(5)
@@ -109,9 +110,9 @@ struct MixerChannelView: View {
                     engine.setTrackSolo(id: track.id, solo: !isSolo)
                 }) {
                     Text("S")
-                        .font(.system(size: compact ? 12 : 13, weight: .black))
+                        .font(.system(size: compact ? 10.5 : 13, weight: .black))
                         .frame(maxWidth: .infinity)
-                        .frame(height: compact ? 26 : 32)
+                        .frame(height: compact ? 20 : 28)
                         .background(isSolo ? Color.zionYellow : Color.zionPanelLight)
                         .foregroundColor(isSolo ? .black : Color.zionTextSecondary)
                         .cornerRadius(5)
@@ -120,12 +121,12 @@ struct MixerChannelView: View {
             
             // Stereo Position Tag
             Text(isClickGuide ? "Canal R (Der)" : "Canal L (Izq)")
-                .font(.system(size: compact ? 8 : 9, weight: .bold))
+                .font(.system(size: compact ? 7.5 : 9, weight: .bold))
                 .foregroundColor(isClickGuide ? Color.zionRed : Color.zionCyan)
                 .lineLimit(1)
         }
-        .padding(compact ? 6 : 8)
-        .frame(width: compact ? 98 : 136)
+        .padding(compact ? 5 : 8)
+        .frame(maxWidth: channelWidth ?? .infinity)
         .background(Color.zionPanel)
         .cornerRadius(10)
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.zionBorderSubtle, lineWidth: 1))
