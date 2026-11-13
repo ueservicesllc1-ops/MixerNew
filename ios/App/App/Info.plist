@@ -50,5 +50,13 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Zion Stage utiliza la red local para sincronizar letras, acordes y secciones en tiempo real con tu banda (Band Sync).</string>
 </dict>
 </plist>

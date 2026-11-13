@@ -82,3 +82,46 @@ workflows:
     artifacts:
       - ios/App/build_ios/*.ipa
       - ios/App/build_ios/Build/Products/Release-iphoneos/*.app
+
+  ios-appstore-workflow:
+    name: Publish to App Store Connect & TestFlight
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    integrations:
+      app_store_connect: Codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.zionstagelive.app
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install CocoaPods Dependencies
+        script: |
+          set -e
+          cd ios/App
+          pod install
+
+      - name: Update Build Number & Set Code Signing Profiles
+        script: |
+          set -e
+          NEW_BUILD=$((${BUILD_NUMBER:-1} + 1))
+          sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]*;/CURRENT_PROJECT_VERSION = ${NEW_BUILD};/g" ios/App/App.xcodeproj/project.pbxproj
+          xcode-project use-profiles --project ios/App/App.xcodeproj
+
+      - name: Build Signed IPA for App Store
+        script: |
+          set -e
+          xcode-project build-ipa \
+            --workspace "ios/App/App.xcworkspace" \
+            --scheme "App" \
+            --xcargs "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES=YES IPHONEOS_DEPLOYMENT_TARGET=15.0"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
