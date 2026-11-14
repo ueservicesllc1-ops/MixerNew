@@ -64,10 +64,11 @@ class AudioEngine {
         this._wasmVuPeakMap = new Map();
         this._wasmVuLastBatchLog = 0;
 
-        // WASM State
+        // WASM State (disabled on Web in favor of native multi-threaded Web Audio API)
         this.wasm = null;
         this.isWASMReady = false;
-        this._wasmScriptProcessor = null; // ScriptProcessorNode that calls C++ processBlock
+        this._wasmScriptProcessor = null;
+        this._isLoopSeeking = false;
 
         if (!IS_NATIVE && !IS_DESKTOP) {
             this._initWebAudio();
@@ -77,15 +78,15 @@ class AudioEngine {
     _initWebAudio() {
         if (this.ctx) return;
         try {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 44100 });
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
             this.stSumBus = this.ctx.createGain();
-            this.stSumBus.gain.value = 0.70;
+            this.stSumBus.gain.value = 0.85;
             this.limiter = this.ctx.createDynamicsCompressor();
-            this.limiter.threshold.value = -3.0;
-            this.limiter.knee.value = 30.0;
+            this.limiter.threshold.value = -2.0;
+            this.limiter.knee.value = 12.0;
             this.limiter.ratio.value = 12.0;
             this.limiter.attack.value = 0.003;
-            this.limiter.release.value = 0.250;
+            this.limiter.release.value = 0.150;
             this.masterGain = this.ctx.createGain();
             this.stSumBus.connect(this.limiter);
             this.limiter.connect(this.masterGain);
@@ -174,57 +175,18 @@ class AudioEngine {
             return;
         }
 
-        if (!IS_NATIVE && !IS_DESKTOP && !this.isWASMReady) {
-            try {
-                console.log("[AudioEngine] Initializing Zion Core C++ WASM...");
-                const ZionAudioCoreModule = (await import('./wasm/zion_audio_core_wasm.js')).default;
-                const wasmUrl = new URL('./wasm/zion_audio_core_wasm.wasm', import.meta.url).href;
-                
-                // Fetch the WASM binary manually to bypass iOS Capacitor MIME type restrictions
-                const response = await fetch(wasmUrl);
-                const wasmBinary = await response.arrayBuffer();
-
-                this.wasm = await ZionAudioCoreModule({
-                    wasmBinary: wasmBinary,
-                    locateFile: (path) => {
-                        if (path.endsWith('.wasm')) return wasmUrl;
-                        return path;
-                    }
-                });
-
-                if (this.wasm) {
-                    const sr = this.ctx?.sampleRate || 44100;
-                    this.wasm.initEngine(sr);
-                    this.isWASMReady = true;
-                    this._startWASMProcessor();
-                    // Pitch (header transpose) runs in SoundTouch; tempo is handled in WASM.
-                    // Without loading the worklet here, init() returned early and workletLoaded stayed false.
-                    if (this.ctx && !this.workletLoaded) {
-                        try {
-                            if (this.ctx.state === 'suspended') await this.ctx.resume();
-                            await this.ctx.audioWorklet.addModule(soundtouchWorkletUrl);
-                            this.workletLoaded = true;
-                        } catch (err) {
-                            console.warn('[AudioEngine] soundtouch-worklet not available (pitch will not work):', err);
-                        }
-                    }
-                    this._updateWorkletGraph();
-                    console.log("[AudioEngine] Zion Core C++ WASM ready at", sr, "Hz");
-                    return;
-                }
-            } catch (error) {
-                console.warn("[AudioEngine] WASM load failed, falling back to Web Audio.", error);
-                this.isWASMReady = false;
-                this.wasm = null;
-            }
-        }
-
         if (IS_NATIVE) return;
+
+        // Web uses native multi-threaded Web Audio API (AudioBufferSourceNode + AudioWorklet)
+        // instead of main-thread ScriptProcessorNode WASM mixing, ensuring sample-accurate sync
+        // and zero UI lag.
+        this.isWASMReady = false;
+        this.wasm = null;
 
         this._initWebAudio();
         if (this.ctx?.state === 'suspended') await this.ctx.resume();
 
-        if (!this.workletLoaded) {
+        if (!this.workletLoaded && this.ctx?.audioWorklet) {
             try {
                 await this.ctx.audioWorklet.addModule(soundtouchWorkletUrl);
                 this.workletLoaded = true;
@@ -232,6 +194,7 @@ class AudioEngine {
                 console.warn("[AudioEngine] soundtouch-worklet not available:", err);
             }
         }
+        this._updateWorkletGraph();
     }
 
     // ---- Track loading ----
@@ -410,13 +373,24 @@ class AudioEngine {
 
             const pannerNode = this.ctx.createStereoPanner();
             const analyser = this.ctx.createAnalyser();
-            analyser.fftSize = 256;
+            analyser.fftSize = 128;
             const gainNode = this.ctx.createGain();
             gainNode.gain.value = 0;
             pannerNode.connect(analyser);
             analyser.connect(gainNode);
             if (!options.isVisualOnly) gainNode.connect(this.stSumBus);
-            this.tracks.set(id, { buffer, gain: gainNode, analyser, panner: pannerNode, volume: 1, muted: false, solo: false, isVisualOnly: options.isVisualOnly || false });
+            this.tracks.set(id, {
+                buffer,
+                gain: gainNode,
+                analyser,
+                vuBuffer: new Uint8Array(analyser.frequencyBinCount),
+                smoothedPeak: 0,
+                panner: pannerNode,
+                volume: 1,
+                muted: false,
+                solo: false,
+                isVisualOnly: options.isVisualOnly || false,
+            });
         } catch (e) {
             console.error(`[AudioEngine] Error decoding track ${id}:`, e);
         }
@@ -600,12 +574,17 @@ class AudioEngine {
         if (!this.isPlaying) return 0;
         if (IS_NATIVE) { const m = this._trackMeta.get(id); if (!m || m.muted) return 0; return this._nativeLevels.get(id) ?? 0; }
         const t = this.tracks.get(id);
-        if (!t?.analyser) return 0;
-        const d = new Uint8Array(t.analyser.frequencyBinCount);
+        if (!t?.analyser || t.muted) return 0;
+        const d = t.vuBuffer || new Uint8Array(t.analyser.frequencyBinCount);
         t.analyser.getByteTimeDomainData(d);
         let max = 0;
-        for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i] - 128) / 128; if (v > max) max = v; }
-        return max * t.volume;
+        for (let i = 0; i < d.length; i += 2) {
+            const v = Math.abs(d[i] - 128) / 128;
+            if (v > max) max = v;
+        }
+        const instant = max * t.volume * (this.masterVolume ?? 1);
+        t.smoothedPeak = (t.smoothedPeak ?? 0) * 0.65 + instant * 0.35;
+        return Math.min(1, Math.max(0, t.smoothedPeak));
     }
 
     /**
@@ -751,6 +730,7 @@ class AudioEngine {
 
     // ---- Tempo / Pitch ----
     setTempo(ratio) {
+        const prevRatio = this.tempoRatio || 1.0;
         this.tempoRatio = ratio;
         if (IS_DESKTOP) {
             DesktopAudioBridge.setTempoRatio(ratio);
@@ -762,10 +742,10 @@ class AudioEngine {
             this.wasm.setTempoRatio(ratio);
         }
         
-        // Advance playback time correctly for UI
+        // Advance playback time correctly for UI before switching ratio
         if (this.isPlaying && (!this.isWASMReady || !this.wasm)) {
-            const elapsed = this.ctx.currentTime - this._playStartTime;
-            this.pausePosition += elapsed * this.tempoRatio;
+            const elapsed = Math.max(0, this.ctx.currentTime - this._playStartTime);
+            this.pausePosition += elapsed * prevRatio;
             this._playStartTime = this.ctx.currentTime;
         }
         
@@ -889,27 +869,33 @@ class AudioEngine {
         }
 
         if (this.ctx?.state === 'suspended') await this.ctx.resume();
-        this._playStartTime = this.ctx.currentTime;
-        this.lastFetchPos = this.pausePosition;
+        const syncTime = this.ctx.currentTime + 0.04;
+        const startOffset = Math.max(0, this.pausePosition);
+        this._playStartTime = syncTime;
+        this.lastFetchPos = startOffset;
         this.lastFetchTime = performance.now();
         this._startRAF(sessionId);
 
         this._updateWorkletGraph();
 
+        let anySolo = false;
+        for (const t of this.tracks.values()) { if (t.solo) { anySolo = true; break; } }
+
         for (const [, track] of this.tracks.entries()) {
             if (track.isVisualOnly || !track.buffer) continue;
             if (track.source) { try { track.source.stop(); } catch {} }
             if (track.gain) {
-                const now = this.ctx.currentTime;
-                track.gain.gain.cancelScheduledValues(now);
-                track.gain.gain.setValueAtTime(0, now);
-                track.gain.gain.linearRampToValueAtTime(track.muted ? 0 : track.volume, now + 0.05);
+                const effectiveMute = track.muted || (anySolo && !track.solo);
+                track.gain.gain.cancelScheduledValues(syncTime);
+                track.gain.gain.setValueAtTime(0, this.ctx.currentTime);
+                track.gain.gain.setValueAtTime(0, syncTime);
+                track.gain.gain.linearRampToValueAtTime(effectiveMute ? 0 : track.volume, syncTime + 0.025);
             }
             const src = this.ctx.createBufferSource();
             src.buffer = track.buffer;
             src.connect(track.panner);
             src.playbackRate.value = this.tempoRatio;
-            src.start(0, Math.max(0, this.pausePosition));
+            src.start(syncTime, startOffset);
             track.source = src;
         }
     }
@@ -947,7 +933,8 @@ class AudioEngine {
             await native.pause();
             this._stopNativeLevelPoll();
         } else {
-            this.pausePosition += (this.ctx.currentTime - this._playStartTime) * this.tempoRatio;
+            const elapsed = Math.max(0, this.ctx.currentTime - this._playStartTime);
+            this.pausePosition += elapsed * this.tempoRatio;
             for (const [, t] of this.tracks.entries()) { if (t.source) { try { t.source.stop(); } catch {} t.source = null; } }
         }
         if (this._updater) cancelAnimationFrame(this._updater);
@@ -1083,18 +1070,25 @@ class AudioEngine {
                     currentPos = await n.getPosition();
                     if (currentPos === 0 && this.lastFetchPos > 1) currentPos = this.lastFetchPos;
                 } else {
-                    currentPos = this.pausePosition + ((this.ctx.currentTime - this._playStartTime) * this.tempoRatio);
+                    const elapsed = Math.max(0, this.ctx.currentTime - this._playStartTime);
+                    currentPos = this.pausePosition + (elapsed * this.tempoRatio);
                 }
                 
                 // Sample-Accurate Loop Check
-                if (this.loopActive && this.loopStart !== null && this.loopEnd !== null) {
+                if (this.loopActive && this.loopStart !== null && this.loopEnd !== null && !this._isLoopSeeking) {
                     if (currentPos >= this.loopEnd) {
                         if (this.loopExitPending) {
                             this.loopActive = false;
                             this.loopExitPending = false;
                         } else {
+                            this._isLoopSeeking = true;
                             currentPos = this.loopStart;
-                            await this.seek(this.loopStart);
+                            try {
+                                await this.seek(this.loopStart);
+                            } finally {
+                                this._isLoopSeeking = false;
+                            }
+                            return;
                         }
                     }
                 }
