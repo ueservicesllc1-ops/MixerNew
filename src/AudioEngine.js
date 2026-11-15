@@ -80,15 +80,18 @@ class AudioEngine {
         try {
             this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
             this.stSumBus = this.ctx.createGain();
-            this.stSumBus.gain.value = 0.85;
-            this.limiter = this.ctx.createDynamicsCompressor();
-            this.limiter.threshold.value = -2.0;
-            this.limiter.knee.value = 12.0;
-            this.limiter.ratio.value = 12.0;
-            this.limiter.attack.value = 0.003;
-            this.limiter.release.value = 0.150;
+            this.stSumBus.gain.value = 0.80;
+            this.guideBus = this.ctx.createGain();
+            this.guideBus.gain.value = 0.85;
+            this.guideDelayNode = this.ctx.createDelay(0.5);
+            this.guideDelayNode.delayTime.value = 0;
+            // Clean linear summing bus (no DynamicsCompressorNode pumping/ducking distortion)
+            this.limiter = this.ctx.createGain();
+            this.limiter.gain.value = 1.0;
             this.masterGain = this.ctx.createGain();
             this.stSumBus.connect(this.limiter);
+            this.guideBus.connect(this.guideDelayNode);
+            this.guideDelayNode.connect(this.limiter);
             this.limiter.connect(this.masterGain);
             this.masterGain.connect(this.ctx.destination);
         } catch (e) {
@@ -293,7 +296,12 @@ class AudioEngine {
         }
 
         for (const t of tracksArray) {
-            await this.addTrack(t.id, t.audioBuffer, t.sourceData, { isVisualOnly: t.isVisualOnly });
+            await this.addTrack(t.id, t.audioBuffer, t.sourceData, {
+                isVisualOnly: t.isVisualOnly,
+                name: t.name || t.id,
+                isGuide: t.isGuide,
+                isClick: t.isClick,
+            });
         }
     }
 
@@ -378,7 +386,13 @@ class AudioEngine {
             gainNode.gain.value = 0;
             pannerNode.connect(analyser);
             analyser.connect(gainNode);
-            if (!options.isVisualOnly) gainNode.connect(this.stSumBus);
+            const stemLabel = options.name || id || '';
+            const isGuideOrClick = Boolean(
+                options.isGuide || options.isClick || isMixerClickStem(stemLabel) || isMixerGuideStem(stemLabel)
+            );
+            if (!options.isVisualOnly) {
+                gainNode.connect(isGuideOrClick && this.guideBus ? this.guideBus : this.stSumBus);
+            }
             this.tracks.set(id, {
                 buffer,
                 gain: gainNode,
@@ -386,6 +400,8 @@ class AudioEngine {
                 vuBuffer: new Uint8Array(analyser.frequencyBinCount),
                 smoothedPeak: 0,
                 panner: pannerNode,
+                pan: 0,
+                isGuideOrClick,
                 volume: 1,
                 muted: false,
                 solo: false,
@@ -479,7 +495,15 @@ class AudioEngine {
         if (IS_DESKTOP) { return; }
         if (this.isWASMReady && this.wasm) { /* future C++ pan */ }
         else if (IS_NATIVE) { getNative().then(n => n.setTrackPan?.(id, pan)); }
-        else { const t = this.tracks.get(id); if (t?.panner) t.panner.pan.setTargetAtTime(pan, this.ctx.currentTime, 0.05); }
+        else {
+            const t = this.tracks.get(id);
+            if (t?.panner) {
+                const p = Math.max(-1, Math.min(1, Number(pan) || 0));
+                t.pan = p;
+                t.panner.pan.setTargetAtTime(p, this.ctx.currentTime, 0.03);
+                this._updateMuteSoloState();
+            }
+        }
     }
 
     setTrackSolo(id, val) {
@@ -504,10 +528,23 @@ class AudioEngine {
         for (const t of this.tracks.values()) { this._updateTrackNodeGain(t, anySolo); }
     }
 
-    _updateTrackNodeGain(track, anySolo) {
-        if (IS_NATIVE || !track.gain) return;
+    _effectiveTrackGain(track, anySolo) {
         const muteIt = track.muted || (anySolo && !track.solo);
-        track.gain.gain.setTargetAtTime(muteIt ? 0 : track.volume, this.ctx.currentTime, 0.02);
+        if (muteIt) return 0;
+        // Web Audio StereoPannerNode sums L+R (2x amplitude / +6dB) when pan is +/-1 on stereo buffers.
+        // Compensate so panning to L or R keeps natural unity level without overloading or compressing.
+        const panComp = 1 / (1 + 0.5 * Math.abs(track.pan || 0));
+        return track.volume * panComp;
+    }
+
+    _updateTrackNodeGain(track, anySolo) {
+        if (IS_NATIVE || !track.gain || !this.ctx) return;
+        const target = this._effectiveTrackGain(track, anySolo);
+        const now = this.ctx.currentTime;
+        try {
+            track.gain.gain.cancelScheduledValues(now);
+            track.gain.gain.setTargetAtTime(target, now, 0.015);
+        } catch {}
     }
 
     getTrackLevel(id) {
@@ -802,17 +839,22 @@ class AudioEngine {
             const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
             const pitchParam = this.masterSoundTouchNode.parameters.get('pitchSemitones');
             const now = this.ctx.currentTime;
-            // WASM aplica tempo en C++; el worklet solo compensa tono (tempo 1) más el transpose pedido.
-            if (tempoParam) tempoParam.setValueAtTime(this.isWASMReady ? 1.0 : 1.0, now);
+            if (tempoParam) tempoParam.setValueAtTime(1.0, now);
             const pitchOffset = 12 * Math.log2(this.tempoRatio || 1);
             if (pitchParam)
                 pitchParam.setValueAtTime(this.pitchSemitones - pitchOffset, now);
+            if (this.guideDelayNode) {
+                this.guideDelayNode.delayTime.setValueAtTime(0.105, now);
+            }
         } else if (!needsWorklet) {
             if (this.masterSoundTouchNode) {
                 this.stSumBus.disconnect();
                 this.masterSoundTouchNode.disconnect();
                 this.masterSoundTouchNode = null;
                 this.stSumBus.connect(this.limiter);
+            }
+            if (this.guideDelayNode && this.ctx) {
+                this.guideDelayNode.delayTime.setValueAtTime(0, this.ctx.currentTime);
             }
             if (this.guideSoundTouchNode) {
                 if (this._wasmMergerGuide) {
@@ -869,7 +911,8 @@ class AudioEngine {
         }
 
         if (this.ctx?.state === 'suspended') await this.ctx.resume();
-        const syncTime = this.ctx.currentTime + 0.04;
+        const now = this.ctx.currentTime;
+        const syncTime = now + 0.025;
         const startOffset = Math.max(0, this.pausePosition);
         this._playStartTime = syncTime;
         this.lastFetchPos = startOffset;
@@ -885,11 +928,10 @@ class AudioEngine {
             if (track.isVisualOnly || !track.buffer) continue;
             if (track.source) { try { track.source.stop(); } catch {} }
             if (track.gain) {
-                const effectiveMute = track.muted || (anySolo && !track.solo);
-                track.gain.gain.cancelScheduledValues(syncTime);
-                track.gain.gain.setValueAtTime(0, this.ctx.currentTime);
-                track.gain.gain.setValueAtTime(0, syncTime);
-                track.gain.gain.linearRampToValueAtTime(effectiveMute ? 0 : track.volume, syncTime + 0.025);
+                const targetGain = this._effectiveTrackGain(track, anySolo);
+                track.gain.gain.cancelScheduledValues(now);
+                track.gain.gain.setValueAtTime(0, now);
+                track.gain.gain.linearRampToValueAtTime(targetGain, syncTime + 0.015);
             }
             const src = this.ctx.createBufferSource();
             src.buffer = track.buffer;
