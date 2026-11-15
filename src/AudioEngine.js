@@ -78,14 +78,13 @@ class AudioEngine {
     _initWebAudio() {
         if (this.ctx) return;
         try {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive', sampleRate: 44100 });
             this.stSumBus = this.ctx.createGain();
-            this.stSumBus.gain.value = 0.80;
+            this.stSumBus.gain.value = 0.70;
             this.guideBus = this.ctx.createGain();
             this.guideBus.gain.value = 0.85;
             this.guideDelayNode = this.ctx.createDelay(0.5);
             this.guideDelayNode.delayTime.value = 0;
-            // Clean linear summing bus (no DynamicsCompressorNode pumping/ducking distortion)
             this.limiter = this.ctx.createGain();
             this.limiter.gain.value = 1.0;
             this.masterGain = this.ctx.createGain();
@@ -103,7 +102,7 @@ class AudioEngine {
     _startWASMProcessor() {
         if (!this.wasm || !this.ctx || this._wasmScriptProcessor) return;
 
-        const BLOCK_SIZE = 4096;
+        const BLOCK_SIZE = 2048;
         // 4 output channels: [MusicL, MusicR, GuideL, GuideR]
         const proc = this.ctx.createScriptProcessor(BLOCK_SIZE, 0, 4);
 
@@ -178,13 +177,49 @@ class AudioEngine {
             return;
         }
 
-        if (IS_NATIVE) return;
+        if (!IS_NATIVE && !IS_DESKTOP && !this.isWASMReady) {
+            try {
+                console.log("[AudioEngine] Initializing Zion Core C++ WASM...");
+                const ZionAudioCoreModule = (await import('./wasm/zion_audio_core_wasm.js')).default;
+                const wasmUrl = new URL('./wasm/zion_audio_core_wasm.wasm', import.meta.url).href;
 
-        // Web uses native multi-threaded Web Audio API (AudioBufferSourceNode + AudioWorklet)
-        // instead of main-thread ScriptProcessorNode WASM mixing, ensuring sample-accurate sync
-        // and zero UI lag.
-        this.isWASMReady = false;
-        this.wasm = null;
+                const response = await fetch(wasmUrl);
+                const wasmBinary = await response.arrayBuffer();
+
+                this.wasm = await ZionAudioCoreModule({
+                    wasmBinary: wasmBinary,
+                    locateFile: (path) => {
+                        if (path.endsWith('.wasm')) return wasmUrl;
+                        return path;
+                    }
+                });
+
+                if (this.wasm) {
+                    const sr = this.ctx?.sampleRate || 44100;
+                    this.wasm.initEngine(sr);
+                    this.isWASMReady = true;
+                    this._startWASMProcessor();
+                    if (this.ctx && !this.workletLoaded) {
+                        try {
+                            if (this.ctx.state === 'suspended') await this.ctx.resume();
+                            await this.ctx.audioWorklet.addModule(soundtouchWorkletUrl);
+                            this.workletLoaded = true;
+                        } catch (err) {
+                            console.warn('[AudioEngine] soundtouch-worklet not available (pitch will not work):', err);
+                        }
+                    }
+                    this._updateWorkletGraph();
+                    console.log("[AudioEngine] Zion Core C++ WASM ready at", sr, "Hz");
+                    return;
+                }
+            } catch (error) {
+                console.warn("[AudioEngine] WASM load failed, falling back to Web Audio.", error);
+                this.isWASMReady = false;
+                this.wasm = null;
+            }
+        }
+
+        if (IS_NATIVE) return;
 
         this._initWebAudio();
         if (this.ctx?.state === 'suspended') await this.ctx.resume();
@@ -261,16 +296,21 @@ class AudioEngine {
                 }
                 const buffer = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
                 if (buffer) {
+                    const chanL = buffer.getChannelData(0);
+                    const chanR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chanL;
                     this._trackMeta.set(t.id, {
                         buffer,
+                        chanL,
+                        chanR,
                         volume: 1,
                         muted: false,
                         solo: false,
                         isVisualOnly: false,
+                        smoothedPeak: 0,
                     });
                     this._wasmTrackCount += 1;
                 }
-                const stemName = t.name || '';
+                const stemName = t.name || t.id || '';
                 const isGuideOrClick = isMixerClickStem(stemName) || isMixerGuideStem(stemName);
                 if (buffer && isGuideOrClick) {
                     this.wasm.setTrackIsGuide(t.id, true);
@@ -584,19 +624,17 @@ class AudioEngine {
             const chanR = m.chanR || (m.buffer && m.buffer.numberOfChannels > 1 ? m.buffer.getChannelData(1) : chanL);
 
             const sr = m.buffer?.sampleRate || 44100;
-            const currentPos = (this.isWASMReady && this.wasm?.getCurrentPosition)
-                ? this.wasm.getCurrentPosition()
-                : this.getCurrentTime();
+            const currentPos = this.lastFetchPos || 0;
             const centerIdx = Math.floor(currentPos * sr);
             const trackLen = chanL.length;
             if (centerIdx < 0 || centerIdx >= trackLen) return 0;
 
-            const win = 1024;
+            const win = 512;
             const start = Math.max(0, centerIdx - (win >> 1));
             const end = Math.min(trackLen, start + win);
 
             let max = 0;
-            for (let i = start; i < end; i += 4) {
+            for (let i = start; i < end; i += 16) {
                 const absL = Math.abs(chanL[i]);
                 const absR = Math.abs(chanR[i]);
                 if (absL > max) max = absL;
@@ -605,7 +643,7 @@ class AudioEngine {
 
             const vol = (m.volume ?? 1) * (this.masterVolume ?? 1);
             const instant = max * vol;
-            m.smoothedPeak = (m.smoothedPeak ?? 0) * 0.75 + instant * 0.25;
+            m.smoothedPeak = (m.smoothedPeak ?? 0) * 0.72 + instant * 0.28;
             return Math.min(1, Math.max(0, m.smoothedPeak));
         }
         if (!this.isPlaying) return 0;
@@ -891,8 +929,8 @@ class AudioEngine {
             this.wasm.play();
             this._playStartWall = performance.now();
             this._playStartPos = this.pausePosition;
-            this._startWasmVuLogging();
-            this._startWasmVuPoll();
+            this.lastFetchPos = this.pausePosition;
+            this.lastFetchTime = performance.now();
             this._startRAF(sessionId);
             return;
         }
