@@ -532,8 +532,8 @@ class AudioEngine {
         const muteIt = track.muted || (anySolo && !track.solo);
         if (muteIt) return 0;
         // Web Audio StereoPannerNode sums L+R (2x amplitude / +6dB) when pan is +/-1 on stereo buffers.
-        // Compensate so panning to L or R keeps natural unity level without overloading or compressing.
-        const panComp = 1 / (1 + 0.5 * Math.abs(track.pan || 0));
+        // Multiply by 0.5 at pan = +/-1 (matching C++ 0.5f * (L + R)) so summed stems never clip or compress.
+        const panComp = 1 / (1 + Math.abs(track.pan || 0));
         return track.volume * panComp;
     }
 
