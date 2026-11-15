@@ -56,6 +56,7 @@ struct VerticalFader: View {
                 // Fader Thumb / Knob
                 let thumbHeight: CGFloat = compact ? 16 : 20
                 let thumbWidth: CGFloat = compact ? 38 : 48
+                let usableHeight = max(1, height - thumbHeight)
                 
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color(red: 0.08, green: 0.10, blue: 0.16))
@@ -70,16 +71,21 @@ struct VerticalFader: View {
                                     .frame(height: 1.5)
                             )
                     )
-                    .offset(y: -progress * height + thumbHeight / 2)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { gesture in
-                                let dragY = height - gesture.location.y
-                                let newValue = Float(dragY / height) * faderMax
-                                self.value = max(0.0, min(faderMax, newValue))
-                            }
-                    )
+                    .offset(y: -progress * usableHeight)
+                    .allowsHitTesting(false)
             }
+            .frame(width: compact ? 44 : 56, height: height)
+            .contentShape(Rectangle())
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { gesture in
+                        let thumbHeight: CGFloat = compact ? 16 : 20
+                        let usableHeight = max(1, height - thumbHeight)
+                        let clampedY = min(max(0, gesture.location.y - thumbHeight / 2), usableHeight)
+                        let normalized = Float(1.0 - (clampedY / usableHeight))
+                        self.value = max(0.0, min(faderMax, normalized * faderMax))
+                    }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: compact ? 44 : 56)
