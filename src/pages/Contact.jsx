@@ -4,6 +4,7 @@ import { Mail, Send, CheckCircle2, MessageSquare, Phone, MapPin } from 'lucide-r
 import Footer from '../components/Footer';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getMixerApiBase } from '../mixerApiBase';
 import PageNavBar from '../components/PageNavBar';
 
 export default function Contact() {
@@ -24,8 +25,16 @@ export default function Contact() {
             await addDoc(collection(db, 'contacts'), {
                 ...form,
                 leido: false,
+                status: 'open',
+                replies: [],
                 createdAt: serverTimestamp()
             });
+            // Enviar auto-respuesta al cliente y aviso al admin por Gmail SMTP (no bloquea si SMTP aún no está activo)
+            fetch(`${getMixerApiBase()}/api/contact/send`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            }).catch((e) => console.warn('[contact/send]', e));
             setSent(true);
         } catch (err) {
             console.error(err);

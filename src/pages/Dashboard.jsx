@@ -8,7 +8,7 @@ import { SHOP_ENABLED } from '../config/features';
 import '../styles/brand.css';
 import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
-import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, sendEmailVerification } from 'firebase/auth';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, doc, updateDoc, setDoc, getDocs, deleteDoc } from 'firebase/firestore';
 import { trackUserUsage } from '../utils/usageMetrics';
@@ -17,7 +17,7 @@ import {
     ChevronRight, ArrowLeft, Layers, Cloud,
     Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
     Home, Globe, CreditCard, HelpCircle, LogOut, TrendingUp,
-    Star, CheckCircle2 as CheckIcon, FileText, Info
+    Star, CheckCircle2 as CheckIcon, FileText, Info, Mail
 } from 'lucide-react';
 
 function isFirestoreDocMissing(err) {
@@ -943,6 +943,113 @@ function Dashboard() {
             setAccountPwdSaving(false);
         }
     };
+
+    const [verifyChecking, setVerifyChecking] = useState(false);
+    const [verifyResending, setVerifyResending] = useState(false);
+    const [verifyFeedback, setVerifyFeedback] = useState('');
+    const [emailVerifiedState, setEmailVerifiedState] = useState(true);
+
+    useEffect(() => {
+        if (!currentUser) return;
+        setEmailVerifiedState(!!currentUser.emailVerified);
+    }, [currentUser]);
+
+    const EXEMPT_VERIFY_EMAILS = new Set(['ueservicesllc1@gmail.com', '123@gmail.com']);
+    const needsEmailVerification = Boolean(
+        currentUser &&
+        hasPasswordProvider &&
+        !emailVerifiedState &&
+        !EXEMPT_VERIFY_EMAILS.has(String(currentUser.email || '').trim().toLowerCase())
+    );
+
+    const handleCheckEmailVerified = async () => {
+        if (!auth.currentUser) return;
+        setVerifyChecking(true);
+        setVerifyFeedback('');
+        try {
+            await auth.currentUser.reload();
+            if (auth.currentUser.emailVerified) {
+                setEmailVerifiedState(true);
+            } else {
+                setVerifyFeedback('Todavía no aparece verificado. Abre el enlace que enviamos a tu correo y vuelve a presionar este botón.');
+            }
+        } catch (err) {
+            setVerifyFeedback(err?.message || 'Error al comprobar la verificación.');
+        } finally {
+            setVerifyChecking(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        if (!auth.currentUser) return;
+        setVerifyResending(true);
+        setVerifyFeedback('');
+        try {
+            const idToken = await auth.currentUser.getIdToken();
+            const resp = await fetch(`${getMixerApiBase()}/api/auth/send-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.fallbackToFirebase) {
+                await sendEmailVerification(auth.currentUser);
+            }
+            setVerifyFeedback(`Listo. Enviamos un nuevo enlace de confirmación a ${auth.currentUser.email}. Revisa tu bandeja de entrada o Spam.`);
+        } catch (err) {
+            setVerifyFeedback(err?.message || 'Espera un minuto antes de reenviar el correo.');
+        } finally {
+            setVerifyResending(false);
+        }
+    };
+
+    if (needsEmailVerification) {
+        return (
+            <div style={{ minHeight: '100vh', background: '#f4f6f8', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px', fontFamily: '"Inter", sans-serif' }}>
+                <div style={{ width: '100%', maxWidth: '460px', background: '#ffffff', border: '1px solid #e3e8ec', borderRadius: '14px', padding: '36px 32px', textAlign: 'center', boxShadow: '0 12px 32px rgba(22,32,38,0.08)' }}>
+                    <img src="/logo2.png" alt="Zion Stage" style={{ height: '30px', marginBottom: '22px' }} />
+                    <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: '#e7f8f9', color: '#17bcc7', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+                        <Mail size={28} />
+                    </div>
+                    <h2 style={{ margin: '0 0 10px', fontSize: '1.45rem', fontWeight: '800', color: '#1d2328' }}>
+                        Confirma tu correo electrónico
+                    </h2>
+                    <p style={{ margin: '0 0 20px', color: '#5a6670', fontSize: '0.94rem', lineHeight: 1.6 }}>
+                        Enviamos un enlace de verificación único a <strong style={{ color: '#1d2328' }}>{currentUser.email}</strong>. Haz clic en ese enlace para activar tu cuenta y entrar al Dashboard.
+                    </p>
+                    {verifyFeedback && (
+                        <div style={{ background: '#f4f6f8', border: '1px solid #d4dce2', color: '#1d2328', padding: '11px 14px', borderRadius: '8px', fontSize: '0.86rem', marginBottom: '18px', lineHeight: 1.5 }}>
+                            {verifyFeedback}
+                        </div>
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        <button
+                            type="button"
+                            onClick={handleCheckEmailVerified}
+                            disabled={verifyChecking}
+                            style={{ width: '100%', padding: '12px', borderRadius: '8px', border: 'none', background: '#17bcc7', color: '#ffffff', fontWeight: '700', fontSize: '0.95rem', cursor: 'pointer' }}
+                        >
+                            {verifyChecking ? 'Comprobando...' : 'Ya confirmé mi correo'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleResendVerification}
+                            disabled={verifyResending}
+                            style={{ width: '100%', padding: '11px', borderRadius: '8px', border: '1px solid #d4dce2', background: '#ffffff', color: '#1d2328', fontWeight: '600', fontSize: '0.9rem', cursor: 'pointer' }}
+                        >
+                            {verifyResending ? 'Enviando...' : 'Reenviar enlace de confirmación'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => auth.signOut()}
+                            style={{ width: '100%', padding: '9px', borderRadius: '8px', border: 'none', background: 'transparent', color: '#5a6670', fontWeight: '600', fontSize: '0.86rem', cursor: 'pointer', marginTop: '4px' }}
+                        >
+                            Cerrar sesión
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="z-dash">

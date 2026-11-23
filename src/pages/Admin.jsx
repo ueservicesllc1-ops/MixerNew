@@ -110,6 +110,48 @@ export default function Admin() {
     const [lcSearching, setLcSearching] = useState(false);        // loading state
     const [lcImporting, setLcImporting] = useState(null);         // slug being imported
 
+    // ── Respuestas por correo a mensajes de contacto ────────────────────────
+    const [replyDrafts, setReplyDrafts] = useState({});
+    const [sendingReplyId, setSendingReplyId] = useState(null);
+
+    const handleReplyContact = async (c) => {
+        const text = String(replyDrafts[c.id] || '').trim();
+        if (!text) return alert('Escribe una respuesta primero.');
+        setSendingReplyId(c.id);
+        try {
+            const idToken = await auth.currentUser.getIdToken();
+            const resp = await fetch(`${b2UploadProxyBase()}/api/admin/reply-contact`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                    contactId: c.id,
+                    toEmail: c.email,
+                    toName: c.nombre || '',
+                    subject: c.asunto || 'Consulta Zion Stage',
+                    replyText: text,
+                    originalMessage: c.mensaje || '',
+                }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) throw new Error(data.error || 'No se pudo enviar el correo.');
+            setContacts((prev) => prev.map((item) => item.id === c.id ? {
+                ...item,
+                leido: true,
+                status: 'replied',
+                replies: [...(item.replies || []), data.reply || { text, sentAt: new Date().toISOString() }],
+            } : item));
+            setReplyDrafts((prev) => ({ ...prev, [c.id]: '' }));
+            alert(`Respuesta enviada por correo a ${c.email}`);
+        } catch (err) {
+            alert('Error: ' + (err.message || err));
+        } finally {
+            setSendingReplyId(null);
+        }
+    };
+
 
     useEffect(() => {
         const checkAdmin = auth.onAuthStateChanged((user) => {
@@ -3226,13 +3268,60 @@ export default function Admin() {
             {activeTab === 'contacts' && (
                 <div className="fade-in">
                     <h2>Mensajes de contacto</h2>
+                    <p style={{ color: '#94a3b8', fontSize: '0.88rem', marginBottom: '20px' }}>
+                        Responde directamente desde aquí y el mensaje le llegará al correo del usuario usando tu cuenta de Gmail configurada.
+                    </p>
                     {contacts.length === 0 && <p style={{ color: '#64748b' }}>No hay mensajes.</p>}
-                    {contacts.map(c => (
-                        <div key={c.id} style={{ background: '#1e293b', padding: '20px', borderRadius: '12px', marginBottom: '15px' }}>
-                            <div style={{ fontWeight: '800' }}>{c.nombre} ({c.email})</div>
-                            <p style={{ color: '#94a3b8', marginTop: '10px' }}>{c.mensaje}</p>
-                        </div>
-                    ))}
+                    {contacts.map(c => {
+                        const isReplied = c.status === 'replied' || (Array.isArray(c.replies) && c.replies.length > 0);
+                        return (
+                            <div key={c.id} style={{ background: '#1e293b', padding: '22px', borderRadius: '12px', marginBottom: '16px', border: isReplied ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.08)' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                    <div>
+                                        <span style={{ fontWeight: '800', fontSize: '1rem' }}>{c.nombre || 'Sin nombre'}</span>
+                                        <span style={{ color: '#38bdf8', marginLeft: '10px', fontSize: '0.9rem' }}>{c.email}</span>
+                                        {c.asunto && <span style={{ color: '#94a3b8', marginLeft: '10px', fontSize: '0.82rem' }}>· {c.asunto}</span>}
+                                    </div>
+                                    <span style={{ fontSize: '0.72rem', fontWeight: '800', padding: '4px 10px', borderRadius: '999px', background: isReplied ? 'rgba(16,185,129,0.18)' : 'rgba(245,158,11,0.18)', color: isReplied ? '#34d399' : '#fbbf24' }}>
+                                        {isReplied ? 'RESPONDIDO' : 'PENDIENTE'}
+                                    </span>
+                                </div>
+                                <p style={{ color: '#e2e8f0', marginTop: '12px', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{c.mensaje}</p>
+
+                                {Array.isArray(c.replies) && c.replies.length > 0 && (
+                                    <div style={{ marginTop: '14px', padding: '12px 14px', background: 'rgba(16,185,129,0.08)', borderLeft: '3px solid #10b981', borderRadius: '6px' }}>
+                                        <div style={{ fontSize: '0.75rem', fontWeight: '800', color: '#34d399', marginBottom: '6px', textTransform: 'uppercase' }}>Respuestas enviadas:</div>
+                                        {c.replies.map((rep, idx) => (
+                                            <div key={idx} style={{ fontSize: '0.88rem', color: '#cbd5e1', marginBottom: idx === c.replies.length - 1 ? 0 : '8px', whiteSpace: 'pre-wrap' }}>
+                                                {rep.text}
+                                                {rep.sentAt && <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '2px' }}>{new Date(rep.sentAt).toLocaleString('es-ES')}</div>}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <textarea
+                                        rows={3}
+                                        placeholder={`Escribe tu respuesta para ${c.email}...`}
+                                        value={replyDrafts[c.id] || ''}
+                                        onChange={(e) => setReplyDrafts((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                                        style={{ width: '100%', padding: '11px 14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.14)', background: '#0f172a', color: 'white', fontSize: '0.9rem', resize: 'vertical', boxSizing: 'border-box' }}
+                                    />
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                        <button
+                                            type="button"
+                                            disabled={sendingReplyId === c.id || !(replyDrafts[c.id] || '').trim()}
+                                            onClick={() => handleReplyContact(c)}
+                                            style={{ background: '#17bcc7', color: '#fff', border: 'none', padding: '10px 18px', borderRadius: '8px', fontWeight: '800', fontSize: '0.88rem', cursor: 'pointer', opacity: (sendingReplyId === c.id || !(replyDrafts[c.id] || '').trim()) ? 0.5 : 1 }}
+                                        >
+                                            {sendingReplyId === c.id ? 'Enviando correo...' : 'Enviar respuesta por correo'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
 
                     <h2 style={{ marginTop: '40px', color: '#f87171' }}>Solicitudes de eliminación de cuenta</h2>
                     <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '16px' }}>Tramitar en Firebase Auth / Firestore según tu proceso interno. UID si el usuario estaba logueado.</p>

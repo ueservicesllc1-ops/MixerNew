@@ -13,6 +13,37 @@ import ffmpegStatic from 'ffmpeg-static';
 import os from 'os';
 import Stripe from 'stripe';
 import admin from 'firebase-admin';
+import nodemailer from 'nodemailer';
+
+// ── Gmail SMTP con Contraseña de Aplicación (Google App Password) ────────────
+const GMAIL_USER = (process.env.GMAIL_USER || '').trim();
+const GMAIL_APP_PASSWORD = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'ueservicesllc1@gmail.com').trim().toLowerCase();
+let mailTransporter = null;
+if (GMAIL_USER && GMAIL_APP_PASSWORD) {
+    mailTransporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+    });
+    console.log(`✅ Gmail SMTP listo (${GMAIL_USER})`);
+} else {
+    console.warn('⚠️ GMAIL_USER / GMAIL_APP_PASSWORD no configuradas; el envío de correos por Gmail quedará desactivado hasta configurarlas.');
+}
+
+function escapeHtmlMail(str = '') {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+async function verifyBearerToken(req) {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) throw new Error('Token de sesión faltante');
+    return await admin.auth().verifyIdToken(token);
+}
 
 ffmpeg.setFfmpegPath(ffmpegStatic);
 
@@ -2067,6 +2098,180 @@ app.post('/api/admin/expire-promos', async (req, res) => {
         return res.json({ ok: true, ...result });
     } catch (e) {
         return res.status(500).json({ error: e.message });
+    }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Correos: Contacto (auto-respuesta), Respuesta desde Admin y Verificación ──
+app.post('/api/contact/send', async (req, res) => {
+    try {
+        const { nombre = '', email = '', asunto = '', mensaje = '' } = req.body || {};
+        const cleanEmail = String(email).trim();
+        const cleanName = String(nombre).trim() || 'Usuario';
+        const cleanSubject = String(asunto).trim() || 'Consulta general';
+        const cleanMsg = String(mensaje).trim();
+
+        if (!cleanEmail || !cleanMsg) {
+            return res.status(400).json({ error: 'Falta correo o mensaje.' });
+        }
+        if (!mailTransporter) {
+            return res.json({ ok: true, emailSent: false, reason: 'SMTP no configurado' });
+        }
+
+        // 1. Auto-respuesta al usuario
+        await mailTransporter.sendMail({
+            from: `"Zion Stage Soporte" <${GMAIL_USER}>`,
+            to: cleanEmail,
+            replyTo: GMAIL_USER,
+            subject: `Hemos recibido tu mensaje — Zion Stage`,
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:580px;margin:0 auto;color:#1d2328;line-height:1.6;">
+                    <div style="background:#162026;padding:22px 28px;border-radius:10px 10px 0 0;">
+                        <h2 style="margin:0;color:#ffffff;font-size:20px;">Zion Stage</h2>
+                    </div>
+                    <div style="border:1px solid #e3e8ec;border-top:none;padding:28px;border-radius:0 0 10px 10px;background:#ffffff;">
+                        <p style="margin-top:0;">Hola <strong>${escapeHtmlMail(cleanName)}</strong>,</p>
+                        <p>¡Gracias por escribirnos! Hemos recibido tu mensaje correctamente y nuestro equipo de soporte te responderá muy pronto a este mismo correo.</p>
+                        <div style="background:#f4f6f8;border-left:4px solid #17bcc7;padding:14px 16px;border-radius:6px;margin:20px 0;">
+                            <div style="font-size:12px;color:#5a6670;margin-bottom:6px;text-transform:uppercase;font-weight:bold;">Tu mensaje (${escapeHtmlMail(cleanSubject)}):</div>
+                            <div style="white-space:pre-wrap;font-size:14px;color:#1d2328;">${escapeHtmlMail(cleanMsg)}</div>
+                        </div>
+                        <p style="font-size:13px;color:#5a6670;margin-bottom:0;">Saludos,<br/><strong>Equipo de Zion Stage</strong></p>
+                    </div>
+                </div>
+            `,
+        });
+
+        // 2. Aviso al administrador
+        const notifyTarget = ADMIN_EMAIL || GMAIL_USER;
+        await mailTransporter.sendMail({
+            from: `"Zion Stage Web" <${GMAIL_USER}>`,
+            to: notifyTarget,
+            replyTo: cleanEmail,
+            subject: `[Nuevo Mensaje] ${cleanSubject} — ${cleanName}`,
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:580px;color:#1d2328;line-height:1.6;">
+                    <h3 style="margin-top:0;">Nuevo mensaje de contacto en Zion Stage</h3>
+                    <p><strong>Nombre:</strong> ${escapeHtmlMail(cleanName)}<br/>
+                    <strong>Correo:</strong> ${escapeHtmlMail(cleanEmail)}<br/>
+                    <strong>Asunto:</strong> ${escapeHtmlMail(cleanSubject)}</p>
+                    <div style="background:#f4f6f8;padding:14px;border-radius:8px;white-space:pre-wrap;">${escapeHtmlMail(cleanMsg)}</div>
+                    <p style="font-size:12px;color:#5a6670;margin-top:16px;">Puedes responder directamente desde tu Panel Admin o contestando a este correo.</p>
+                </div>
+            `,
+        });
+
+        return res.json({ ok: true, emailSent: true });
+    } catch (e) {
+        console.error('[contact/send] Error enviando correo:', e?.message || e);
+        return res.status(500).json({ error: 'No se pudo enviar el correo de confirmación.' });
+    }
+});
+
+app.post('/api/admin/reply-contact', async (req, res) => {
+    try {
+        const decoded = await verifyBearerToken(req);
+        if (String(decoded.email || '').toLowerCase() !== ADMIN_EMAIL) {
+            return res.status(403).json({ error: 'Solo el administrador puede responder mensajes.' });
+        }
+        if (!mailTransporter) {
+            return res.status(503).json({ error: 'Configura GMAIL_USER y GMAIL_APP_PASSWORD en Railway para enviar correos.' });
+        }
+
+        const { contactId, toEmail, toName = '', subject = 'Respuesta de Zion Stage', replyText = '', originalMessage = '' } = req.body || {};
+        const cleanTo = String(toEmail || '').trim();
+        const cleanReply = String(replyText || '').trim();
+        if (!cleanTo || !cleanReply) {
+            return res.status(400).json({ error: 'Falta el correo destino o el texto de la respuesta.' });
+        }
+
+        await mailTransporter.sendMail({
+            from: `"Zion Stage Soporte" <${GMAIL_USER}>`,
+            to: cleanTo,
+            replyTo: GMAIL_USER,
+            subject: subject.startsWith('Re:') ? subject : `Re: ${subject} — Zion Stage`,
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:580px;margin:0 auto;color:#1d2328;line-height:1.6;">
+                    <div style="background:#162026;padding:22px 28px;border-radius:10px 10px 0 0;">
+                        <h2 style="margin:0;color:#ffffff;font-size:20px;">Zion Stage Soporte</h2>
+                    </div>
+                    <div style="border:1px solid #e3e8ec;border-top:none;padding:28px;border-radius:0 0 10px 10px;background:#ffffff;">
+                        <p style="margin-top:0;">Hola <strong>${escapeHtmlMail(toName || 'amigo')}</strong>,</p>
+                        <div style="white-space:pre-wrap;font-size:15px;color:#1d2328;margin:16px 0;">${escapeHtmlMail(cleanReply)}</div>
+                        ${originalMessage ? `<div style="margin-top:24px;padding-top:14px;border-top:1px solid #e3e8ec;font-size:12px;color:#5a6670;"><strong>Tu mensaje original:</strong><br/>${escapeHtmlMail(originalMessage)}</div>` : ''}
+                        <p style="font-size:13px;color:#5a6670;margin-top:22px;margin-bottom:0;">Saludos,<br/><strong>Equipo de Zion Stage</strong></p>
+                    </div>
+                </div>
+            `,
+        });
+
+        const replyEntry = {
+            text: cleanReply,
+            sentAt: new Date().toISOString(),
+            sentBy: decoded.email,
+        };
+
+        if (dbAdmin && contactId) {
+            await dbAdmin.collection('contacts').doc(String(contactId)).set({
+                leido: true,
+                status: 'replied',
+                lastRepliedAt: FieldValue.serverTimestamp(),
+                replies: FieldValue.arrayUnion(replyEntry),
+            }, { merge: true });
+        }
+
+        return res.json({ ok: true, reply: replyEntry });
+    } catch (e) {
+        console.error('[admin/reply-contact] Error:', e?.message || e);
+        return res.status(500).json({ error: e?.message || 'Error al enviar la respuesta por correo.' });
+    }
+});
+
+app.post('/api/auth/send-verification', async (req, res) => {
+    try {
+        const decoded = await verifyBearerToken(req);
+        if (decoded.email_verified) {
+            return res.json({ ok: true, alreadyVerified: true });
+        }
+        if (!mailTransporter) {
+            return res.json({ ok: false, fallbackToFirebase: true, reason: 'SMTP no configurado' });
+        }
+
+        const origin = String(req.headers.origin || PROXY_SELF).replace(/\/$/, '');
+        const continueUrl = `${origin}/#/dashboard`;
+        const verificationLink = await admin.auth().generateEmailVerificationLink(decoded.email, {
+            url: continueUrl,
+            handleCodeInApp: false,
+        });
+
+        const userName = decoded.name || decoded.email.split('@')[0];
+        await mailTransporter.sendMail({
+            from: `"Zion Stage" <${GMAIL_USER}>`,
+            to: decoded.email,
+            subject: 'Confirma tu correo electrónico — Zion Stage',
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:580px;margin:0 auto;color:#1d2328;line-height:1.6;">
+                    <div style="background:#162026;padding:24px 28px;border-radius:10px 10px 0 0;">
+                        <h2 style="margin:0;color:#ffffff;font-size:21px;">Bienvenido a Zion Stage</h2>
+                    </div>
+                    <div style="border:1px solid #e3e8ec;border-top:none;padding:28px;border-radius:0 0 10px 10px;background:#ffffff;">
+                        <p style="margin-top:0;">Hola <strong>${escapeHtmlMail(userName)}</strong>,</p>
+                        <p>Para activar tu cuenta y entrar a tu Dashboard, confirma tu correo electrónico haciendo clic en el siguiente botón:</p>
+                        <div style="text-align:center;margin:28px 0;">
+                            <a href="${verificationLink}" style="display:inline-block;background:#17bcc7;color:#ffffff;text-decoration:none;font-weight:bold;padding:14px 28px;border-radius:8px;font-size:15px;">
+                                Confirmar mi correo
+                            </a>
+                        </div>
+                        <p style="font-size:12px;color:#5a6670;">Este enlace es único y personal para <strong>${escapeHtmlMail(decoded.email)}</strong>. Si no creaste esta cuenta, puedes ignorar este correo.</p>
+                    </div>
+                </div>
+            `,
+        });
+
+        return res.json({ ok: true, sentViaGmail: true });
+    } catch (e) {
+        console.error('[auth/send-verification] Error:', e?.message || e);
+        return res.status(500).json({ error: e?.message || 'No se pudo enviar el correo de verificación.', fallbackToFirebase: true });
     }
 });
 // ─────────────────────────────────────────────────────────────────────────────

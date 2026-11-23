@@ -3,9 +3,10 @@ import { X } from 'lucide-react';
 import { auth, db } from '../firebase';
 import {
     signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup,
-    GoogleAuthProvider, updateProfile, sendPasswordResetEmail,
+    GoogleAuthProvider, updateProfile, sendPasswordResetEmail, sendEmailVerification,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { getMixerApiBase } from '../mixerApiBase';
 import './../styles/brand.css';
 
 const TXT = {
@@ -99,6 +100,20 @@ export default function AuthModal({ open, mode = 'register', lang = 'es', onClos
                 const fullName = name.trim();
                 if (fullName) await updateProfile(user, { displayName: fullName });
                 await ensureUserDoc(user, fullName);
+                // Enviar correo con link único de verificación (Gmail SMTP con respaldo automático de Firebase)
+                try {
+                    const idToken = await user.getIdToken();
+                    const resp = await fetch(`${getMixerApiBase()}/api/auth/send-verification`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+                    });
+                    const data = await resp.json().catch(() => ({}));
+                    if (!resp.ok || data.fallbackToFirebase) {
+                        await sendEmailVerification(user);
+                    }
+                } catch {
+                    try { await sendEmailVerification(user); } catch { /* ignore */ }
+                }
             }
             onDone?.(user);
         } catch (err) { console.error('Auth error:', err); fail(err); } finally { setBusy(false); }
