@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { SHOP_ENABLED } from '../config/features';
 import { Facebook, Instagram, Youtube, Twitter, Globe, Info, Mail, ShieldCheck, FileText, Zap, ExternalLink, Users, Music } from 'lucide-react';
 
 export default function Footer() {
@@ -40,7 +41,7 @@ export default function Footer() {
                             <li onClick={() => navigate('/recursos')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.videoTutorials')}</li>
                             <li onClick={() => navigate('/recursos')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.documentation')}</li>
                             <li onClick={() => navigate('/recursos')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.systemStatus')}</li>
-                            <li onClick={() => navigate('/store')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.marketplace')}</li>
+                            <li hidden={!SHOP_ENABLED} onClick={() => navigate('/store')} style={{ cursor: 'pointer', transition: 'color 0.2s' }} onMouseEnter={e => e.target.style.color = 'white'} onMouseLeave={e => e.target.style.color = '#94a3b8'}>{t('footer.marketplace')}</li>
                         </ul>
                     </div>
 

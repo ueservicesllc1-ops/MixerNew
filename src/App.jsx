@@ -16,6 +16,7 @@ import Vendedores from './pages/Vendedores'
 import SellerProfile from './pages/SellerProfile'
 import Checkout from './pages/Checkout'
 import './index.css'
+import { SHOP_ENABLED } from './config/features'
 // Heavy pages — loaded on demand to reduce initial bundle size
 const Dashboard  = lazy(() => import('./pages/Dashboard'))
 const Multitrack = lazy(() => import('./pages/Multitrack'))
@@ -109,7 +110,7 @@ function App() {
           {/* Isolated NextGen native engine manual test — not part of production multitrack flow */}
           <Route path="/nextgen-test" element={<NextGenTest />} />
           <Route path="/admin" element={<Admin />} />
-          <Route path="/store" element={<Store />} />
+          <Route path="/store" element={SHOP_ENABLED ? <Store /> : <Navigate to="/" replace />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/terms" element={<Terms />} />
           <Route path="/contact" element={<Contact />} />
@@ -119,9 +120,9 @@ function App() {
           <Route path="/recursos" element={<Recursos />} />
           <Route path="/recursos/audio" element={<RecursosAudio />} />
           <Route path="/library" element={<Library />} />
-          <Route path="/vendedores" element={<Vendedores />} />
-          <Route path="/seller/:id" element={<SellerProfile />} />
-          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/vendedores" element={SHOP_ENABLED ? <Vendedores /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/seller/:id" element={SHOP_ENABLED ? <SellerProfile /> : <Navigate to="/" replace />} />
+          <Route path="/checkout" element={SHOP_ENABLED ? <Checkout /> : <Navigate to="/dashboard" replace />} />
           <Route path="/academy" element={<Academy />} />
           <Route path="/manual" element={<Manual />} />
         </Routes>

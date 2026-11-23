@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { SHOP_ENABLED } from '../config/features';
 import LanguageSwitch from '../components/LanguageSwitch';
 import { auth, db, storage } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, updateProfile, sendPasswordResetEmail } from 'firebase/auth';
@@ -633,7 +634,7 @@ export default function Landing() {
 
                     <div className="hide-mobile" style={{ display: 'flex', gap: '25px', marginLeft: '20px', fontSize: '0.95rem', fontWeight: '600', color: '#94a3b8' }}>
                         {[
-                            { label: t('nav.songs'), path: '/store' },
+                            ...(SHOP_ENABLED ? [{ label: t('nav.songs'), path: '/store' }] : []),
                             { label: t('nav.software'), path: '/software' },
                             { label: t('nav.resources'), path: '/recursos' },
                         ].map(item => (
@@ -742,8 +743,10 @@ export default function Landing() {
                                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                                         {[
                                             { label: t('nav.mainCloud'), icon: <Globe size={18} />, onClick: () => navigate('/dashboard') },
-                                            { label: t('nav.trackStore'), icon: <ShoppingCart size={18} />, onClick: () => navigate('/store') },
-                                            { label: t('nav.wishlist'), icon: <CheckCircle2 size={18} />, onClick: () => navigate('/store') },
+                                            ...(SHOP_ENABLED ? [
+                                                { label: t('nav.trackStore'), icon: <ShoppingCart size={18} />, onClick: () => navigate('/store') },
+                                                { label: t('nav.wishlist'), icon: <CheckCircle2 size={18} />, onClick: () => navigate('/store') },
+                                            ] : []),
                                             { label: t('nav.settings'), icon: <Menu size={18} />, onClick: () => navigate('/dashboard') },
                                         ].map((item, idx) => (
                                             <div
@@ -773,7 +776,7 @@ export default function Landing() {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginLeft: '10px' }}>
                         <Search size={19} color="#94a3b8" style={{ cursor: 'pointer' }} />
-                        <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => navigate('/checkout')}>
+                        <div hidden={!SHOP_ENABLED} style={{ position: 'relative', cursor: 'pointer' }} onClick={() => navigate('/checkout')}>
                             <ShoppingCart size={19} color="#94a3b8" />
                             {cart.length > 0 && (
                                 <span style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#00d2d3', color: 'black', fontSize: '0.65rem', fontWeight: '900', width: '16px', height: '16px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 10px rgba(0,210,211,0.5)' }}>
@@ -1046,7 +1049,7 @@ export default function Landing() {
             </header>
 
             {/* FEATURED TRACKS CAROUSEL SECTION */}
-            <section style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>
+            <section hidden={!SHOP_ENABLED} style={{ padding: '100px 0', backgroundColor: '#0f172a', position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '48px', maxWidth: '1300px', margin: '0 auto 48px', padding: '0 60px' }}>
                     <div>
                         <h2 style={{ fontSize: '2.5rem', fontWeight: '800', margin: '0 0 12px' }}>{t('landing.tracksForSale')}</h2>
@@ -1128,7 +1131,7 @@ export default function Landing() {
             </section>
 
             {/* SELLER CTA BANNER */}
-            <section style={{ padding: '60px 20px', background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)' }}>
+            <section hidden={!SHOP_ENABLED} style={{ padding: '60px 20px', background: 'linear-gradient(90deg, #0f172a 0%, #1e293b 100%)' }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', background: 'rgba(0,210,211,0.05)', border: '1px solid rgba(0,210,211,0.2)', borderRadius: '32px', padding: '60px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '40px' }}>
                     <div style={{ flex: '1 1 500px' }}>
                         <div style={{ color: '#00d2d3', fontWeight: '800', fontSize: '0.9rem', marginBottom: '16px', letterSpacing: '2px' }}>{t('landing.communityBadge')}</div>

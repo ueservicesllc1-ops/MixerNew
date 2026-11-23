@@ -4,6 +4,7 @@ import { stripeJsPromise as stripePromise } from '../stripeClient.js';
 import { getMixerApiBase } from '../mixerApiBase.js';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { SHOP_ENABLED } from '../config/features';
 import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
@@ -872,7 +873,7 @@ function Dashboard() {
                         { id: 'setlists', label: t('dashboard.setlists'), icon: <ListMusic size={20} /> },
                         { id: 'global', label: t('dashboard.community'), icon: <Globe size={20} /> },
                         { id: 'account', label: t('dashboard.account'), icon: <KeyRound size={20} /> },
-                        { id: 'vendedores', label: userProfile?.isSeller ? t('dashboard.sellerPanel') : t('dashboard.becomeSeller'), icon: <TrendingUp size={20} /> },
+                        ...(SHOP_ENABLED ? [{ id: 'vendedores', label: userProfile?.isSeller ? t('dashboard.sellerPanel') : t('dashboard.becomeSeller'), icon: <TrendingUp size={20} /> }] : []),
                     ].map(item => (
                         <button
                             key={item.id}
@@ -894,7 +895,7 @@ function Dashboard() {
                             {item.icon} {item.label}
                         </button>
                     ))}
-                    <button onClick={() => navigate('/store')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'transparent', border: 'none', color: '#94a3b8', textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s', marginTop: '10px' }}>
+                    <button hidden={!SHOP_ENABLED} onClick={() => navigate('/store')} style={{ display: SHOP_ENABLED ? 'flex' : 'none', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'transparent', border: 'none', color: '#94a3b8', textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s', marginTop: '10px' }}>
                         <ShoppingCart size={20} /> {t('dashboard.marketplace')}
                     </button>
                     <button onClick={() => navigate('/multitrack')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: '#00d2d3', border: 'none', color: 'white', marginTop: '20px', cursor: 'pointer', fontWeight: '700' }}>
@@ -992,7 +993,7 @@ function Dashboard() {
                             <div>
                                 <h3 style={{ marginBottom: '24px' }}>{t('dashboard.wizardHowTitle')}</h3>
                                 <div style={{ display: 'flex', gap: '20px', marginBottom: '30px' }}>
-                                    {[{ id: 'personal', label: t('dashboard.usePersonal'), icon: <User size={24} /> }, { id: 'sell', label: t('dashboard.useSell'), icon: <Tag size={24} /> }].map(type => (
+                                    {[{ id: 'personal', label: t('dashboard.usePersonal'), icon: <User size={24} /> }, ...(SHOP_ENABLED ? [{ id: 'sell', label: t('dashboard.useSell'), icon: <Tag size={24} /> }] : [])].map(type => (
                                         <div key={type.id} onClick={() => setUseType(type.id)} style={{ flex: 1, padding: '30px', border: `2px solid ${useType === type.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, borderRadius: '12px', textAlign: 'center', cursor: 'pointer', backgroundColor: useType === type.id ? 'rgba(0,210,211,0.05)' : 'transparent' }}>
                                             <div style={{ color: useType === type.id ? '#00d2d3' : '#64748b', marginBottom: '12px' }}>{type.icon}</div>
                                             <div style={{ fontWeight: '700' }}>{type.label}</div>
