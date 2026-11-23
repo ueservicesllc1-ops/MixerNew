@@ -344,19 +344,34 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
         if (!canvas) return;
         const ctx = canvas.getContext('2d', { alpha: false });
         let rafId;
+        let lastFrameTs = 0;
+        let lastDrawnT = -1;
+        let lastW = -1;
+        let lastH = -1;
 
-        const render = () => {
+        const render = (ts) => {
+            // Limitar a ~24 FPS y no redibujar si nada cambió (iPad / equipos lentos)
+            if (ts && ts - lastFrameTs < 40) {
+                rafId = requestAnimationFrame(render);
+                return;
+            }
             const W = canvas.offsetWidth;
             const H = canvas.offsetHeight;
+            const currentT = audioEngine.isDragging
+                ? audioEngine.dragTime
+                : audioEngine.getCurrentTime();
+            if (currentT === lastDrawnT && W === lastW && H === lastH) {
+                rafId = requestAnimationFrame(render);
+                return;
+            }
+            lastFrameTs = ts || 0;
+            lastDrawnT = currentT;
+            lastW = W;
+            lastH = H;
             if (canvas.width !== W || canvas.height !== H) {
                 canvas.width = W;
                 canvas.height = H;
             }
-
-            // Playhead: siempre tiempo del motor (60 FPS); el state `progress` del padre va más lento y en Android dejaba la línea “muerta”.
-            const currentT = audioEngine.isDragging
-                ? audioEngine.dragTime
-                : audioEngine.getCurrentTime();
 
             // Background
             ctx.fillStyle = '#1e293b'; 
@@ -447,11 +462,8 @@ export default function WaveformCanvas({ songId, tracks, duration, hasPreview, s
 
                 // Playhead
                 const px = Math.round(playheadX);
-                ctx.shadowColor = 'rgba(0,0,0,0.6)';
-                ctx.shadowBlur = 4;
                 ctx.fillStyle = '#facc15';
                 ctx.fillRect(px - 2, 0, 4, H);
-                ctx.shadowBlur = 0;
                 ctx.fillStyle = '#fffef0';
                 ctx.fillRect(px - 1, 0, 2, H);
             }

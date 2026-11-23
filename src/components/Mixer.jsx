@@ -75,14 +75,26 @@ function VUMeter({ trackId, muted }) {
     const levelRef = useRef(0);
 
     useEffect(() => {
-        const poll = () => {
+        let lastTs = 0;
+        let lastActive = -1;
+        let sizeW = 0;
+        let sizeH = 0;
+        let ro = null;
+        const dprCap = Math.min(window.devicePixelRatio || 1, 1.5);
+
+        const poll = (ts) => {
+            rafRef.current = requestAnimationFrame(poll);
+            // ~20 FPS es suficiente para un VU y reduce muchísimo la carga en iPad
+            if (ts - lastTs < 50) return;
+            lastTs = ts;
             const raw = audioEngine.getTrackLevel(trackId);
             const isZionWasm = !!(audioEngine.isWASMReady && audioEngine.wasm);
             const boost = Capacitor.isNativePlatform() ? 3.2 : isZionWasm ? 2.85 : 6.5;
             levelRef.current = Math.min(1, raw * boost);
-
+            const active = muted ? 0 : Math.round(levelRef.current * LED_COUNT);
+            if (active === lastActive) return; // sin cambios: no redibujar
+            lastActive = active;
             draw();
-            rafRef.current = requestAnimationFrame(poll);
         };
 
         const draw = () => {
@@ -91,14 +103,19 @@ function VUMeter({ trackId, muted }) {
             const parent = canvas.parentElement;
             if (!parent) return;
 
-            const dpr = window.devicePixelRatio || 1;
-            const rect = parent.getBoundingClientRect();
-
-            if (canvas.width !== Math.floor(rect.width * dpr) || canvas.height !== Math.floor(rect.height * dpr)) {
-                canvas.width = Math.floor(rect.width * dpr);
-                canvas.height = Math.floor(rect.height * dpr);
-                canvas.style.width = `${rect.width}px`;
-                canvas.style.height = `${rect.height}px`;
+            const dpr = dprCap;
+            if (!ro && typeof ResizeObserver !== 'undefined') {
+                ro = new ResizeObserver(() => { sizeW = 0; });
+                ro.observe(parent);
+            }
+            if (!sizeW) {
+                const rect = parent.getBoundingClientRect();
+                sizeW = rect.width;
+                sizeH = rect.height;
+                canvas.width = Math.floor(sizeW * dpr);
+                canvas.height = Math.floor(sizeH * dpr);
+                canvas.style.width = `${sizeW}px`;
+                canvas.style.height = `${sizeH}px`;
             }
 
             const ctx = canvas.getContext('2d');
@@ -136,7 +153,10 @@ function VUMeter({ trackId, muted }) {
         };
 
         rafRef.current = requestAnimationFrame(poll);
-        return () => cancelAnimationFrame(rafRef.current);
+        return () => {
+            cancelAnimationFrame(rafRef.current);
+            if (ro) ro.disconnect();
+        };
     }, [trackId, muted]);
 
     return (

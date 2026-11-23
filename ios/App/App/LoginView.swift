@@ -28,7 +28,10 @@ struct LoginView: View {
     var body: some View {
         GeometryReader { geo in
             // In landscape on iPhone, height is < 500pt (and shrinks to ~200pt when keyboard opens)
-            let isPhoneLandscape = geo.size.height < 500
+            // IMPORTANTE: usar el tipo de dispositivo (estable) y NO la altura de la vista,
+            // porque al abrir el teclado la altura baja y cambiaba el layout (VStack→HStack),
+            // recreando los campos y cerrando el teclado al instante.
+            let isPhoneLandscape = UIDevice.current.userInterfaceIdiom == .phone && geo.size.width > geo.size.height
             let isKeyboardOpen = focusedField != nil && isPhoneLandscape
             
             ZStack {
