@@ -48,7 +48,7 @@ class AudioEngineViewModel: ObservableObject {
     
     @Published var stemVolumes: [String: Float] = [:]
     @Published var mutedStems: Set<String> = []
-    @Published var soloedStem: String? = nil
+    @Published var soloedStems: Set<String> = []
     @Published var stemPans: [String: Float] = [:]
 
     // MARK: - Internals
@@ -146,7 +146,7 @@ class AudioEngineViewModel: ObservableObject {
             self.loadedTracks = sortedTracks
             self.stemVolumes.removeAll()
             self.mutedStems.removeAll()
-            self.soloedStem = nil
+            self.soloedStems.removeAll()
             self.stemPans.removeAll()
         }
 
@@ -363,37 +363,37 @@ class AudioEngineViewModel: ObservableObject {
     }
 
     // MARK: - Track Controls
+    private func applyMixVolumes() {
+        let hasSolo = !soloedStems.isEmpty
+        for (name, node) in stemMixerNodes {
+            let isMuted = mutedStems.contains(name)
+            let isAudible = !isMuted && (!hasSolo || soloedStems.contains(name))
+            let targetVol = max(0, min(1.2, stemVolumes[name] ?? 1.0))
+            node.outputVolume = isAudible ? targetVol : 0
+        }
+    }
+
     func setTrackVolume(id trackId: String, volume: Float) {
         stemVolumes[trackId] = volume
-        if !mutedStems.contains(trackId) && soloedStem == nil {
-            stemMixerNodes[trackId]?.outputVolume = max(0, min(1.2, volume))
-        }
+        applyMixVolumes()
     }
 
     func setTrackMute(id trackId: String, muted: Bool) {
         if muted {
             mutedStems.insert(trackId)
-            stemMixerNodes[trackId]?.outputVolume = 0
         } else {
             mutedStems.remove(trackId)
-            if soloedStem == nil {
-                stemMixerNodes[trackId]?.outputVolume = stemVolumes[trackId] ?? 1.0
-            }
         }
+        applyMixVolumes()
     }
 
     func setTrackSolo(id trackId: String, solo: Bool) {
         if solo {
-            soloedStem = trackId
-            for (name, node) in stemMixerNodes {
-                node.outputVolume = name == trackId ? (stemVolumes[name] ?? 1.0) : 0
-            }
+            soloedStems.insert(trackId)
         } else {
-            soloedStem = nil
-            for (name, node) in stemMixerNodes {
-                node.outputVolume = mutedStems.contains(name) ? 0 : (stemVolumes[name] ?? 1.0)
-            }
+            soloedStems.remove(trackId)
         }
+        applyMixVolumes()
     }
 
     func setTrackPan(id trackId: String, pan: Float) {

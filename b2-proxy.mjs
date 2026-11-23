@@ -61,10 +61,10 @@ try {
 const STRIPE_PLANS_CONFIG = {
     'seller': { name: 'Suscripción Vendedor MixCommunity', monthly: 199, annual: 1990 }, // Vendedor anual opcional
     'std1': { name: 'Plan Básico MixCommunity', monthly: 499, annual: 4192 },
-    'std2': { name: 'Plan Estándar MixCommunity', monthly: 699, annual: 5872 },
+    'std2': { name: 'Zion Stage Estándar (50 GB)', monthly: 699, annual: 5872 },
     'std3': { name: 'Plan Plus MixCommunity', monthly: 999, annual: 8392 },
     'vip1': { name: 'Plan Básico VIP MixCommunity', monthly: 799, annual: 6712 },
-    'vip2': { name: 'Plan Estándar VIP MixCommunity', monthly: 999, annual: 8392 },
+    'vip2': { name: 'Zion Stage VIP (300 GB)', monthly: 999, annual: 8392 },
     'vip3': { name: 'Plan Plus VIP MixCommunity', monthly: 1299, annual: 10912 },
     'universal_pro': { name: 'Plan Universal PRO', monthly: 1499, annual: 13490 },
     /** Deben coincidir con `DESKTOP_PRO_PLANS[].id` en `src/desktop/desktopProPlans.js` (sin otra config Stripe). */
@@ -277,15 +277,49 @@ async function syncSubscriptionToFirestore(subscriptionRef) {
             patch.planId = 'free';
         }
     } else if (planId && PAID_STORAGE_PLAN_IDS.has(planId)) {
+        const isVipPlan = planId.startsWith('vip');
         if (status === 'active' || status === 'trialing') {
             patch.planId = planId;
+            // Planes globales: habilitan también escritorio Windows (Estándar = local, VIP = online/catálogo)
+            patch.desktopProActive = true;
+            patch.desktopLicenseTier = isVipPlan ? 'pro_online' : 'pro_local';
+            patch.desktopBillingIssue = FieldValue.delete();
+            if (planId === 'std2') patch.customStorageGB = 50;
+            if (planId === 'vip2') patch.customStorageGB = 300;
+        } else if (status === 'past_due') {
+            patch.desktopBillingIssue = true;
+            patch.desktopProActive = true;
+            patch.desktopLicenseTier = isVipPlan ? 'pro_online' : 'pro_local';
         } else if (status === 'canceled' || status === 'unpaid' || status === 'incomplete_expired') {
             patch.planId = 'free';
+            patch.desktopProActive = false;
+            patch.desktopLicenseTier = FieldValue.delete();
+            patch.desktopBillingIssue = FieldValue.delete();
             patch.stripeSubscriptionId = FieldValue.delete();
         }
     } else if (planId === 'seller') {
         if (status === 'active' || status === 'trialing') {
             patch.planId = 'seller';
+        }
+    }
+
+    // Si el usuario activó una suscripción con el cupón ZION99, marcar este correo como ya utilizado (máx. 1 vez por correo)
+    const usedCouponMeta = String(sub.metadata?.couponCode || '').trim().toUpperCase();
+    if (usedCouponMeta === 'ZION99' && (status === 'active' || status === 'trialing')) {
+        patch.zion99Used = true;
+        const normEmail = String(sub.metadata?.email || userEmail || '').trim().toLowerCase();
+        if (normEmail) {
+            try {
+                await dbAdmin.collection('coupon_redemptions').doc(`zion99_${normEmail}`).set({
+                    coupon: 'ZION99',
+                    email: normEmail,
+                    userId: String(userId),
+                    subscriptionId: sub.id,
+                    usedAt: FieldValue.serverTimestamp(),
+                }, { merge: true });
+            } catch (e) {
+                console.warn('[stripe webhook] No se pudo registrar uso de ZION99:', e?.message);
+            }
         }
     }
 
@@ -1354,7 +1388,53 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         let applyPromo = false;
 
         const codeToUse = (couponCode || '').trim();
+        const codeUpper = codeToUse.toUpperCase();
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+
         if (codeToUse) {
+            // Reglas de ZION99: solo plan mensual y máximo 1 vez por correo electrónico
+            if (codeUpper === 'ZION99') {
+                if (isAnnual) {
+                    return res.status(400).json({
+                        error: 'El código ZION99 aplica solo al plan mensual (primer mes a $0.99 USD). Cambia a Mensual para usarlo.',
+                    });
+                }
+                let alreadyUsed = false;
+                if (dbAdmin && normalizedEmail) {
+                    try {
+                        const redSnap = await dbAdmin.collection('coupon_redemptions').doc(`zion99_${normalizedEmail}`).get();
+                        if (redSnap.exists) alreadyUsed = true;
+                        if (!alreadyUsed) {
+                            const userSnap = await dbAdmin.collection('users').doc(String(userId)).get();
+                            if (userSnap.exists && userSnap.data()?.zion99Used === true) alreadyUsed = true;
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Error consultando uso previo de ZION99 en Firestore:', e?.message);
+                    }
+                }
+                // Respaldo directo en Stripe: verificar si este cliente ya tuvo una suscripción pagada con ZION99
+                if (!alreadyUsed && customer?.id) {
+                    try {
+                        const prevSubs = await stripe.subscriptions.list({ customer: customer.id, status: 'all', limit: 25 });
+                        for (const s of prevSubs.data) {
+                            const cId = s.discount?.coupon?.id || s.metadata?.couponCode || '';
+                            const wasPaid = ['active', 'trialing', 'past_due', 'canceled', 'unpaid'].includes(s.status);
+                            if (wasPaid && String(cId).toUpperCase().startsWith('ZION99')) {
+                                alreadyUsed = true;
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('⚠️ Error consultando historial Stripe para ZION99:', e?.message);
+                    }
+                }
+                if (alreadyUsed) {
+                    return res.status(400).json({
+                        error: 'El código ZION99 ya fue utilizado con este correo electrónico (límite: 1 vez por correo).',
+                    });
+                }
+            }
+
             try {
                 appliedCouponId = await resolveSubscriptionCoupon(codeToUse, amount);
                 if (appliedCouponId) {
@@ -1371,7 +1451,12 @@ app.post('/api/stripe/create-subscription', async (req, res) => {
         const subscriptionPayload = {
             customer: customer.id,
             items: [{ price: priceId }],
-            metadata: { userId: String(userId), planId: String(planId) },
+            metadata: {
+                userId: String(userId),
+                planId: String(planId),
+                email: normalizedEmail,
+                ...(appliedCouponId ? { couponCode: codeUpper } : {}),
+            },
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.payment_intent'],

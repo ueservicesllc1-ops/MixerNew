@@ -11,7 +11,8 @@ struct VerticalFader: View {
     let faderMax: Float = 1.2
     
     private var currentDB: Float {
-        guard !engine.mutedStems.contains(trackId), engine.isPlaying else { return -60.0 }
+        let isAudible = !engine.mutedStems.contains(trackId) && (engine.soloedStems.isEmpty || engine.soloedStems.contains(trackId))
+        guard isAudible, engine.isPlaying else { return -60.0 }
         return engine.vuLevels[trackId] ?? -60.0
     }
     

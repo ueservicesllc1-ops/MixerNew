@@ -5,6 +5,7 @@ import { getMixerApiBase } from '../mixerApiBase.js';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SHOP_ENABLED } from '../config/features';
+import '../styles/brand.css';
 import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
@@ -16,7 +17,7 @@ import {
     ChevronRight, ArrowLeft, Layers, Cloud,
     Loader2, Timer, KeyRound, ScrollText, X, Settings2, Trash2, ListMusic, Plus, Search,
     Home, Globe, CreditCard, HelpCircle, LogOut, TrendingUp,
-    Star, CheckCircle2 as CheckIcon, FileText
+    Star, CheckCircle2 as CheckIcon, FileText, Info
 } from 'lucide-react';
 
 function isFirestoreDocMissing(err) {
@@ -69,12 +70,12 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
 const STORAGE_PLANS = [
     { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 1, storageMB: 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
     { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
-    { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 20, storageMB: 20000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
+    { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
     { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
     { id: 'vip1', name: 'Básico VIP', type: 'VIP', storageGB: 10, storageMB: 10000, price: 7.99, annualPrice: 67.12, originalAnnualPrice: 95.88, isVIP: true },
-    { id: 'vip2', name: 'Estándar VIP', type: 'VIP', storageGB: 20, storageMB: 20000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
+    { id: 'vip2', name: 'VIP', type: 'VIP', storageGB: 300, storageMB: 300000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true },
     { id: 'vip3', name: 'Plus VIP', type: 'VIP', storageGB: 50, storageMB: 50000, price: 12.99, annualPrice: 109.12, originalAnnualPrice: 155.88, isVIP: true },
-    { id: 'universal_pro', name: 'Universal PRO', type: 'Universal PRO', storageGB: 100, storageMB: 100000, price: 14.99, annualPrice: 134.90, originalAnnualPrice: 179.88, isVIP: true, isUniversal: true },
+    { id: 'universal_pro', name: 'VIP', type: 'VIP', storageGB: 300, storageMB: 300000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: true, isUniversal: true },
     { id: 'zion_desktop_pro_local', name: 'Zion Stage PRO (PC)', type: 'PRO PC', storageGB: 10, storageMB: 10000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isDesktop: true },
     { id: 'zion_desktop_pro_online', name: 'Zion Stage PRO Online', type: 'PRO Online', storageGB: 20, storageMB: 20000, price: 5.99, annualPrice: 59.90, originalAnnualPrice: 59.90, isVIP: true, isDesktop: true },
     { id: 'seller', name: 'Vendedor MixCommunity', type: 'Vendedor', storageGB: 20, storageMB: 20000, price: 1.99, annualPrice: 19.90, originalAnnualPrice: 19.90, isVIP: false, isSeller: true },
@@ -206,7 +207,9 @@ function Dashboard() {
     const [stripeClientSecret, setStripeClientSecret] = useState('');
     const [stripeSubscriptionId, setStripeSubscriptionId] = useState('');
     const [isProcessingStripe, setIsProcessingStripe] = useState(false);
-    const [dashboardCouponInput, setDashboardCouponInput] = useState('ZION99');
+    const [dashboardCouponInput, setDashboardCouponInput] = useState(() => {
+        try { return localStorage.getItem('zion_intended_coupon') || ''; } catch { return ''; }
+    });
     const [dashboardPromoApplied, setDashboardPromoApplied] = useState(false);
     const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
     const [successPlanName, setSuccessPlanName] = useState('');
@@ -322,10 +325,29 @@ function Dashboard() {
                         setUserPlan(plan);
                         setCustomStorageGB(data.customStorageGB || 0);
 
+                        // Si el usuario llegó desde la Landing eligiendo un plan (Estándar o VIP), abrir Stripe directo
+                        let intendedHandled = false;
+                        try {
+                            const rawIntended = localStorage.getItem('zion_intended_plan');
+                            if (rawIntended) {
+                                localStorage.removeItem('zion_intended_plan');
+                                const parsed = JSON.parse(rawIntended);
+                                const targetPlan = STORAGE_PLANS.find(p => p.id === parsed?.id);
+                                if (targetPlan && data.planId !== targetPlan.id) {
+                                    intendedHandled = true;
+                                    const wantAnnual = parsed?.cycle === 'annual';
+                                    setIsAnnual(wantAnnual);
+                                    setIsInitialPlanSelection(false);
+                                    setIsPricingModalOpen(true);
+                                    setTimeout(() => { handlePrepareStripePayment(targetPlan, undefined, wantAnnual, user); }, 350);
+                                }
+                            }
+                        } catch { /* ignore */ }
+
                         // Check local storage to ensure we don't spam the user with the modal on every login
                         const hasSeenModal = localStorage.getItem(`mixer_seen_pricing_${user.uid}`);
 
-                        if (!data.planId || data.planId === 'free') {
+                        if (!intendedHandled && (!data.planId || data.planId === 'free')) {
                             if (!hasSeenModal) {
                                 setTimeout(() => {
                                     setIsInitialPlanSelection(true);
@@ -392,7 +414,47 @@ function Dashboard() {
     // Promo free plan removed — no promotional free plans active
 
     const handleZipUpload = async (e) => {
-        const file = e.target.files[0];
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
+
+        // Soporte directo para múltiples pistas de audio (.mp3, .wav, .m4a, .ogg, .flac) SIN necesidad de comprimir en ZIP
+        const audioFiles = files.filter(f => /\.(wav|mp3|m4a|ogg|flac)$/i.test(f.name));
+        const zipFile = files.find(f => /\.zip$/i.test(f.name));
+
+        if (!zipFile && audioFiles.length > 0) {
+            setSongName(''); setArtist(''); setSongKey(''); setTempo('');
+            setTimeSignature('4/4'); setLyrics(''); setChords(''); setFileList([]);
+            setUseType('personal');
+
+            // Si vienen de una carpeta, usar el nombre de la carpeta como nombre sugerido de la canción
+            const firstRel = audioFiles[0].webkitRelativePath || '';
+            if (firstRel.includes('/')) {
+                const folderName = firstRel.split('/')[0];
+                const parts = folderName.split('-').map(p => p.trim());
+                if (parts[0]) setSongName(parts[0]);
+                if (parts[1]) setArtist(parts[1]);
+                if (parts[2]) { if (/\d/.test(parts[2])) setTempo(parts[2].replace(/[^\d.]/g, '')); else setSongKey(parts[2]); }
+                if (parts[3]) { if (/\d/.test(parts[3])) setTempo(parts[3].replace(/[^\d.]/g, '')); else setSongKey(parts[3]); }
+            }
+
+            const prepared = audioFiles.map((f, idx) => {
+                const rawName = f.name.replace(/\.(wav|mp3|m4a|ogg|flac)$/i, '');
+                let finalDisplayName = rawName.replace(/[^a-zA-Z0-9_\s-]/g, '').trim();
+                if (finalDisplayName.toLowerCase().includes('clicktrack')) finalDisplayName = 'Click';
+                if (!finalDisplayName) finalDisplayName = `Track_${idx + 1}`;
+                return {
+                    originalName: f.name,
+                    displayName: finalDisplayName,
+                    blob: f,
+                    extension: f.name.split('.').pop().toLowerCase()
+                };
+            });
+            setFileList(prepared);
+            setStep('details');
+            return;
+        }
+
+        const file = zipFile || files[0];
         if (!file) return;
         setIsProcessingZip(true);
         setZipProgress(0);
@@ -401,6 +463,7 @@ function Dashboard() {
             // Reset states from previous upload to avoid leakage
             setSongName(''); setArtist(''); setSongKey(''); setTempo('');
             setTimeSignature('4/4'); setLyrics(''); setChords(''); setFileList([]);
+            setUseType('personal');
 
             const cleanName = file.name.replace(/\.zip$/i, '');
             const parts = cleanName.split('-').map(p => p.trim());
@@ -452,6 +515,21 @@ function Dashboard() {
     const uploadToB2 = async () => {
         if (!songName.trim()) return alert('Nombre requerido');
         if (!currentUser) return;
+
+        // Validar límite real de almacenamiento del plan antes de subir a B2
+        const newSongMB = fileList.reduce((acc, f) => acc + ((f.blob?.size || 0) / (1024 * 1024)), 0);
+        const isAdminUser = userProfile?.role === 'admin' || userProfile?.isAdmin === true;
+        if (!isAdminUser && (usedMB + newSongMB) > storageLimit) {
+            const usedLabel = usedMB >= 1024 ? `${(usedMB / 1024).toFixed(2)} GB` : `${usedMB.toFixed(0)} MB`;
+            setUploadError(
+                `Límite de almacenamiento alcanzado (${storageLimitGB} GB). ` +
+                `Tienes ${usedLabel} usados y esta canción pesa ${newSongMB.toFixed(1)} MB. ` +
+                `Actualiza tu plan a Estándar (50 GB) o VIP (300 GB) para seguir subiendo.`
+            );
+            setShowErrorModal(true);
+            return;
+        }
+
         setIsUploading(true);
         setStep('uploading');
         const uploadedTracksInfo = [];
@@ -702,8 +780,16 @@ function Dashboard() {
         }
     };
 
-    const handlePrepareStripePayment = async (plan, couponOverride) => {
-        const couponToUse = (couponOverride !== undefined ? couponOverride : dashboardCouponInput).trim();
+    const handlePrepareStripePayment = async (plan, couponOverride, annualOverride, userOverride) => {
+        const activeUser = userOverride || currentUser || auth.currentUser;
+        if (!activeUser) {
+            alert('Inicia sesión primero para continuar con el pago.');
+            return;
+        }
+        const rawCoupon = (couponOverride !== undefined ? couponOverride : dashboardCouponInput).trim();
+        const useAnnual = annualOverride !== undefined ? annualOverride : isAnnual;
+        // ZION99 solo aplica a plan mensual; si cambia a anual sin aplicarlo manualmente, no bloquear el pago
+        const couponToUse = (useAnnual && couponOverride === undefined && rawCoupon.toUpperCase() === 'ZION99') ? '' : rawCoupon;
         setPendingPaymentPlan(plan);
         setIsProcessingStripe(true);
         try {
@@ -713,11 +799,11 @@ function Dashboard() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    email: currentUser.email,
-                    name: currentUser.displayName || currentUser.email.split('@')[0],
-                    userId: currentUser.uid,
+                    email: activeUser.email,
+                    name: activeUser.displayName || activeUser.email.split('@')[0],
+                    userId: activeUser.uid,
                     planId: plan.id,
-                    isAnnual: isAnnual,
+                    isAnnual: useAnnual,
                     couponCode: couponToUse,
                 })
             });
@@ -859,11 +945,11 @@ function Dashboard() {
     };
 
     return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#0f172a', color: 'white', display: 'flex', fontFamily: '"Inter", sans-serif' }}>
+        <div className="z-dash">
             {/* SIDEBAR */}
-            <aside style={{ width: '280px', backgroundColor: '#020617', borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', padding: '30px 20px', position: 'fixed', bottom: 0, top: 0 }}>
-                <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', marginBottom: '40px', cursor: 'pointer', paddingLeft: '10px' }}>
-                    <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '32px' }} />
+            <aside className="z-dash-sidebar">
+                <div onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', marginBottom: '26px', cursor: 'pointer', paddingLeft: '8px' }}>
+                    <img src="/logo2.png" alt="Zion Stage" style={{ height: '30px' }} />
                 </div>
 
                 <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
@@ -886,10 +972,10 @@ function Dashboard() {
                                 }
                             }}
                             style={{
-                                display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px',
-                                background: activeTab === item.id ? 'rgba(0,210,211,0.1)' : 'transparent',
-                                border: 'none', color: activeTab === item.id ? '#00d2d3' : '#94a3b8',
-                                textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s'
+                                display: 'flex', alignItems: 'center', gap: '12px', padding: '11px 14px', borderRadius: '8px',
+                                background: activeTab === item.id ? '#e7f8f9' : 'transparent',
+                                border: 'none', color: activeTab === item.id ? '#0f8c95' : '#4b5563',
+                                textAlign: 'left', cursor: 'pointer', fontWeight: activeTab === item.id ? '700' : '600', transition: 'all 0.15s'
                             }}
                         >
                             {item.icon} {item.label}
@@ -898,17 +984,17 @@ function Dashboard() {
                     <button hidden={!SHOP_ENABLED} onClick={() => navigate('/store')} style={{ display: SHOP_ENABLED ? 'flex' : 'none', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: 'transparent', border: 'none', color: '#94a3b8', textAlign: 'left', cursor: 'pointer', fontWeight: '600', transition: 'all 0.2s', marginTop: '10px' }}>
                         <ShoppingCart size={20} /> {t('dashboard.marketplace')}
                     </button>
-                    <button onClick={() => navigate('/multitrack')} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', borderRadius: '10px', background: '#00d2d3', border: 'none', color: 'white', marginTop: '20px', cursor: 'pointer', fontWeight: '700' }}>
-                        <Play size={20} fill="currentColor" /> {t('dashboard.goMixer')}
+                    <button onClick={() => navigate('/multitrack')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '12px 16px', borderRadius: '8px', background: '#17bcc7', border: 'none', color: 'white', marginTop: '18px', cursor: 'pointer', fontWeight: '700' }}>
+                        <Play size={18} fill="currentColor" /> {t('dashboard.goMixer')}
                     </button>
                 </nav>
 
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px' }}>
-                    <div onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '15px', padding: '10px', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s' }} className="user-profile-btn">
-                        <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: userPlan?.isVIP ? 'linear-gradient(135deg,#f1c40f,#e67e22)' : 'linear-gradient(135deg,#00d2d3,#9b59b6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700' }}>{displayName[0]?.toUpperCase()}</div>
+                <div style={{ borderTop: '1px solid #e3e8ec', paddingTop: '18px' }}>
+                    <div onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', padding: '8px', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s' }} className="user-profile-btn">
+                        <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: userPlan?.isVIP ? '#ed654c' : '#162026', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', flexShrink: 0 }}>{displayName[0]?.toUpperCase()}</div>
                         <div style={{ overflow: 'hidden' }}>
-                            <div style={{ fontSize: '0.9rem', fontWeight: '700', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
-                            <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#f1c40f' : '#64748b', fontWeight: '800' }}>{userPlan?.type} {userPlan?.storageGB}GB</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1d2328', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{displayName}</div>
+                            <div style={{ fontSize: '0.75rem', color: userPlan?.isVIP ? '#ed654c' : '#5a6670', fontWeight: '800' }}>{userPlan?.type} · {storageLimitGB} GB</div>
                             {/* Fecha de vencimiento del plan */}
                             {(() => {
                                 const expiresAt = userProfile?.planExpiresAt;
@@ -935,17 +1021,17 @@ function Dashboard() {
                             })()}
                         </div>
                     </div>
-                    <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', color: '#00d2d3', cursor: 'pointer', fontSize: '0.85rem', marginBottom: '10px' }}>
+                    <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '9px', width: '100%', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '7px', color: '#1d2328', cursor: 'pointer', fontSize: '0.84rem', fontWeight: '700', marginBottom: '8px' }}>
                         {t('dashboard.upgradePlan')}
                     </button>
-                    <button onClick={() => auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', width: '100%', background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <button onClick={() => auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px', width: '100%', background: 'transparent', border: 'none', color: '#5a6670', cursor: 'pointer', fontSize: '0.84rem', fontWeight: '600' }}>
                         <LogOut size={16} /> {t('dashboard.signOut')}
                     </button>
                 </div>
             </aside>
 
             {/* MAIN CONTENT */}
-            <main style={{ marginLeft: '280px', flex: 1, padding: '40px 60px', maxWidth: '1200px' }}>
+            <main className="z-dash-main">
                 {/* ── HEADER OVERVIEW ── */}
                 <header style={{ marginBottom: '40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                     <div>
@@ -982,7 +1068,7 @@ function Dashboard() {
                             <Plus size={20} /> {t('dashboard.newSetlist')}
                         </button>
                     )}
-                    {!isNativeApp() && <input ref={fileInputRef} type="file" accept=".zip" onChange={handleZipUpload} style={{ display: 'none' }} />}
+                    {!isNativeApp() && <input ref={fileInputRef} type="file" accept=".zip,.mp3,.wav,.m4a,.ogg,.flac" multiple onChange={handleZipUpload} style={{ display: 'none' }} />}
                     </div>
                 </header>
 
@@ -1115,7 +1201,21 @@ function Dashboard() {
 
                                 <div style={{ display: 'flex', gap: '15px' }}>
                                     <button onClick={() => setStep('idle')} className="btn-ghost">Cancelar</button>
-                                    <button disabled={useType === 'sell' && !hasRights} onClick={() => setStep('choose-use')} className="btn-teal" style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}>Siguiente</button>
+                                    <button
+                                        disabled={useType === 'sell' && !hasRights}
+                                        onClick={() => {
+                                            if (!SHOP_ENABLED) {
+                                                setUseType('personal');
+                                                setStep('uploading-flow');
+                                            } else {
+                                                setStep('choose-use');
+                                            }
+                                        }}
+                                        className="btn-teal"
+                                        style={{ flex: 1, opacity: (useType === 'sell' && !hasRights) ? 0.5 : 1 }}
+                                    >
+                                        Siguiente
+                                    </button>
                                 </div>
                             </div>
                         )}
@@ -1131,14 +1231,22 @@ function Dashboard() {
                             </div>
                         )}
                         {step === 'done' && (
-                            <div style={{ textAlign: 'center', padding: '40px' }}>
+                            <div style={{ textAlign: 'center', padding: '40px 24px' }}>
                                 <CheckIcon size={64} color="#10b981" style={{ margin: '0 auto 20px' }} />
-                                <h2>Subida Completa</h2>
+                                <h2 style={{ marginBottom: '10px' }}>Subida Completa</h2>
                                 {useType === 'sell' ? (
                                     <p style={{ color: '#f1c40f' }}>Tu canción está siendo verificada. Estará lista para la venta cuando sea aprobada por un administrador.</p>
                                 ) : (
-                                    <p style={{ color: '#64748b' }}>Tu canción ya está disponible en tu biblioteca personal.</p>
+                                    <p style={{ color: '#94a3b8', marginBottom: '26px' }}>Tu canción ya está lista en tu biblioteca personal y sincronizada en todos tus dispositivos.</p>
                                 )}
+                                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                                    <button onClick={() => navigate('/multitrack')} className="btn-teal" style={{ padding: '12px 26px', fontWeight: '800', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                                        <Play size={18} fill="currentColor" /> Abrir en el Mixer
+                                    </button>
+                                    <button onClick={resetWizard} className="btn-ghost" style={{ padding: '12px 22px' }}>
+                                        Volver a mi biblioteca
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </section>
@@ -1148,29 +1256,30 @@ function Dashboard() {
                         {activeTab === 'home' && (
                             <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '48px' }}>
                                 <div className="card-premium">
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                                        <div style={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: '8px' }}><Cloud size={18} /> Almacenamiento</div>
-                                        <div style={{ fontWeight: '700' }}>{usedPercent.toFixed(1)}%</div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                                        <div style={{ color: '#5a6670', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '600', fontSize: '0.9rem' }}><Cloud size={18} color="#17bcc7" /> Almacenamiento</div>
+                                        <div style={{ fontWeight: '800', color: '#1d2328' }}>{usedPercent.toFixed(1)}%</div>
                                     </div>
-                                    <div style={{ height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', overflow: 'hidden', marginBottom: '12px' }}>
-                                        <div style={{ width: `${usedPercent}%`, height: '100%', background: '#00d2d3', borderRadius: '4px' }}></div>
+                                    <div style={{ height: '8px', background: '#e8eef2', borderRadius: '4px', overflow: 'hidden', marginBottom: '10px' }}>
+                                        <div style={{ width: `${usedPercent}%`, height: '100%', background: usedMB >= storageLimit ? '#ed654c' : '#17bcc7', borderRadius: '4px' }}></div>
                                     </div>
-                                    <div style={{ color: '#64748b', fontSize: '0.85rem' }}>
-                                        {usedMB.toFixed(0)} MB de {storageLimitGB} GB usado
-                                    </div>
-                                </div>
-                                <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                                    <div style={{ width: '50px', height: '50px', background: 'rgba(0,210,211,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}><Music2 size={24} /></div>
-                                    <div>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{userSongs.length}</div>
-                                        <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Canciones subidas</div>
+                                    <div style={{ color: usedMB >= storageLimit ? '#b4341c' : '#5a6670', fontSize: '0.84rem', fontWeight: usedMB >= storageLimit ? '700' : '400' }}>
+                                        {usedMB >= 1024 ? `${(usedMB / 1024).toFixed(2)} GB` : `${usedMB.toFixed(0)} MB`} de {storageLimitGB} GB usado
+                                        {usedMB >= storageLimit ? ' (límite alcanzado)' : ''}
                                     </div>
                                 </div>
-                                <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                                    <div style={{ width: '50px', height: '50px', background: 'rgba(155,89,182,0.1)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b59b6' }}><ListMusic size={24} /></div>
+                                <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                                    <div style={{ width: '48px', height: '48px', background: '#e7f8f9', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#17bcc7' }}><Music2 size={22} /></div>
                                     <div>
-                                        <div style={{ fontSize: '1.5rem', fontWeight: '800' }}>{userSetlists.length}</div>
-                                        <div style={{ color: '#64748b', fontSize: '0.9rem' }}>Setlists creados</div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#1d2328', lineHeight: 1.1 }}>{userSongs.length}</div>
+                                        <div style={{ color: '#5a6670', fontSize: '0.88rem', marginTop: '2px' }}>Canciones subidas</div>
+                                    </div>
+                                </div>
+                                <div className="card-premium" style={{ display: 'flex', alignItems: 'center', gap: '18px' }}>
+                                    <div style={{ width: '48px', height: '48px', background: '#fef1ee', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ed654c' }}><ListMusic size={22} /></div>
+                                    <div>
+                                        <div style={{ fontSize: '1.6rem', fontWeight: '800', color: '#1d2328', lineHeight: 1.1 }}>{userSetlists.length}</div>
+                                        <div style={{ color: '#5a6670', fontSize: '0.88rem', marginTop: '2px' }}>Setlists creados</div>
                                     </div>
                                 </div>
                             </section>
@@ -1180,89 +1289,35 @@ function Dashboard() {
                         {(activeTab === 'home' || activeTab === 'songs') && (
                             <section>
                                 {!isNativeApp() && activeTab === 'songs' && (
-                                    <>
-                                    {/* FORMAT NOTE BANNER */}
-                                    <div style={{
-                                        marginBottom: '24px',
-                                        padding: '16px 22px',
-                                        borderRadius: '14px',
-                                        background: 'linear-gradient(135deg, rgba(0,210,211,0.06), rgba(155,89,182,0.06))',
-                                        border: '1px solid rgba(0,210,211,0.25)',
-                                        display: 'flex',
-                                        alignItems: 'flex-start',
-                                        gap: '14px'
-                                    }}>
-                                        <div style={{ fontSize: '1.5rem', flexShrink: 0, marginTop: '2px' }}>📋</div>
-                                        <div>
-                                            <div style={{ fontWeight: '800', fontSize: '0.9rem', color: '#00d2d3', marginBottom: '6px', letterSpacing: '0.02em' }}>
-                                                FORMATO REQUERIDO PARA SUBIR CANCIONES
-                                            </div>
-                                            <div style={{ fontSize: '0.85rem', color: '#e2e8f0', marginBottom: '8px', lineHeight: '1.4' }}>
-                                                Sube un archivo <strong>.ZIP</strong> que contenga las pistas individuales (en <strong>MP3</strong> o <strong>WAV</strong>).<br/>
-                                                El nombre del ZIP debe seguir este formato para auto-completar los datos:
-                                            </div>
-                                            <div style={{ fontFamily: 'monospace', fontSize: '0.95rem', color: '#00d2d3', marginBottom: '8px', background: 'rgba(0,0,0,0.2)', padding: '5px 10px', borderRadius: '4px', display: 'inline-block' }}>
-                                                NOMBRE - ARTISTA - NOTA - TEMPO
-                                            </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '5px' }}>
-                                                <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: '600' }}>Ejemplo:</span>
-                                                <code style={{
-                                                    background: 'rgba(0,0,0,0.3)',
-                                                    border: '1px solid rgba(0,210,211,0.2)',
-                                                    borderRadius: '6px',
-                                                    padding: '3px 10px',
-                                                    fontSize: '0.85rem',
-                                                    color: '#fff',
-                                                    fontFamily: 'monospace'
-                                                }}>
-                                                    Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM.zip
-                                                </code>
-                                            </div>
-                                        </div>
-                                    </div>
                                     <div
                                         onClick={() => fileInputRef.current.click()}
                                         onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
                                         onDrop={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
-                                            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                                                 handleZipUpload({ target: { files: e.dataTransfer.files } });
                                             }
                                         }}
-                                        style={{
-                                            width: '100%',
-                                            padding: '60px',
-                                            border: '2px dashed rgba(0,210,211,0.3)',
-                                            borderRadius: '24px',
-                                            textAlign: 'center',
-                                            background: 'rgba(0,210,211,0.02)',
-                                            cursor: 'pointer',
-                                            marginBottom: '50px',
-                                            transition: 'all 0.3s'
-                                        }}
-                                        className="upload-dropzone"
+                                        className="z-dropzone"
                                     >
-                                        <div style={{ color: '#00d2d3', marginBottom: '20px' }}>
-                                            {isProcessingZip ? <Loader2 size={56} className="animate-spin" /> : <Upload size={56} />}
+                                        <div style={{ color: '#17bcc7', marginBottom: '12px' }}>
+                                            {isProcessingZip ? <Loader2 size={40} className="animate-spin" style={{ margin: '0 auto' }} /> : <Upload size={40} style={{ margin: '0 auto' }} />}
                                         </div>
-                                        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', margin: '0 0 10px' }}>
-                                            {isProcessingZip ? `Procesando archivos ZIP (${zipProgress}%)` : 'Sube tu nueva canción'}
+                                        <h2 style={{ fontSize: '1.3rem', fontWeight: '800', margin: '0 0 6px', color: '#1d2328' }}>
+                                            {isProcessingZip ? `Procesando archivo ZIP (${zipProgress}%)` : 'Sube tu multitrack en segundos'}
                                         </h2>
-                                        <p style={{ color: '#64748b', fontSize: '1.1rem' }}>
-                                            {isProcessingZip ? 'Por favor espera mientras extraemos tus pistas...' : (
-                                                <>
-                                                    Arrastra tu archivo <strong>.ZIP</strong> (con pistas <strong>MP3</strong> o <strong>WAV</strong>) aquí.<br/>
-                                                    <span style={{ fontSize: '0.85rem', color: '#00d2d3', fontWeight: 'bold', display: 'block', marginTop: '10px' }}>
-                                                        Formato recomendado: NOMBRE - ARTISTA - NOTA - TEMPO<br/>
-                                                        Ej: Celebra victorioso - Juan Carlos Alvarado - Am - 98BPM
-                                                    </span>
-                                                </>
-                                            )}
+                                        <p style={{ color: '#5a6670', fontSize: '0.92rem', margin: '0 auto 16px', maxWidth: '520px', lineHeight: 1.5 }}>
+                                            {isProcessingZip
+                                                ? 'Extrayendo tus pistas de audio...'
+                                                : 'Arrastra varias pistas (.MP3, .WAV, .M4A) o un archivo .ZIP aquí. Si el nombre sigue "Canción - Artista - Tono - BPM", los datos se llenan solos.'}
                                         </p>
-                                        {!isProcessingZip && <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ marginTop: '20px' }}>Seleccionar Archivo</button>}
+                                        {!isProcessingZip && (
+                                            <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current.click(); }} className="btn-teal" style={{ padding: '10px 22px', fontSize: '0.9rem', fontWeight: '700' }}>
+                                                Seleccionar pistas o .ZIP
+                                            </button>
+                                        )}
                                     </div>
-                                    </>
                                 )}
 
 
@@ -1286,9 +1341,9 @@ function Dashboard() {
                                     )}
                                 </div>
 
-                                <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div className="z-dash-table">
                                     {/* LIST HEADER */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                    <div className="z-dash-table-head">
                                         <span></span>
                                         <span>Canción</span>
                                         <span>Artista</span>
@@ -1301,33 +1356,24 @@ function Dashboard() {
                                     {userSongs.filter(s =>
                                         s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                         (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
-                                    ).map((song, idx) => (
+                                    ).map((song) => (
                                         <div
                                             key={song.id}
                                             onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }}
-                                            style={{
-                                                display: 'grid',
-                                                gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px',
-                                                padding: '20px 30px',
-                                                borderBottom: idx === userSongs.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.03)',
-                                                alignItems: 'center',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s'
-                                            }}
-                                            className="song-list-item"
+                                            className="z-dash-table-row"
                                         >
-                                            <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(0,210,211,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3' }}>
-                                                <Music2 size={20} />
+                                            <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#e7f8f9', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#17bcc7' }}>
+                                                <Music2 size={18} />
                                             </div>
                                             <div>
-                                                <div style={{ fontWeight: '700', fontSize: '1rem' }}>{song.name}</div>
-                                                <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{song.tracks?.length || 0} pistas cargadas</div>
+                                                <div style={{ fontWeight: '700', fontSize: '0.96rem', color: '#1d2328' }}>{song.name}</div>
+                                                <div style={{ fontSize: '0.8rem', color: '#5a6670' }}>{song.tracks?.length || 0} pistas</div>
                                             </div>
-                                            <div style={{ color: '#94a3b8' }}>{song.artist || '—'}</div>
+                                            <div style={{ color: '#5a6670', fontSize: '0.92rem' }}>{song.artist || '—'}</div>
                                             <div>
-                                                {song.key && <span style={{ color: '#00d2d3', fontWeight: '700', background: 'rgba(0,210,211,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}
+                                                {song.key && <span style={{ color: '#0f8c95', fontWeight: '700', background: '#e7f8f9', padding: '3px 9px', borderRadius: '5px', fontSize: '0.82rem' }}>{song.key}</span>}
                                             </div>
-                                            <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
+                                            <div style={{ color: '#5a6670', fontSize: '0.9rem' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
                                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                                                 <button onClick={(e) => { e.stopPropagation(); openLyricsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }} title="Agregar/Editar Letra">
                                                     <ScrollText size={18} />
@@ -1345,10 +1391,15 @@ function Dashboard() {
                                     ))}
 
                                     {userSongs.length === 0 && (
-                                        <div style={{ textAlign: 'center', padding: '100px 20px', color: '#64748b' }}>
-                                            <div style={{ marginBottom: '15px' }}><Music2 size={48} opacity={0.2} /></div>
-                                            <h4 style={{ margin: '0 0 5px', color: 'white' }}>No hay canciones en tu biblioteca</h4>
-                                            <p>Sube tu primer archivo .ZIP para comenzar.</p>
+                                        <div style={{ textAlign: 'center', padding: '72px 24px', color: '#5a6670' }}>
+                                            <div style={{ marginBottom: '14px', color: '#cbd5e1' }}><Music2 size={44} style={{ margin: '0 auto' }} /></div>
+                                            <h4 style={{ margin: '0 0 6px', color: '#1d2328', fontSize: '1.1rem', fontWeight: '700' }}>No hay canciones en tu biblioteca</h4>
+                                            <p style={{ margin: '0 0 20px', fontSize: '0.92rem' }}>Sube tus pistas (.MP3, .WAV) o un archivo .ZIP para comenzar.</p>
+                                            {!isNativeApp() && (
+                                                <button onClick={() => fileInputRef.current.click()} className="btn-teal" style={{ padding: '10px 22px', fontWeight: '700', fontSize: '0.9rem' }}>
+                                                    Subir mi primera canción
+                                                </button>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -1362,8 +1413,8 @@ function Dashboard() {
                                     {userSetlists.map(sl => (
                                         <div key={sl.id} className="card-premium" style={{ position: 'relative' }}>
                                             <div style={{ display: 'flex', gap: '16px', marginBottom: '16px', alignItems: 'center' }}>
-                                                <div style={{ width: '50px', height: '50px', borderRadius: '10px', background: 'rgba(155,89,182,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9b59b6' }}>
-                                                    <ListMusic size={24} />
+                                                <div style={{ width: '44px', height: '44px', borderRadius: '10px', background: '#fef1ee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ed654c' }}>
+                                                    <ListMusic size={22} />
                                                 </div>
                                                 <div>
                                                     <div style={{ fontWeight: '700', fontSize: '1.1rem' }}>{sl.name}</div>
@@ -1387,22 +1438,22 @@ function Dashboard() {
                         )}
 
                         {activeTab === 'account' && (
-                            <section style={{ maxWidth: '520px' }}>
-                                <div style={{ background: '#020617', borderRadius: '16px', padding: '28px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                            <section style={{ maxWidth: '540px' }}>
+                                <div className="card-premium">
                                     <div style={{ marginBottom: '22px' }}>
-                                        <div style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: '700', letterSpacing: '0.06em', marginBottom: '6px' }}>{t('dashboard.accountEmail')}</div>
-                                        <div style={{ fontSize: '1.05rem', fontWeight: '600' }}>{currentUser?.email || '—'}</div>
+                                        <div style={{ fontSize: '0.75rem', color: '#5a6670', fontWeight: '700', letterSpacing: '0.06em', marginBottom: '6px', textTransform: 'uppercase' }}>{t('dashboard.accountEmail')}</div>
+                                        <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#1d2328' }}>{currentUser?.email || '—'}</div>
                                     </div>
                                     {!hasPasswordProvider ? (
-                                        <p style={{ margin: 0, color: '#94a3b8', lineHeight: 1.55, fontSize: '0.95rem' }}>{t('dashboard.passwordGoogleOnly')}</p>
+                                        <p style={{ margin: 0, color: '#5a6670', lineHeight: 1.55, fontSize: '0.95rem' }}>{t('dashboard.passwordGoogleOnly')}</p>
                                     ) : (
                                         <form onSubmit={handleChangePassword} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                                            <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: '800' }}>{t('dashboard.changePasswordTitle')}</h3>
-                                            <input type="password" autoComplete="current-password" placeholder={t('dashboard.currentPassword')} value={accountPwdCurrent} onChange={(e) => setAccountPwdCurrent(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
-                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.newPassword')} value={accountPwdNew} onChange={(e) => setAccountPwdNew(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
-                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.confirmNewPassword')} value={accountPwdConfirm} onChange={(e) => setAccountPwdConfirm(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(15,23,42,0.6)', color: 'white', fontSize: '0.95rem' }} />
-                                            {accountPwdErr && <div style={{ color: '#f87171', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: 'rgba(248,113,113,0.08)' }}>{accountPwdErr}</div>}
-                                            {accountPwdMsg && <div style={{ color: '#4ade80', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: 'rgba(74,222,128,0.08)' }}>{accountPwdMsg}</div>}
+                                            <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem', fontWeight: '800', color: '#1d2328' }}>{t('dashboard.changePasswordTitle')}</h3>
+                                            <input type="password" autoComplete="current-password" placeholder={t('dashboard.currentPassword')} value={accountPwdCurrent} onChange={(e) => setAccountPwdCurrent(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '8px', border: '1px solid #d4dce2', background: '#ffffff', color: '#1d2328', fontSize: '0.95rem' }} />
+                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.newPassword')} value={accountPwdNew} onChange={(e) => setAccountPwdNew(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '8px', border: '1px solid #d4dce2', background: '#ffffff', color: '#1d2328', fontSize: '0.95rem' }} />
+                                            <input type="password" autoComplete="new-password" placeholder={t('dashboard.confirmNewPassword')} value={accountPwdConfirm} onChange={(e) => setAccountPwdConfirm(e.target.value)} required style={{ padding: '12px 14px', borderRadius: '8px', border: '1px solid #d4dce2', background: '#ffffff', color: '#1d2328', fontSize: '0.95rem' }} />
+                                            {accountPwdErr && <div style={{ color: '#b4341c', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: '#fef1ee', border: '1px solid #f7c7bc' }}>{accountPwdErr}</div>}
+                                            {accountPwdMsg && <div style={{ color: '#0f766e', fontSize: '0.88rem', padding: '10px', borderRadius: '8px', background: '#e7f8f9', border: '1px solid #b9dfe2' }}>{accountPwdMsg}</div>}
                                             <button type="submit" className="btn-teal" disabled={accountPwdSaving} style={{ marginTop: '6px', padding: '12px 18px', fontWeight: '700' }}>
                                                 {accountPwdSaving ? t('dashboard.changingPassword') : t('dashboard.savePassword')}
                                             </button>
@@ -1417,31 +1468,30 @@ function Dashboard() {
                             <section>
                                 {userPlan?.isVIP ? (
                                     <>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '22px', flexWrap: 'wrap', gap: '14px' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                                <h3 style={{ margin: 0, fontSize: '1.4rem', fontWeight: '800' }}>Explorar Comunidad (Acceso VIP)</h3>
-                                                <span style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '4px' }}>
+                                                <h3 style={{ margin: 0, fontSize: '1.35rem', fontWeight: '800', color: '#1d2328' }}>Base de Datos VIP</h3>
+                                                <span style={{ fontSize: '0.9rem', color: '#5a6670', marginTop: '4px' }}>
                                                     {userSongs.filter(s =>
                                                         Array.isArray(s.tracks) &&
                                                         s.tracks.length > 0 &&
                                                         !(s.forSale === true && Number(s.price || 0) > 0)
-                                                    ).length} pistas de audio disponibles
+                                                    ).length} canciones disponibles
                                                 </span>
                                             </div>
-                                            <div style={{ position: 'relative', width: '350px' }}>
+                                            <div style={{ position: 'relative', width: '340px', maxWidth: '100%' }}>
                                                 <input
                                                     type="text"
-                                                    className="btn-ghost"
-                                                    style={{ width: '100%', textAlign: 'left', padding: '12px 45px 12px 20px', fontSize: '0.95rem', borderRadius: '12px', background: 'white', color: 'black', border: '1px solid #cbd5e1' }}
-                                                    placeholder="Buscar en toda la base de datos..."
+                                                    style={{ width: '100%', textAlign: 'left', padding: '11px 42px 11px 16px', fontSize: '0.94rem', borderRadius: '8px', background: '#ffffff', color: '#1d2328', border: '1px solid #d4dce2' }}
+                                                    placeholder="Buscar en la base de datos VIP..."
                                                     value={songSearchQuery}
                                                     onChange={e => setSongSearchQuery(e.target.value)}
                                                 />
-                                                <Search size={20} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                                <Search size={18} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: '#5a6670' }} />
                                             </div>
                                         </div>
-                                        <div style={{ background: '#020617', borderRadius: '16px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <div style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '15px 30px', background: 'rgba(255,255,255,0.02)', color: '#64748b', fontSize: '0.75rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                                        <div className="z-dash-table">
+                                            <div className="z-dash-table-head">
                                                 <span></span>
                                                 <span>Canción</span>
                                                 <span>Artista</span>
@@ -1456,29 +1506,28 @@ function Dashboard() {
                                                 (s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                                 (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase()))
                                             ).map((song) => (
-                                                <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} style={{ display: 'grid', gridTemplateColumns: '60px 2fr 1.5fr 1fr 1fr 180px', padding: '20px 30px', borderBottom: '1px solid rgba(255,255,255,0.03)', alignItems: 'center', cursor: 'pointer' }} className="song-list-item">
-                                                    <div style={{ width: '40px', height: '40px', borderRadius: '8px', background: 'rgba(241,196,15,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f' }}><Music2 size={20} /></div>
-                                                    <div><div style={{ fontWeight: '700' }}>{song.name}</div><div style={{ fontSize: '0.8rem', color: '#64748b' }}>Subido por {song.userId === currentUser?.uid ? 'TI' : 'Comunidad'}</div></div>
-                                                    <div style={{ color: '#94a3b8' }}>{song.artist || '—'}</div>
-                                                    <div>{song.key && <span style={{ color: '#f1c40f', fontWeight: '700', background: 'rgba(241,196,15,0.05)', padding: '4px 8px', borderRadius: '4px' }}>{song.key}</span>}</div>
-                                                    <div style={{ color: '#64748b' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
-                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
-                                                        <button onClick={(e) => { e.stopPropagation(); openLyricsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }} title="Letras"><ScrollText size={18} /></button>
-                                                        <button onClick={(e) => { e.stopPropagation(); openChordsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }} title="Cifrados"><Music size={18} /></button>
-                                                        <button onClick={(e) => { e.stopPropagation(); }} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><Settings2 size={18} /></button>
+                                                <div key={song.id} onClick={() => { localStorage.setItem('mixer_pendingSongId', song.id); navigate('/multitrack'); }} className="z-dash-table-row">
+                                                    <div style={{ width: '38px', height: '38px', borderRadius: '8px', background: '#fef1ee', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ed654c' }}><Music2 size={18} /></div>
+                                                    <div><div style={{ fontWeight: '700', color: '#1d2328' }}>{song.name}</div><div style={{ fontSize: '0.8rem', color: '#5a6670' }}>{song.userId === currentUser?.uid ? 'Tu biblioteca' : 'Base de datos VIP'}</div></div>
+                                                    <div style={{ color: '#5a6670' }}>{song.artist || '—'}</div>
+                                                    <div>{song.key && <span style={{ color: '#0f8c95', fontWeight: '700', background: '#e7f8f9', padding: '3px 9px', borderRadius: '5px', fontSize: '0.82rem' }}>{song.key}</span>}</div>
+                                                    <div style={{ color: '#5a6670' }}>{song.tempo ? `${song.tempo} BPM` : '—'}</div>
+                                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+                                                        <button onClick={(e) => { e.stopPropagation(); openLyricsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#5a6670', cursor: 'pointer' }} title="Letras"><ScrollText size={18} /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); openChordsHandler(song.id); }} style={{ background: 'transparent', border: 'none', color: '#5a6670', cursor: 'pointer' }} title="Cifrados"><Music size={18} /></button>
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
                                     </>
                                 ) : (
-                                    <div style={{ textAlign: 'center', padding: '120px 50px', background: 'rgba(255,255,255,0.02)', borderRadius: '32px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <div style={{ width: '100px', height: '100px', background: 'rgba(241,196,15,0.1)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f1c40f', margin: '0 auto 30px' }}><KeyRound size={50} /></div>
-                                        <h2 style={{ fontSize: '2.4rem', fontWeight: '900', marginBottom: '20px' }}>Acceso Exclusivo VIP</h2>
-                                        <p style={{ color: '#64748b', fontSize: '1.2rem', maxWidth: '600px', margin: '0 auto 40px', lineHeight: '1.6' }}>
-                                            Los miembros Premium VIP pueden acceder y utilizar todas las canciones de nuestra base de datos global.
+                                    <div className="card-premium" style={{ textAlign: 'center', padding: '72px 32px' }}>
+                                        <div style={{ width: '72px', height: '72px', background: '#fef1ee', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ed654c', margin: '0 auto 20px' }}><KeyRound size={34} /></div>
+                                        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '12px', color: '#1d2328' }}>Acceso Exclusivo VIP</h2>
+                                        <p style={{ color: '#5a6670', fontSize: '1rem', maxWidth: '520px', margin: '0 auto 28px', lineHeight: '1.6' }}>
+                                            El plan VIP incluye 300 GB en la nube y acceso a todos los multitracks de nuestra base de datos VIP.
                                         </p>
-                                        <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '16px 40px', fontSize: '1.1rem', background: '#f1c40f', color: '#000', fontWeight: '800' }}>Descubrir Planes VIP</button>
+                                        <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '13px 30px', fontSize: '0.96rem', fontWeight: '800' }}>Ver Plan VIP</button>
                                     </div>
                                 )}
                             </section>
@@ -1490,18 +1539,17 @@ function Dashboard() {
             {/* PRETTY SETLIST MODAL */}
             {
                 isSetlistModalOpen && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div className="card-premium" style={{ width: '100%', maxWidth: '450px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                                <h3 style={{ margin: 0, fontSize: '1.4rem' }}>Crear Nuevo Setlist</h3>
-                                <button onClick={() => setIsSetlistModalOpen(false)} style={{ background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={24} /></button>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIsSetlistModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.65)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '440px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.3rem', color: '#1d2328', fontWeight: '800' }}>Crear Nuevo Setlist</h3>
+                                <button onClick={() => setIsSetlistModalOpen(false)} style={{ background: '#f4f6f8', border: '1px solid #e3e8ec', borderRadius: '8px', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={18} /></button>
                             </div>
 
-                            <div style={{ marginBottom: '24px' }}>
-                                <label style={{ fontSize: '0.8rem', color: '#94a3b8', display: 'block', marginBottom: '8px', fontWeight: '600' }}>NOMBRE DEL SETLIST</label>
+                            <div style={{ marginBottom: '22px' }}>
+                                <label style={{ fontSize: '0.78rem', color: '#5a6670', display: 'block', marginBottom: '8px', fontWeight: '700' }}>NOMBRE DEL SETLIST</label>
                                 <input
-                                    className="btn-ghost"
-                                    style={{ width: '100%', textAlign: 'left', padding: '14px', fontSize: '1rem', backgroundColor: 'rgba(0,0,0,0.2)' }}
+                                    style={{ width: '100%', textAlign: 'left', padding: '12px 14px', fontSize: '0.96rem', backgroundColor: '#ffffff', color: '#1d2328', border: '1px solid #d4dce2', borderRadius: '8px' }}
                                     placeholder="Ej. Servicio Domingo 15"
                                     value={newSetlistName}
                                     onChange={e => setNewSetlistName(e.target.value)}
@@ -1509,7 +1557,7 @@ function Dashboard() {
                                 />
                             </div>
 
-                            <div style={{ display: 'flex', gap: '12px' }}>
+                            <div style={{ display: 'flex', gap: '10px' }}>
                                 <button onClick={() => setIsSetlistModalOpen(false)} className="btn-ghost" style={{ flex: 1 }}>Cancelar</button>
                                 <button onClick={handleCreateSetlist} className="btn-teal" style={{ flex: 1 }} disabled={!newSetlistName.trim()}>Guardar Setlist</button>
                             </div>
@@ -1520,67 +1568,69 @@ function Dashboard() {
             {/* EDIT SETLIST MODAL */}
             {
                 isEditSetlistModalOpen && editingSetlistData && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div className="card-premium" style={{ width: '100%', maxWidth: '900px', height: '80vh', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', flexDirection: 'column' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIsEditSetlistModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '920px', height: '82vh', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '22px', paddingBottom: '16px', borderBottom: '1px solid #e3e8ec' }}>
                                 <div>
-                                    <h2 style={{ margin: '0 0 5px' }}>{editingSetlistData.name}</h2>
-                                    <p style={{ margin: 0, color: '#64748b' }}>Editando canciones del setlist</p>
+                                    <h2 style={{ margin: '0 0 4px', color: '#1d2328', fontSize: '1.45rem', fontWeight: '800' }}>{editingSetlistData.name}</h2>
+                                    <p style={{ margin: 0, color: '#5a6670', fontSize: '0.9rem' }}>Editando canciones del setlist</p>
                                 </div>
-                                <button onClick={() => setIsEditSetlistModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={30} /></button>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <button onClick={() => setIsEditSetlistModalOpen(false)} className="btn-teal" style={{ padding: '8px 18px', fontSize: '0.88rem', fontWeight: '700' }}>Listo</button>
+                                    <button onClick={() => setIsEditSetlistModalOpen(false)} aria-label="Cerrar" style={{ background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={20} /></button>
+                                </div>
                             </div>
 
-                            <div style={{ display: 'flex', gap: '30px', flex: 1, overflow: 'hidden' }}>
+                            <div style={{ display: 'flex', gap: '24px', flex: 1, overflow: 'hidden', flexWrap: 'wrap' }}>
                                 {/* CURRENT SONGS */}
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                    <h4 style={{ marginBottom: '15px', color: '#00d2d3' }}>Canciones en el Setlist ({(editingSetlistData.songs || []).length})</h4>
-                                    <div style={{ flex: 1, overflowY: 'auto', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                <div style={{ flex: '1 1 340px', display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+                                    <h4 style={{ margin: '0 0 12px', color: '#0f8c95', fontSize: '0.95rem', fontWeight: '800' }}>Canciones en el Setlist ({(editingSetlistData.songs || []).length})</h4>
+                                    <div style={{ flex: 1, overflowY: 'auto', background: '#f4f6f8', padding: '12px', borderRadius: '10px', border: '1px solid #e3e8ec' }}>
                                         {(editingSetlistData.songs || []).map((s, idx) => (
-                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '12px', background: '#1e293b', borderRadius: '8px', marginBottom: '10px' }}>
-                                                <div style={{ width: '30px', height: '30px', background: 'rgba(0,210,211,0.1)', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3', fontSize: '0.8rem', fontWeight: '800' }}>{idx + 1}</div>
-                                                <div style={{ marginLeft: '12px', flex: 1 }}>
-                                                    <div style={{ fontWeight: '700' }}>{s.name}</div>
-                                                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{s.artist}</div>
+                                            <div key={idx} style={{ display: 'flex', alignItems: 'center', padding: '11px 12px', background: '#ffffff', border: '1px solid #e3e8ec', borderRadius: '8px', marginBottom: '8px' }}>
+                                                <div style={{ width: '28px', height: '28px', background: '#e7f8f9', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f8c95', fontSize: '0.8rem', fontWeight: '800', flexShrink: 0 }}>{idx + 1}</div>
+                                                <div style={{ marginLeft: '12px', flex: 1, minWidth: 0 }}>
+                                                    <div style={{ fontWeight: '700', color: '#1d2328', fontSize: '0.92rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</div>
+                                                    <div style={{ fontSize: '0.78rem', color: '#5a6670', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.artist || '—'}</div>
                                                 </div>
-                                                <button onClick={() => handleRemoveSongFromSetlist(idx)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={18} /></button>
+                                                <button onClick={() => handleRemoveSongFromSetlist(idx)} title="Quitar del setlist" style={{ background: 'transparent', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '6px' }}><Trash2 size={17} /></button>
                                             </div>
                                         ))}
-                                        {(editingSetlistData.songs || []).length === 0 && <p style={{ textAlign: 'center', color: '#475569', marginTop: '40px' }}>No hay canciones aún.</p>}
+                                        {(editingSetlistData.songs || []).length === 0 && <p style={{ textAlign: 'center', color: '#5a6670', marginTop: '40px', fontSize: '0.9rem' }}>No hay canciones aún.</p>}
                                     </div>
                                 </div>
 
                                 {/* ADD SONGS LIBRARY */}
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                                    <h4 style={{ marginBottom: '15px' }}>Agregar desde Biblioteca</h4>
-                                    <div style={{ marginBottom: '15px', position: 'relative' }}>
+                                <div style={{ flex: '1 1 340px', display: 'flex', flexDirection: 'column', minHeight: 0, height: '100%' }}>
+                                    <h4 style={{ margin: '0 0 12px', color: '#1d2328', fontSize: '0.95rem', fontWeight: '800' }}>Agregar desde Biblioteca</h4>
+                                    <div style={{ marginBottom: '12px', position: 'relative' }}>
                                         <input
                                             type="text"
-                                            className="btn-ghost"
-                                            style={{ width: '100%', textAlign: 'left', padding: '10px 40px 10px 15px', fontSize: '0.9rem' }}
+                                            style={{ width: '100%', textAlign: 'left', padding: '10px 38px 10px 14px', fontSize: '0.9rem', background: '#ffffff', color: '#1d2328', border: '1px solid #d4dce2', borderRadius: '8px' }}
                                             placeholder="Buscar en mis canciones..."
                                             value={songSearchQuery}
                                             onChange={e => setSongSearchQuery(e.target.value)}
                                         />
-                                        <Search size={18} style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                                        <Search size={17} style={{ position: 'absolute', right: '13px', top: '50%', transform: 'translateY(-50%)', color: '#5a6670' }} />
                                     </div>
-                                    <div style={{ flex: 1, overflowY: 'auto' }}>
+                                    <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e3e8ec', borderRadius: '10px', background: '#ffffff' }}>
                                         {userSongs.filter(s =>
                                             s.name.toLowerCase().includes(songSearchQuery.toLowerCase()) ||
                                             (s.artist || '').toLowerCase().includes(songSearchQuery.toLowerCase())
                                         ).map(song => {
                                             const isInSetlist = (editingSetlistData.songs || []).some(s => s.id === song.id);
                                             return (
-                                                <div key={song.id} style={{ display: 'flex', alignItems: 'center', padding: '10px', borderBottom: '1px solid rgba(255,255,255,0.05)', opacity: isInSetlist ? 0.5 : 1 }}>
-                                                    <div style={{ flex: 1 }}>
-                                                        <div style={{ fontSize: '0.9rem', fontWeight: '700' }}>{song.name}</div>
-                                                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>{song.artist}</div>
+                                                <div key={song.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #eef2f5', opacity: isInSetlist ? 0.55 : 1 }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1d2328', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{song.name}</div>
+                                                        <div style={{ fontSize: '0.76rem', color: '#5a6670' }}>{song.artist || '—'}</div>
                                                     </div>
                                                     <button
                                                         onClick={() => handleAddSongToSetlist(song)}
                                                         disabled={isInSetlist}
-                                                        style={{ background: isInSetlist ? 'transparent' : '#00d2d3', color: 'white', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isInSetlist ? 'default' : 'pointer' }}
+                                                        style={{ background: isInSetlist ? '#e7f8f9' : '#17bcc7', color: isInSetlist ? '#0f8c95' : '#ffffff', border: 'none', borderRadius: '50%', width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isInSetlist ? 'default' : 'pointer', flexShrink: 0 }}
                                                     >
-                                                        {isInSetlist ? <CheckIcon size={16} color="#00d2d3" /> : <Plus size={18} />}
+                                                        {isInSetlist ? <CheckIcon size={15} /> : <Plus size={16} />}
                                                     </button>
                                                 </div>
                                             );
@@ -1595,15 +1645,15 @@ function Dashboard() {
             {/* PRICING & PLANS MODAL */}
             {
                 isPricingModalOpen && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div className="card-premium" style={{ width: '100%', maxWidth: '1000px', maxHeight: '95vh', overflowY: 'auto', backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' }}>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget && !isInitialPlanSelection) setIsPricingModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.7)', backdropFilter: 'blur(4px)', zIndex: 4000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '880px', maxHeight: '94vh', overflowY: 'auto' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '26px' }}>
                                 <div>
-                                    <h2 style={{ margin: '0 0 5px', fontSize: '2rem' }}>Mejora tu Experiencia</h2>
-                                    <p style={{ margin: 0, color: '#64748b', fontSize: '1.1rem' }}>Elige el plan que mejor se adapte a tu ministerio</p>
+                                    <h2 style={{ margin: '0 0 4px', fontSize: '1.65rem', color: '#1d2328', fontWeight: '800' }}>Planes globales Zion Stage</h2>
+                                    <p style={{ margin: 0, color: '#5a6670', fontSize: '0.96rem' }}>Una sola cuenta para Web, iOS, Android y Windows</p>
                                 </div>
                                 {!isInitialPlanSelection && (
-                                    <button onClick={() => setIsPricingModalOpen(false)} style={{ background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={32} /></button>
+                                    <button onClick={() => setIsPricingModalOpen(false)} aria-label="Cerrar" style={{ background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={20} /></button>
                                 )}
                             </div>
 
@@ -1698,78 +1748,83 @@ function Dashboard() {
                                 </div>
                             ) : (
                                 <div>
-                                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '40px' }}>
-                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '5px', borderRadius: '30px', display: 'flex', gap: '5px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                                            <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#00d2d3' : 'transparent', color: !isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Mensual</button>
-                                            <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 24px', borderRadius: '25px', border: 'none', background: isAnnual ? '#00d2d3' : 'transparent', color: isAnnual ? '#000' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.3s' }}>Anual (-30%)</button>
+                                    <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '28px' }}>
+                                        <div style={{ background: '#f4f6f8', padding: '4px', borderRadius: '30px', display: 'flex', gap: '4px', border: '1px solid #e3e8ec' }}>
+                                            <button onClick={() => setIsAnnual(false)} style={{ padding: '8px 22px', borderRadius: '25px', border: 'none', background: !isAnnual ? '#162026' : 'transparent', color: !isAnnual ? '#ffffff' : '#5a6670', fontWeight: '700', cursor: 'pointer' }}>Mensual</button>
+                                            <button onClick={() => setIsAnnual(true)} style={{ padding: '8px 22px', borderRadius: '25px', border: 'none', background: isAnnual ? '#162026' : 'transparent', color: isAnnual ? '#ffffff' : '#5a6670', fontWeight: '700', cursor: 'pointer' }}>Anual (-30%)</button>
                                         </div>
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px' }}>
-                                        {/* BASIC & STANDARD PLANS */}
-                                        <div>
-                                            <h3 style={{ marginBottom: '20px', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><Globe size={20} /> Planes Estándar</h3>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                {STORAGE_PLANS.filter(p => !p.isVIP && !p.isDesktop && !p.isSeller).map(p => (
-                                                    <div key={p.id} style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#00d2d3' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <div>
-                                                            <div style={{ fontWeight: '800', fontSize: '1.1rem' }}>{p.id === 'free' ? 'Plan Gratis' : `Plan ${p.name}`}</div>
-                                                            <div style={{ fontSize: '0.85rem', color: '#64748b' }}>{p.id === 'free' ? '1 GB de almacenamiento' : `${p.storageGB} GB Storage`}</div>
-                                                        </div>
-                                                        <div style={{ textAlign: 'right' }}>
-                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                                                                {isAnnual && p.id !== 'free' && (
-                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b', textDecoration: 'line-through', marginBottom: '-2px' }}>
-                                                                        ${p.originalAnnualPrice}
-                                                                    </span>
-                                                                )}
-                                                                <div style={{ fontSize: '1.2rem', fontWeight: '800' }}>
-                                                                    ${p.id === 'free' ? 0 : (isAnnual ? p.annualPrice : p.price)}
-                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>/{p.id === 'free' ? 'mes' : isAnnual ? 'año' : 'mes'}</span>
-                                                                </div>
-                                                            </div>
-                                                            {userPlan?.id === p.id && !isInitialPlanSelection ?
-                                                                <span style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold' }}>PLAN ACTUAL</span> :
-                                                                p.id === 'free' ?
-                                                                    <button onClick={() => { updateDoc(doc(db, 'users', currentUser.uid), { planId: p.id }); localStorage.setItem(`mixer_seen_pricing_${currentUser.uid}`, 'true'); setIsInitialPlanSelection(false); setIsPricingModalOpen(false); }} className="btn-ghost" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Elegir Gratis</button> :
-                                                                    <button onClick={() => { handlePrepareStripePayment(p); }} className="btn-teal" style={{ padding: '6px 12px', fontSize: '0.75rem' }}>Elegir</button>
-                                                            }
-                                                        </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+                                        {/* PLAN ESTÁNDAR (50 GB) */}
+                                        {STORAGE_PLANS.filter(p => p.id === 'std2').map(p => (
+                                            <div key={p.id} style={{ padding: '26px', background: '#f8fafb', borderRadius: '12px', border: `2px solid ${userPlan?.id === p.id ? '#17bcc7' : '#e3e8ec'}`, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '18px' }}>
+                                                <div>
+                                                    <div style={{ fontSize: '0.72rem', fontWeight: '800', color: '#0f8c95', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '6px' }}>Global · Web, iOS, Android y Windows</div>
+                                                    <div style={{ fontWeight: '800', fontSize: '1.35rem', color: '#1d2328' }}>Plan Estándar</div>
+                                                    <div style={{ fontSize: '0.88rem', color: '#5a6670', marginTop: '6px' }}>Sube y mezcla tus propios multitracks en todos tus dispositivos.</div>
+                                                    <div style={{ marginTop: '16px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                                        {isAnnual && <span style={{ fontSize: '0.92rem', color: '#94a3b8', textDecoration: 'line-through' }}>${p.originalAnnualPrice}</span>}
+                                                        <span style={{ fontSize: '2.2rem', fontWeight: '900', color: '#1d2328' }}>${isAnnual ? p.annualPrice : p.price}</span>
+                                                        <span style={{ fontSize: '0.88rem', color: '#5a6670' }}>/{isAnnual ? 'año' : 'mes'}</span>
                                                     </div>
-                                                ))}
+                                                    <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem', color: '#1d2328' }}>
+                                                        <li>✓ 50 GB de almacenamiento en la nube</li>
+                                                        <li>✓ Sube y usa tus propios multitracks</li>
+                                                        <li>✓ Acceso en Web, iOS, Android y Windows</li>
+                                                        <li style={{ color: '#94a3b8' }}>— Sin acceso a la base de datos VIP</li>
+                                                    </ul>
+                                                </div>
+                                                {userPlan?.id === p.id && !isInitialPlanSelection ? (
+                                                    <div style={{ textAlign: 'center', color: '#0f8c95', fontSize: '0.84rem', fontWeight: '800', padding: '11px', border: '1px solid #17bcc7', borderRadius: '8px', background: '#e7f8f9' }}>PLAN ACTUAL</div>
+                                                ) : (
+                                                    <button onClick={() => handlePrepareStripePayment(p)} style={{ width: '100%', padding: '12px', fontSize: '0.92rem', fontWeight: '800', background: '#162026', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Elegir Estándar</button>
+                                                )}
                                             </div>
-                                        </div>
+                                        ))}
 
-                                        {/* VIP PLANS */}
-                                        <div>
-                                            <h3 style={{ marginBottom: '20px', color: '#f1c40f', display: 'flex', alignItems: 'center', gap: '10px' }}><CreditCard size={20} /> Planes Premium VIP</h3>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                                                {STORAGE_PLANS.filter(p => p.isVIP && !p.isDesktop && !p.isSeller).map(p => (
-                                                    <div key={p.id} style={{ padding: '20px', background: 'rgba(241,196,15,0.03)', borderRadius: '12px', border: `1px solid ${userPlan?.id === p.id ? '#f1c40f' : 'rgba(255,255,255,0.05)'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <div>
-                                                            <div style={{ fontWeight: '800', fontSize: '1.1rem', color: '#f1c40f' }}>Plan {p.name}</div>
-                                                            <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>
-                                                                {p.storageGB} GB + {p.id === 'universal_pro' ? 'Acceso Total (Web, Android, PC)' : 'Acceso Total'}
-                                                            </div>
-                                                        </div>
-                                                        <div style={{ textAlign: 'right' }}>
-                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
-                                                                {isAnnual && p.id !== 'free' && (
-                                                                    <span style={{ fontSize: '0.8rem', color: 'rgba(241,196,15,0.5)', textDecoration: 'line-through', marginBottom: '-2px' }}>
-                                                                        ${p.originalAnnualPrice}
-                                                                    </span>
-                                                                )}
-                                                                <div style={{ fontSize: '1.2rem', fontWeight: '800', color: '#f1c40f' }}>
-                                                                    ${isAnnual ? p.annualPrice : p.price}
-                                                                    <span style={{ fontSize: '0.8rem', color: '#64748b' }}>/{isAnnual ? 'año' : 'mes'}</span>
-                                                                </div>
-                                                            </div>
-                                                            {userPlan?.id === p.id && !isInitialPlanSelection ? <span style={{ color: '#f1c40f', fontSize: '0.7rem', fontWeight: 'bold' }}>PLAN ACTUAL</span> : <button onClick={() => { handlePrepareStripePayment(p); }} style={{ padding: '6px 12px', fontSize: '0.75rem', background: '#f1c40f', border: 'none', color: '#000', borderRadius: '8px', fontWeight: '700', cursor: 'pointer' }}>Elegir VIP</button>}
-                                                        </div>
+                                        {/* PLAN VIP (300 GB + BASE DE DATOS VIP) */}
+                                        {STORAGE_PLANS.filter(p => p.id === 'vip2').map(p => (
+                                            <div key={p.id} style={{ padding: '26px', background: '#ffffff', borderRadius: '12px', border: '2px solid #17bcc7', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: '18px', boxShadow: '0 8px 24px rgba(23,188,199,0.12)' }}>
+                                                <div>
+                                                    <div style={{ display: 'inline-block', background: '#ed654c', color: 'white', fontSize: '0.68rem', fontWeight: '800', padding: '3px 9px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '8px' }}>Más popular · Base de datos VIP</div>
+                                                    <div style={{ fontWeight: '800', fontSize: '1.35rem', color: '#1d2328' }}>Plan VIP</div>
+                                                    <div style={{ fontSize: '0.88rem', color: '#5a6670', marginTop: '6px' }}>300 GB para tus pistas más acceso a todos los multitracks de la base de datos VIP.</div>
+                                                    <div style={{ marginTop: '16px', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                                                        {isAnnual && <span style={{ fontSize: '0.92rem', color: '#94a3b8', textDecoration: 'line-through' }}>${p.originalAnnualPrice}</span>}
+                                                        <span style={{ fontSize: '2.2rem', fontWeight: '900', color: '#1d2328' }}>${isAnnual ? p.annualPrice : p.price}</span>
+                                                        <span style={{ fontSize: '0.88rem', color: '#5a6670' }}>/{isAnnual ? 'año' : 'mes'}</span>
                                                     </div>
-                                                ))}
+                                                    <ul style={{ listStyle: 'none', padding: 0, margin: '16px 0 0', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem', color: '#1d2328' }}>
+                                                        <li>✓ 300 GB de almacenamiento en la nube</li>
+                                                        <li>✓ Uso de todos los multitracks de la base de datos VIP</li>
+                                                        <li>✓ Sube y mezcla tus propios multitracks</li>
+                                                        <li>✓ Acceso en Web, iOS, Android y Windows</li>
+                                                    </ul>
+                                                </div>
+                                                {userPlan?.id === p.id && !isInitialPlanSelection ? (
+                                                    <div style={{ textAlign: 'center', color: '#0f8c95', fontSize: '0.84rem', fontWeight: '800', padding: '11px', border: '1px solid #17bcc7', borderRadius: '8px', background: '#e7f8f9' }}>PLAN ACTUAL</div>
+                                                ) : (
+                                                    <button onClick={() => handlePrepareStripePayment(p)} className="btn-teal" style={{ width: '100%', padding: '12px', fontSize: '0.92rem', fontWeight: '800' }}>Elegir VIP</button>
+                                                )}
                                             </div>
-                                        </div>
+                                        ))}
                                     </div>
+                                    {isInitialPlanSelection && (
+                                        <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                                            <button
+                                                onClick={() => {
+                                                    updateDoc(doc(db, 'users', currentUser.uid), { planId: 'free' });
+                                                    localStorage.setItem(`mixer_seen_pricing_${currentUser.uid}`, 'true');
+                                                    setIsInitialPlanSelection(false);
+                                                    setIsPricingModalOpen(false);
+                                                }}
+                                                className="btn-ghost"
+                                                style={{ fontSize: '0.85rem', padding: '8px 18px' }}
+                                            >
+                                                Continuar gratis por ahora (1 GB)
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1780,18 +1835,18 @@ function Dashboard() {
             {/* MODAL PARA EDITAR LETRAS (UPLOAD) */}
             {
                 isLyricsModalOpen && (
-                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
-                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '700px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
-                            <button onClick={() => setIsLyricsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={24} /></button>
-                            <h2 style={{ marginBottom: '10px' }}>Agregar Letra</h2>
-                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega o escribe la letra de la canción aquí.</p>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIsLyricsModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '680px', position: 'relative' }}>
+                            <button onClick={() => setIsLyricsModalOpen(false)} aria-label="Cerrar" style={{ position: 'absolute', top: '18px', right: '18px', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={18} /></button>
+                            <h2 style={{ marginBottom: '6px', color: '#1d2328' }}>Agregar Letra</h2>
+                            <p style={{ color: '#5a6670', marginBottom: '18px', fontSize: '0.9rem' }}>Pega o escribe la letra de la canción aquí.</p>
                             <textarea
                                 value={lyrics}
                                 onChange={(e) => setLyrics(e.target.value)}
                                 placeholder="Escribe la letra aquí..."
-                                style={{ width: '100%', height: '350px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
+                                style={{ width: '100%', height: '340px', backgroundColor: '#f8fafb', border: '1px solid #d4dce2', borderRadius: '10px', color: '#1d2328', padding: '16px', fontSize: '0.96rem', fontFamily: 'monospace', resize: 'none', marginBottom: '18px' }}
                             />
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                                 <button onClick={() => { setIsLyricsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>
                                 <button onClick={saveLyricsHandler} className="btn-teal">Guardar Letra</button>
                             </div>
@@ -1803,17 +1858,17 @@ function Dashboard() {
             {/* MODAL PARTITURAS */}
             {
                 isPartituraMOdalOpen && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '680px', borderRadius: '24px', padding: '32px', border: '1px solid rgba(255,255,255,0.08)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
-                            <button onClick={() => setIsPartituraModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={24} /></button>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIsPartituraModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', zIndex: 3000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '660px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+                            <button onClick={() => setIsPartituraModalOpen(false)} aria-label="Cerrar" style={{ position: 'absolute', top: '18px', right: '18px', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={18} /></button>
 
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '26px' }}>
-                                <div style={{ width: '46px', height: '46px', background: 'linear-gradient(135deg,#00d2d3,#9b59b6)', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                    <FileText size={22} color="white" />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '22px' }}>
+                                <div style={{ width: '44px', height: '44px', background: '#e7f8f9', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#17bcc7' }}>
+                                    <FileText size={22} />
                                 </div>
                                 <div>
-                                    <h2 style={{ margin: 0, fontSize: '1.4rem' }}>Partituras</h2>
-                                    <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>Sube archivos PDF por instrumento</p>
+                                    <h2 style={{ margin: 0, fontSize: '1.35rem', color: '#1d2328' }}>Partituras</h2>
+                                    <p style={{ margin: 0, color: '#5a6670', fontSize: '0.85rem' }}>Sube archivos PDF por instrumento</p>
                                 </div>
                             </div>
 
@@ -1910,23 +1965,24 @@ function Dashboard() {
             {/* MODAL PARA EDITAR CIFRADOS (UPLOAD) */}
             {
                 isChordsModalOpen && (
-                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
-                        <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '700px', borderRadius: '24px', padding: '30px', border: '1px solid rgba(255,255,255,0.05)', position: 'relative' }}>
-                            <button onClick={() => setIsChordsModalOpen(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'transparent', border: 'none', color: 'white', opacity: 0.6, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = 1} onMouseLeave={e => e.currentTarget.style.opacity = 0.6}><X size={24} /></button>
-                            <h2 style={{ marginBottom: '10px' }}>Agregar Cifrado</h2>
-                            <p style={{ color: '#64748b', marginBottom: '20px', fontSize: '0.9rem' }}>Pega el cifrado o usa la importación inteligente.</p>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIsChordsModalOpen(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '680px', position: 'relative' }}>
+                            <button onClick={() => setIsChordsModalOpen(false)} aria-label="Cerrar" style={{ position: 'absolute', top: '18px', right: '18px', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={18} /></button>
+                            <h2 style={{ marginBottom: '6px', color: '#1d2328' }}>Agregar Cifrado</h2>
+                            <p style={{ color: '#5a6670', marginBottom: '18px', fontSize: '0.9rem' }}>Pega el cifrado o usa la importación inteligente.</p>
 
-                            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
                                 <input
                                     value={importUrl}
                                     onChange={e => setImportUrl(e.target.value)}
                                     placeholder="URL de LaCuerda.net u otros..."
-                                    style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: 'white', padding: '12px' }}
+                                    style={{ flex: 1, backgroundColor: '#ffffff', border: '1px solid #d4dce2', borderRadius: '8px', color: '#1d2328', padding: '11px 14px' }}
                                 />
                                 <button
                                     onClick={handleSmartImport}
                                     disabled={isScraping || !importUrl}
-                                    style={{ background: '#00d2d3', color: 'black', border: 'none', padding: '0 20px', borderRadius: '10px', fontWeight: '800', cursor: 'pointer', opacity: (isScraping || !importUrl) ? 0.5 : 1 }}
+                                    className="btn-teal"
+                                    style={{ padding: '0 18px', fontWeight: '700', opacity: (isScraping || !importUrl) ? 0.5 : 1 }}
                                 >
                                     {isScraping ? 'Importando...' : 'Importar URL'}
                                 </button>
@@ -1936,9 +1992,9 @@ function Dashboard() {
                                 value={chords}
                                 onChange={(e) => setChords(e.target.value)}
                                 placeholder="Escribe o pega los acordes aquí..."
-                                style={{ width: '100%', height: '300px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', color: 'white', padding: '20px', fontSize: '1rem', fontFamily: 'monospace', resize: 'none', marginBottom: '20px' }}
+                                style={{ width: '100%', height: '300px', backgroundColor: '#f8fafb', border: '1px solid #d4dce2', borderRadius: '10px', color: '#1d2328', padding: '16px', fontSize: '0.96rem', fontFamily: 'monospace', resize: 'none', marginBottom: '18px' }}
                             />
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '15px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
                                 <button onClick={() => { setIsChordsModalOpen(false); setEditingSongId(null); }} className="btn-ghost">Cancelar</button>
                                 <button onClick={saveChordsHandler} className="btn-teal">Guardar Cifrado</button>
                             </div>
@@ -1947,127 +2003,83 @@ function Dashboard() {
                 )
             }
 
-            {/* SUCCESS MODAL PREMIUM */}
+            {/* SUCCESS MODAL */}
             {
                 isSuccessModalOpen && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,6,23,0.95)', backdropFilter: 'blur(15px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div className="card-premium" style={{ width: '100%', maxWidth: '450px', backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', textAlign: 'center', padding: '40px', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ position: 'absolute', top: '-20px', left: '-20px', color: 'rgba(0,210,211,0.05)' }}><CheckIcon size={200} /></div>
-
-                            <div style={{ position: 'relative', zIndex: 1 }}>
-                                <div style={{ width: '100px', height: '100px', background: 'linear-gradient(135deg, #00d2d3, #01a3a4)', borderRadius: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 30px', boxShadow: '0 20px 40px rgba(0,210,211,0.3)', transform: 'rotate(-5deg)' }}>
-                                    <CheckIcon size={50} color="white" />
-                                </div>
-
-                                <h2 style={{ fontSize: '2.4rem', fontWeight: '900', marginBottom: '15px', background: 'linear-gradient(to right, #fff, #94a3b8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>¡Increíble!</h2>
-                                <p style={{ fontSize: '1.2rem', color: '#94a3b8', lineHeight: '1.6', marginBottom: '30px' }}>
-                                    Tu cuenta ha sido actualizada exitosamente al <span style={{ color: '#00d2d3', fontWeight: '800' }}>Plan {successPlanName}</span>.
-                                    Disfruta de todo el potencial de MixCommunity.
-                                </p>
-
-                                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '35px', display: 'flex', alignItems: 'center', gap: '15px', textAlign: 'left' }}>
-                                    <div style={{ color: '#f1c40f' }}><Star size={24} /></div>
-                                    <div style={{ fontSize: '0.9rem', color: '#cbd5e1' }}>Ya puedes empezar a usar tus nuevas herramientas y almacenamiento ampliado.</div>
-                                </div>
-
-                                <button
-                                    onClick={() => { setIsSuccessModalOpen(false); window.location.reload(); }}
-                                    className="btn-teal"
-                                    style={{ width: '100%', padding: '18px', fontSize: '1.1rem', fontWeight: '800', boxShadow: '0 10px 20px rgba(0,210,211,0.2)' }}
-                                >
-                                    ¡Vamos a Empezar!
-                                </button>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) { setIsSuccessModalOpen(false); window.location.reload(); } }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '430px', textAlign: 'center', padding: '36px 28px' }}>
+                            <div style={{ width: '68px', height: '68px', background: '#e7f8f9', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', color: '#17bcc7' }}>
+                                <CheckIcon size={36} />
                             </div>
+                            <h2 style={{ fontSize: '1.7rem', fontWeight: '800', marginBottom: '10px', color: '#1d2328' }}>¡Plan activado!</h2>
+                            <p style={{ fontSize: '0.96rem', color: '#5a6670', lineHeight: '1.6', marginBottom: '24px' }}>
+                                Tu cuenta ahora tiene activo el <strong style={{ color: '#0f8c95' }}>Plan {successPlanName}</strong> en todos tus dispositivos.
+                            </p>
+                            <button onClick={() => { setIsSuccessModalOpen(false); window.location.reload(); }} className="btn-teal" style={{ width: '100%', padding: '13px', fontSize: '0.96rem', fontWeight: '700' }}>
+                                Continuar al Dashboard
+                            </button>
                         </div>
                     </div>
                 )
             }
 
-            {/* ERROR MODAL PREMIUM (FOR UPLOADS) */}
+            {/* ERROR MODAL (FOR UPLOADS) */}
             {
                 showErrorModal && (
-                    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(2,6,23,0.95)', backdropFilter: 'blur(15px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                        <div className="card-premium" style={{ width: '100%', maxWidth: '450px', backgroundColor: '#1e293b', border: '1px solid rgba(239, 68, 68, 0.2)', textAlign: 'center', padding: '40px', position: 'relative', overflow: 'hidden' }}>
-                            <div style={{ position: 'absolute', top: '-10px', right: '-10px', color: 'rgba(239, 68, 68, 0.05)' }}><X size={180} /></div>
-
-                            <div style={{ position: 'relative', zIndex: 1 }}>
-                                <div style={{ width: '80px', height: '80px', background: 'linear-gradient(135deg, #ef4444, #b91c1c)', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 25px', boxShadow: '0 15px 30px rgba(239, 68, 68, 0.3)' }}>
-                                    <HelpCircle size={40} color="white" />
-                                </div>
-
-                                <h2 style={{ fontSize: '1.8rem', fontWeight: '900', marginBottom: '15px', color: 'white' }}>¡Ups! Algo falló</h2>
-                                <p style={{ fontSize: '1rem', color: '#94a3b8', lineHeight: '1.6', marginBottom: '30px', padding: '0 10px' }}>
-                                    {uploadError}
-                                </p>
-
-                                <div style={{ background: 'rgba(239, 68, 68, 0.05)', padding: '15px', borderRadius: '12px', border: '1px solid rgba(239, 68, 68, 0.1)', marginBottom: '30px', display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left' }}>
-                                    <div style={{ color: '#ef4444' }}><Settings2 size={20} /></div>
-                                    <div style={{ fontSize: '0.85rem', color: '#cbd5e1' }}>Sugerencia: Revisa los nombres de tus archivos y que no excedan el límite de tu plan.</div>
-                                </div>
-
-                                <button
-                                    onClick={() => setShowErrorModal(false)}
-                                    className="btn-teal"
-                                    style={{ width: '100%', padding: '15px', fontSize: '1.1rem', fontWeight: '800', background: '#ef4444', boxShadow: '0 8px 16px rgba(239, 68, 68, 0.2)' }}
-                                    onMouseEnter={e => e.currentTarget.style.background = '#dc2626'}
-                                    onMouseLeave={e => e.currentTarget.style.background = '#ef4444'}
-                                >
-                                    Entendido, voy a corregirlo
-                                </button>
+                    <div onMouseDown={(e) => { if (e.target === e.currentTarget) setShowErrorModal(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', zIndex: 5000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                        <div className="card-premium" style={{ width: '100%', maxWidth: '430px', textAlign: 'center', padding: '34px 28px' }}>
+                            <div style={{ width: '64px', height: '64px', background: '#fef1ee', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px', color: '#ed654c' }}>
+                                <HelpCircle size={32} />
                             </div>
+                            <h2 style={{ fontSize: '1.45rem', fontWeight: '800', marginBottom: '10px', color: '#1d2328' }}>No se pudo subir</h2>
+                            <p style={{ fontSize: '0.94rem', color: '#5a6670', lineHeight: '1.55', marginBottom: '22px' }}>
+                                {uploadError}
+                            </p>
+                            <button onClick={() => setShowErrorModal(false)} style={{ width: '100%', padding: '12px', fontSize: '0.94rem', fontWeight: '700', background: '#ed654c', color: '#ffffff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
+                                Entendido
+                            </button>
                         </div>
                     </div>
                 )
             }
             {/* MODAL DE AYUDA DE SUBIDA */}
             {showUploadHelp && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(10px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-                    <div style={{ background: '#1e293b', width: '100%', maxWidth: '700px', borderRadius: '32px', padding: '40px', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', position: 'relative' }}>
-                        <button onClick={() => setShowUploadHelp(false)} style={{ position: 'absolute', top: '25px', right: '25px', background: 'rgba(255,255,255,0.05)', border: 'none', color: 'white', padding: '8px', borderRadius: '50%', cursor: 'pointer' }}><X size={24} /></button>
+                <div onMouseDown={(e) => { if (e.target === e.currentTarget) setShowUploadHelp(false); }} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(16,23,27,0.68)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+                    <div className="card-premium" style={{ width: '100%', maxWidth: '640px', position: 'relative' }}>
+                        <button onClick={() => setShowUploadHelp(false)} aria-label="Cerrar" style={{ position: 'absolute', top: '18px', right: '18px', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '8px', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1d2328', cursor: 'pointer' }}><X size={18} /></button>
                         
-                        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-                            <div style={{ width: '70px', height: '70px', background: 'rgba(0,210,211,0.1)', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00d2d3', margin: '0 auto 20px' }}><HelpCircle size={40} /></div>
-                            <h2 style={{ fontSize: '2rem', fontWeight: '900', margin: 0 }}>¿Cómo subir un Multitrack?</h2>
-                            <p style={{ color: '#94a3b8', marginTop: '10px' }}>Sigue estas reglas para que tus canciones se procesen correctamente.</p>
+                        <div style={{ marginBottom: '22px' }}>
+                            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: '0 0 6px', color: '#1d2328' }}>¿Cómo subir un Multitrack?</h2>
+                            <p style={{ color: '#5a6670', margin: 0, fontSize: '0.94rem' }}>Sigue estos pasos para subir tus secuencias en segundos.</p>
                         </div>
 
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '25px' }}>
-                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <h4 style={{ margin: '0 0 10px 0', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><CheckIcon size={18} /> Formato del Archivo</h4>
-                                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                                    Debes subir un archivo <strong>.ZIP</strong> que contenga las pistas individuales en formato <strong>WAV o MP3</strong>. Asegúrate de que las pistas no estén dentro de subcarpetas internas.
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                            <div style={{ background: '#f4f6f8', padding: '16px', borderRadius: '10px', border: '1px solid #e3e8ec' }}>
+                                <h4 style={{ margin: '0 0 6px', color: '#0f8c95', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}><CheckIcon size={17} /> Pistas directas o archivo .ZIP</h4>
+                                <p style={{ margin: 0, color: '#5a6670', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                                    Puedes seleccionar varias pistas individuales (<strong>MP3, WAV, M4A</strong>) directamente o subir un archivo <strong>.ZIP</strong> con todas las pistas.
                                 </p>
                             </div>
 
-                            <div style={{ background: 'linear-gradient(135deg, rgba(0,210,211,0.1), rgba(155,89,182,0.1))', padding: '20px', borderRadius: '16px', border: '1px solid rgba(0,210,211,0.2)' }}>
-                                <h4 style={{ margin: '0 0 10px 0', color: '#00d2d3', display: 'flex', alignItems: 'center', gap: '10px' }}><TrendingUp size={18} /> Nomenclatura del ZIP (Automatización)</h4>
-                                <p style={{ margin: '0 0 15px 0', color: '#f8fafc', fontSize: '0.95rem', lineHeight: '1.5' }}>
-                                    Nombra tu archivo ZIP de la siguiente manera para que el sistema detecte automáticamente los datos:
-                                </p>
-                                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '15px', borderRadius: '10px', fontFamily: 'monospace', fontSize: '0.9rem', color: '#00d2d3', border: '1px dashed rgba(0,210,211,0.3)', textAlign: 'center' }}>
-                                    Nombre de Canción - Artista - Tono - Tempo.zip
+                            <div style={{ background: '#f4f6f8', padding: '16px', borderRadius: '10px', border: '1px solid #e3e8ec' }}>
+                                <h4 style={{ margin: '0 0 6px', color: '#1d2328', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}><TrendingUp size={17} color="#17bcc7" /> Auto-completado por nombre</h4>
+                                <p style={{ margin: '0 0 10px', color: '#5a6670', fontSize: '0.9rem' }}>Si subes un .ZIP con este nombre, los datos se llenan automáticamente:</p>
+                                <div style={{ background: '#ffffff', padding: '10px 12px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '0.86rem', color: '#0f8c95', border: '1px solid #d4dce2' }}>
+                                    Hosanna - Marco Barrientos - E - 130BPM.zip
                                 </div>
-                                <p style={{ margin: '15px 0 0 0', color: '#94a3b8', fontSize: '0.85rem' }}>
-                                    Ejemplo: <span style={{ color: 'white' }}>Hosanna - Marco Barrientos - E - 130BPM.zip</span>
-                                </p>
                             </div>
 
-                            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '20px', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                                <h4 style={{ margin: '0 0 10px 0', color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px' }}><Info size={18} /> Consejos para el Mixer</h4>
-                                <ul style={{ margin: 0, paddingLeft: '20px', color: '#94a3b8', fontSize: '0.9rem', lineHeight: '1.6' }}>
-                                    <li>Nombra las pistas de audio con el instrumento (ej: Piano.wav, Bajo.mp3).</li>
-                                    <li>Si la pista se llama <strong>"ClickTrack"</strong>, se renombrará a <strong>"Click"</strong> automáticamente.</li>
-                                    <li>Intenta que todos los instrumentos empiecen en el mismo punto de tiempo.</li>
+                            <div style={{ background: '#f4f6f8', padding: '16px', borderRadius: '10px', border: '1px solid #e3e8ec' }}>
+                                <h4 style={{ margin: '0 0 6px', color: '#1d2328', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.95rem' }}><Info size={17} color="#17bcc7" /> Consejos rápidos</h4>
+                                <ul style={{ margin: 0, paddingLeft: '18px', color: '#5a6670', fontSize: '0.88rem', lineHeight: '1.6' }}>
+                                    <li>Nombra cada pista con el instrumento (ej: Piano.wav, Bajo.mp3, Click.mp3).</li>
+                                    <li>Las pistas llamadas <strong>Click</strong> o <strong>Guía</strong> se rutean automáticamente para monitoreo.</li>
                                 </ul>
                             </div>
                         </div>
 
-                        <button 
-                            onClick={() => setShowUploadHelp(false)} 
-                            className="btn-teal" 
-                            style={{ width: '100%', marginTop: '30px', padding: '15px', fontSize: '1rem', fontWeight: '800' }}
-                        >
-                            ENTENDIDO
+                        <button onClick={() => setShowUploadHelp(false)} className="btn-teal" style={{ width: '100%', marginTop: '20px', padding: '12px', fontSize: '0.95rem', fontWeight: '700' }}>
+                            Entendido
                         </button>
                     </div>
                 </div>

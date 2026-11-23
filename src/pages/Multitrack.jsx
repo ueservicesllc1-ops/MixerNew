@@ -556,7 +556,7 @@ export default function Multitrack() {
     const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
-    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize') || '14'));
+    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize_v2') || '18', 10));
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
 
@@ -889,16 +889,22 @@ export default function Multitrack() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dynamicClick, isPlaying, activeSongId]);
 
-    // Apply darkMode to body
+    // Apply darkMode to body (limpiar al salir del mixer para no afectar Landing/Dashboard)
     useEffect(() => {
         document.body.classList.toggle('dark-mode', darkMode);
         localStorage.setItem('mixer_darkMode', darkMode);
+        return () => {
+            document.body.classList.remove('dark-mode');
+        };
     }, [darkMode]);
 
-    // Apply appFontSize to root
+    // Apply appFontSize to root (restaurar al salir del mixer)
     useEffect(() => {
         document.documentElement.style.fontSize = `${appFontSize}px`;
-        localStorage.setItem('mixer_appFontSize', appFontSize);
+        localStorage.setItem('mixer_appFontSize_v2', appFontSize);
+        return () => {
+            document.documentElement.style.fontSize = '';
+        };
     }, [appFontSize]);
 
     // FIXED PAN: click/guide always left, instruments always right
@@ -2726,15 +2732,15 @@ export default function Multitrack() {
                 </div>
                 {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
                 {(() => {
-                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online'];
+                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online','universal_pro'];
                     const isVip = VIP_IDS.includes(userPlanId);
                     const planLabels = {
-                        'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP ⭐',
-                        'zion_desktop_pro_online': 'PRO ⭐',
-                        'free': 'FREE', 'std1': 'BÁSICO', 'std2': 'ESTÁNDAR',
-                        'std3': 'PLUS', 'zion_desktop_pro_local': 'PRO PC',
-                        'seller': 'VENDEDOR',
-                        'universal_pro': 'UNIVERSAL PRO ⭐',
+                        'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP',
+                        'zion_desktop_pro_online': 'VIP',
+                        'universal_pro': 'VIP',
+                        'free': 'FREE', 'std1': 'ESTÁNDAR', 'std2': 'ESTÁNDAR',
+                        'std3': 'ESTÁNDAR', 'zion_desktop_pro_local': 'ESTÁNDAR',
+                        'seller': 'ESTÁNDAR',
                     };
                     const label = planLabels[userPlanId] || (userPlanId ? userPlanId.toUpperCase() : 'FREE');
                     return (

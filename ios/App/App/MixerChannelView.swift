@@ -105,7 +105,7 @@ struct MixerChannelView: View {
                         .cornerRadius(5)
                 }
                 
-                let isSolo = engine.soloedStem == track.id
+                let isSolo = engine.soloedStems.contains(track.id)
                 Button(action: {
                     engine.setTrackSolo(id: track.id, solo: !isSolo)
                 }) {

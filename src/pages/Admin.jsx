@@ -1383,11 +1383,17 @@ export default function Admin() {
                 updatedAt: serverTimestamp(),
             };
             
-            // Sincronizar estado de escritorio/vendedor según plan
-            if (newPlanId === 'universal_pro') {
+            // Sincronizar estado global (Web, iOS, Android y Windows) según plan
+            if (newPlanId === 'vip2' || newPlanId === 'universal_pro' || newPlanId === 'vip1' || newPlanId === 'vip3') {
                 updates.desktopLicenseTier = 'pro_online';
                 updates.desktopProActive = true;
                 updates.stripeSubscriptionStatus = 'active';
+                if (newPlanId === 'vip2' || newPlanId === 'universal_pro') updates.customStorageGB = 300;
+            } else if (newPlanId === 'std2' || newPlanId === 'std1' || newPlanId === 'std3') {
+                updates.desktopLicenseTier = 'pro_local';
+                updates.desktopProActive = true;
+                updates.stripeSubscriptionStatus = 'active';
+                if (newPlanId === 'std2') updates.customStorageGB = 50;
             } else if (newPlanId === 'zion_desktop_pro_local') {
                 updates.desktopLicenseTier = 'pro_local';
                 updates.desktopProActive = true;
@@ -1400,17 +1406,12 @@ export default function Admin() {
                 updates.isSeller = true;
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
-            } else if (newPlanId === 'promo_free_1m') {
-                // Plan gratis 1 mes — se marca la fecha de activación ahora
-                updates.promoFreeActivatedAt = serverTimestamp();
-                updates.desktopLicenseTier = null;
-                updates.desktopProActive = false;
-                updates.stripeSubscriptionStatus = 'active';
             } else {
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
                 if (newPlanId === 'free') {
                     updates.stripeSubscriptionStatus = null;
+                    updates.customStorageGB = 1;
                 } else {
                     updates.stripeSubscriptionStatus = 'active';
                 }
@@ -2502,17 +2503,17 @@ export default function Admin() {
                                             onChange={(e) => updateUserPlan(u.id, e.target.value)} 
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
-                                            <option value="free">Gratis (Free)</option>
-                                            <option value="std1">Básico (10 GB)</option>
-                                            <option value="std2">Estándar (20 GB)</option>
-                                            <option value="std3">Plus (50 GB)</option>
-                                            <option value="vip1">Básico VIP (10 GB)</option>
-                                            <option value="vip2">Estándar VIP (20 GB)</option>
-                                            <option value="vip3">Plus VIP (50 GB)</option>
-                                            <option value="universal_pro">Universal PRO (100 GB + Multiplataforma)</option>
-                                            <option value="zion_desktop_pro_local">PRO (PC - Local)</option>
-                                            <option value="zion_desktop_pro_online">PRO Online (PC)</option>
-                                            <option value="seller">Vendedor</option>
+                                            <option value="free">Gratis (1 GB)</option>
+                                            <option value="std2">Estándar (50 GB · Global)</option>
+                                            <option value="vip2">VIP (300 GB · Global + Base VIP)</option>
+                                            <option value="universal_pro">VIP (Legacy Universal PRO · 300 GB)</option>
+                                            <option value="std1">Estándar Legacy (std1)</option>
+                                            <option value="std3">Estándar Legacy (std3)</option>
+                                            <option value="vip1">VIP Legacy (vip1)</option>
+                                            <option value="vip3">VIP Legacy (vip3)</option>
+                                            <option value="zion_desktop_pro_local">PRO PC Legacy</option>
+                                            <option value="zion_desktop_pro_online">PRO Online Legacy</option>
+                                            <option value="seller">Vendedor (oculto)</option>
                                         </select>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -2671,16 +2672,17 @@ export default function Admin() {
                                             onChange={(e) => updateUserPlan(u.id, e.target.value)} 
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
-                                            <option value="free">Gratis (Free)</option>
-                                            <option value="std1">Básico (10 GB)</option>
-                                            <option value="std2">Estándar (20 GB)</option>
-                                            <option value="std3">Plus (50 GB)</option>
-                                            <option value="vip1">Básico VIP (10 GB)</option>
-                                            <option value="vip2">Estándar VIP (20 GB)</option>
-                                            <option value="vip3">Plus VIP (50 GB)</option>
-                                            <option value="zion_desktop_pro_local">PRO (PC - Local)</option>
-                                            <option value="zion_desktop_pro_online">PRO Online (PC)</option>
-                                            <option value="seller">Vendedor</option>
+                                            <option value="free">Gratis (1 GB)</option>
+                                            <option value="std2">Estándar (50 GB · Global)</option>
+                                            <option value="vip2">VIP (300 GB · Global + Base VIP)</option>
+                                            <option value="universal_pro">VIP (Legacy Universal PRO · 300 GB)</option>
+                                            <option value="std1">Estándar Legacy (std1)</option>
+                                            <option value="std3">Estándar Legacy (std3)</option>
+                                            <option value="vip1">VIP Legacy (vip1)</option>
+                                            <option value="vip3">VIP Legacy (vip3)</option>
+                                            <option value="zion_desktop_pro_local">PRO PC Legacy</option>
+                                            <option value="zion_desktop_pro_online">PRO Online Legacy</option>
+                                            <option value="seller">Vendedor (oculto)</option>
                                         </select>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
