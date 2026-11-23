@@ -4,7 +4,7 @@ import { stripeJsPromise as stripePromise } from '../stripeClient.js';
 import { getMixerApiBase } from '../mixerApiBase.js';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { SHOP_ENABLED } from '../config/features';
+import { SHOP_ENABLED, PAID_PLANS_ENABLED, FREE_LAUNCH_STORAGE_GB } from '../config/features';
 import '../styles/brand.css';
 import LanguageSwitch from '../components/LanguageSwitch';
 import JSZip from 'jszip';
@@ -67,8 +67,9 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
     );
 };
 
+const FREE_GB = PAID_PLANS_ENABLED ? 1 : FREE_LAUNCH_STORAGE_GB;
 const STORAGE_PLANS = [
-    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: 1, storageMB: 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
+    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: FREE_GB, storageMB: FREE_GB * 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
     { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
     { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
     { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
@@ -325,29 +326,31 @@ function Dashboard() {
                         setUserPlan(plan);
                         setCustomStorageGB(data.customStorageGB || 0);
 
-                        // Si el usuario llegó desde la Landing eligiendo un plan (Estándar o VIP), abrir Stripe directo
+                        // Si el usuario llegó desde la Landing eligiendo un plan (solo cuando PAID_PLANS_ENABLED = true)
                         let intendedHandled = false;
-                        try {
-                            const rawIntended = localStorage.getItem('zion_intended_plan');
-                            if (rawIntended) {
-                                localStorage.removeItem('zion_intended_plan');
-                                const parsed = JSON.parse(rawIntended);
-                                const targetPlan = STORAGE_PLANS.find(p => p.id === parsed?.id);
-                                if (targetPlan && data.planId !== targetPlan.id) {
-                                    intendedHandled = true;
-                                    const wantAnnual = parsed?.cycle === 'annual';
-                                    setIsAnnual(wantAnnual);
-                                    setIsInitialPlanSelection(false);
-                                    setIsPricingModalOpen(true);
-                                    setTimeout(() => { handlePrepareStripePayment(targetPlan, undefined, wantAnnual, user); }, 350);
+                        if (PAID_PLANS_ENABLED) {
+                            try {
+                                const rawIntended = localStorage.getItem('zion_intended_plan');
+                                if (rawIntended) {
+                                    localStorage.removeItem('zion_intended_plan');
+                                    const parsed = JSON.parse(rawIntended);
+                                    const targetPlan = STORAGE_PLANS.find(p => p.id === parsed?.id);
+                                    if (targetPlan && data.planId !== targetPlan.id) {
+                                        intendedHandled = true;
+                                        const wantAnnual = parsed?.cycle === 'annual';
+                                        setIsAnnual(wantAnnual);
+                                        setIsInitialPlanSelection(false);
+                                        setIsPricingModalOpen(true);
+                                        setTimeout(() => { handlePrepareStripePayment(targetPlan, undefined, wantAnnual, user); }, 350);
+                                    }
                                 }
-                            }
-                        } catch { /* ignore */ }
+                            } catch { /* ignore */ }
+                        }
 
                         // Check local storage to ensure we don't spam the user with the modal on every login
                         const hasSeenModal = localStorage.getItem(`mixer_seen_pricing_${user.uid}`);
 
-                        if (!intendedHandled && (!data.planId || data.planId === 'free')) {
+                        if (PAID_PLANS_ENABLED && !intendedHandled && (!data.planId || data.planId === 'free')) {
                             if (!hasSeenModal) {
                                 setTimeout(() => {
                                     setIsInitialPlanSelection(true);
@@ -359,18 +362,21 @@ function Dashboard() {
                         // User exists in auth but not in users collection yet
                         setDoc(doc(db, 'users', user.uid), {
                             planId: 'free',
-                            customStorageGB: 1,
+                            customStorageGB: FREE_GB,
+                            ...(!PAID_PLANS_ENABLED ? { desktopProActive: true, desktopLicenseTier: 'pro_local' } : {}),
                             email: user.email || '',
                             displayName: user.displayName || '',
                             createdAt: serverTimestamp()
                         }, { merge: true })
                             .then(() => {
                                 setUserPlan(STORAGE_PLANS[0]);
-                                setCustomStorageGB(1);
-                                setTimeout(() => {
-                                    setIsInitialPlanSelection(true);
-                                    setIsPricingModalOpen(true);
-                                }, 800);
+                                setCustomStorageGB(FREE_GB);
+                                if (PAID_PLANS_ENABLED) {
+                                    setTimeout(() => {
+                                        setIsInitialPlanSelection(true);
+                                        setIsPricingModalOpen(true);
+                                    }, 800);
+                                }
                             })
                             .catch(err => console.error("Error creating user profile:", err));
                     }
@@ -521,10 +527,13 @@ function Dashboard() {
         const isAdminUser = userProfile?.role === 'admin' || userProfile?.isAdmin === true;
         if (!isAdminUser && (usedMB + newSongMB) > storageLimit) {
             const usedLabel = usedMB >= 1024 ? `${(usedMB / 1024).toFixed(2)} GB` : `${usedMB.toFixed(0)} MB`;
+            const upgradeHint = PAID_PLANS_ENABLED
+                ? 'Actualiza tu plan a Estándar (50 GB) o VIP (300 GB) para seguir subiendo.'
+                : 'Elimina alguna canción antigua para liberar espacio en tu cuenta gratuita de 5 GB.';
             setUploadError(
                 `Límite de almacenamiento alcanzado (${storageLimitGB} GB). ` +
                 `Tienes ${usedLabel} usados y esta canción pesa ${newSongMB.toFixed(1)} MB. ` +
-                `Actualiza tu plan a Estándar (50 GB) o VIP (300 GB) para seguir subiendo.`
+                upgradeHint
             );
             setShowErrorModal(true);
             return;
@@ -1097,7 +1106,7 @@ function Dashboard() {
                 </nav>
 
                 <div style={{ borderTop: '1px solid #e3e8ec', paddingTop: '18px' }}>
-                    <div onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', padding: '8px', cursor: 'pointer', borderRadius: '8px', transition: 'all 0.2s' }} className="user-profile-btn">
+                    <div onClick={() => { if (PAID_PLANS_ENABLED) { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); } }} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', padding: '8px', cursor: PAID_PLANS_ENABLED ? 'pointer' : 'default', borderRadius: '8px', transition: 'all 0.2s' }} className="user-profile-btn">
                         <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: userPlan?.isVIP ? '#ed654c' : '#162026', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '800', flexShrink: 0 }}>{displayName[0]?.toUpperCase()}</div>
                         <div style={{ overflow: 'hidden' }}>
                             <div style={{ fontSize: '0.9rem', fontWeight: '700', color: '#1d2328', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>{displayName}</div>
@@ -1128,9 +1137,11 @@ function Dashboard() {
                             })()}
                         </div>
                     </div>
+                    {PAID_PLANS_ENABLED && (
                     <button onClick={() => { setIsInitialPlanSelection(false); setIsPricingModalOpen(true); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '9px', width: '100%', background: '#f4f6f8', border: '1px solid #d4dce2', borderRadius: '7px', color: '#1d2328', cursor: 'pointer', fontSize: '0.84rem', fontWeight: '700', marginBottom: '8px' }}>
                         {t('dashboard.upgradePlan')}
                     </button>
+                    )}
                     <button onClick={() => auth.signOut()} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px', width: '100%', background: 'transparent', border: 'none', color: '#5a6670', cursor: 'pointer', fontSize: '0.84rem', fontWeight: '600' }}>
                         <LogOut size={16} /> {t('dashboard.signOut')}
                     </button>
@@ -1630,11 +1641,17 @@ function Dashboard() {
                                 ) : (
                                     <div className="card-premium" style={{ textAlign: 'center', padding: '72px 32px' }}>
                                         <div style={{ width: '72px', height: '72px', background: '#fef1ee', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ed654c', margin: '0 auto 20px' }}><KeyRound size={34} /></div>
-                                        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '12px', color: '#1d2328' }}>Acceso Exclusivo VIP</h2>
+                                        <h2 style={{ fontSize: '1.8rem', fontWeight: '800', marginBottom: '12px', color: '#1d2328' }}>
+                                            {PAID_PLANS_ENABLED ? 'Acceso Exclusivo VIP' : 'Catálogo VIP — Próximamente'}
+                                        </h2>
                                         <p style={{ color: '#5a6670', fontSize: '1rem', maxWidth: '520px', margin: '0 auto 28px', lineHeight: '1.6' }}>
-                                            El plan VIP incluye 300 GB en la nube y acceso a todos los multitracks de nuestra base de datos VIP.
+                                            {PAID_PLANS_ENABLED
+                                                ? 'El plan VIP incluye 300 GB en la nube y acceso a todos los multitracks de nuestra base de datos VIP.'
+                                                : 'Por ahora disfrutas de tu cuenta gratuita con 5 GB en la nube para subir y mezclar tus propios multitracks en todos tus dispositivos. Muy pronto abriremos el acceso al catálogo VIP.'}
                                         </p>
-                                        <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '13px 30px', fontSize: '0.96rem', fontWeight: '800' }}>Ver Plan VIP</button>
+                                        {PAID_PLANS_ENABLED && (
+                                            <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '13px 30px', fontSize: '0.96rem', fontWeight: '800' }}>Ver Plan VIP</button>
+                                        )}
                                     </div>
                                 )}
                             </section>

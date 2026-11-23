@@ -191,6 +191,7 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     globalCatalogLoading,
     downloadProgress, onDownloadAdd,
     globalCatalogDocCount,
+    canAccessGlobal = false,
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -229,12 +230,14 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     >
                         🎵 Mi Librería ({librarySongs.length})
                     </button>
+                    {canAccessGlobal && (
                     <button
                         onClick={() => onTabChange('global')}
                         style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
                     >
                         🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
                     </button>
+                    )}
                 </div>
 
                 {/* Buscador */}
@@ -345,6 +348,7 @@ export default function Multitrack() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [userPlanId, setUserPlanId] = useState(null);
+    const hasVipCatalogAccess = ['vip1', 'vip2', 'vip3', 'zion_desktop_pro_online', 'universal_pro'].includes(userPlanId || '');
     const [proxyUrl, setProxyUrl] = useState(() => {
         const saved = localStorage.getItem('mixer_proxyUrl');
         if (saved) return saved;
@@ -1023,49 +1027,8 @@ export default function Multitrack() {
                     setLibrarySongs(songs);
                 });
 
-                // Global VIP: solo docs con isGlobal (marketplace / catálogo publicado). La UI filtra las que tienen tracks[].
-                let unsubGlobal = () => {};
-                if (!isAppNative) {
-                    // Query 1: Multitracks — docs with a tracks[] array (user-uploaded ZIPs)
-                    const qMT = query(
-                        collection(db, 'songs'),
-                        where('tracks', '!=', null),
-                        limit(800)
-                    );
-                    
-                    // Query 2: Marketplace / Global explicitly marked
-                    const qG = query(
-                        collection(db, 'songs'),
-                        or(
-                            where('isGlobal', '==', true),
-                            where('forSale', '==', true)
-                        ),
-                        limit(400)
-                    );
-
-                    let resultsMT = [];
-                    let resultsG = [];
-                    
-                    const updateMerged = () => {
-                        const all = [...resultsMT];
-                        resultsG.forEach(g => {
-                            if (!all.find(x => x.id === g.id)) all.push(g);
-                        });
-                        setGlobalSongs(sortGlobalCatalogNewestFirst(all));
-                    };
-
-                    const unsubMT = onSnapshot(qMT, (snap) => {
-                        resultsMT = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                        updateMerged();
-                    }, () => setGlobalCatalogLoading(false));
-
-                    const unsubG = onSnapshot(qG, (snap) => {
-                        resultsG = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                        updateMerged();
-                    }, () => setGlobalCatalogLoading(false));
-
-                    unsubGlobal = () => { unsubMT(); unsubG(); };
-                }
+                // Global VIP: ahora se carga SOLO si el usuario tiene plan VIP activo (en el useEffect dedicado abajo).
+                const unsubGlobal = () => {};
 
                 // ΓöÇΓöÇ Setlists: SOLO los del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 // SECURITY FIX: filtrar por userId para que nadie vea setlists ajenos
@@ -1131,10 +1094,16 @@ export default function Multitrack() {
         };
     }, []);
 
-    // APK: catálogo Global solo al elegir la pestaña (getDocs acotado). Al volver a "Mi librería" se vacía para liberar RAM.
+    // Catálogo Global (VIP): solo se consulta si el usuario tiene plan VIP activo.
+    // En planes Gratis/Estándar se limpia y fuerza la pestaña 'mine' (cero filtración VIP y cero lecturas extra).
     useEffect(() => {
-        if (!isAppNative) return;
-        if (libraryTab !== 'global') {
+        if (!hasVipCatalogAccess) {
+            setGlobalSongs([]);
+            setGlobalCatalogLoading(false);
+            if (libraryTab === 'global') setLibraryTab('mine');
+            return;
+        }
+        if (isAppNative && libraryTab !== 'global') {
             setGlobalSongs([]);
             setGlobalCatalogLoading(false);
             return;
@@ -1143,11 +1112,10 @@ export default function Multitrack() {
         setGlobalCatalogLoading(true);
         (async () => {
             try {
-                // Query 1: Multitracks — docs with tracks[] array (user-uploaded ZIPs)
                 const qMT = query(
                     collection(db, 'songs'),
                     where('tracks', '!=', null),
-                    limit(600)
+                    limit(isAppNative ? 600 : 800)
                 );
                 const qG = query(
                     collection(db, 'songs'),
@@ -1157,14 +1125,12 @@ export default function Multitrack() {
                     ),
                     limit(400)
                 );
-                
                 const [snapMT, snapG] = await Promise.all([getDocs(qMT), getDocs(qG)]);
                 const songs = [];
                 snapMT.forEach(d => songs.push({ id: d.id, ...d.data() }));
                 snapG.forEach(d => {
                     if (!songs.find(x => x.id === d.id)) songs.push({ id: d.id, ...d.data() });
                 });
-
                 if (!cancelled) setGlobalSongs(sortGlobalCatalogNewestFirst(songs));
             } catch (e) {
                 console.error('[Global catalog]', e);
@@ -1174,7 +1140,7 @@ export default function Multitrack() {
             }
         })();
         return () => { cancelled = true; };
-    }, [libraryTab, isAppNative]);
+    }, [libraryTab, isAppNative, hasVipCatalogAccess]);
 
     const handleCreateSetlist = async () => {
         if (!newSetlistName.trim()) return;
@@ -3969,6 +3935,7 @@ export default function Multitrack() {
                 downloadProgress={downloadProgress}
                 onDownloadAdd={handleDownloadAndAdd}
                 globalCatalogDocCount={globalSongs.length}
+                canAccessGlobal={hasVipCatalogAccess}
             />
             {/* PARTITURA FULLSCREEN OVERLAY */}
             {pvFullscreen && selectedPartitura && (

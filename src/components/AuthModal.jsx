@@ -7,6 +7,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { getMixerApiBase } from '../mixerApiBase';
+import { PAID_PLANS_ENABLED, FREE_LAUNCH_STORAGE_GB } from '../config/features';
 import './../styles/brand.css';
 
 const TXT = {
@@ -82,7 +83,10 @@ export default function AuthModal({ open, mode = 'register', lang = 'es', onClos
         const [first, ...rest] = (displayName || user.displayName || '').trim().split(' ');
         await setDoc(ref, {
             firstName: first || '', lastName: rest.join(' '), email: user.email || '',
-            planId: 'free', customStorageGB: 1, createdAt: serverTimestamp(),
+            planId: 'free',
+            customStorageGB: PAID_PLANS_ENABLED ? 1 : FREE_LAUNCH_STORAGE_GB,
+            ...(!PAID_PLANS_ENABLED ? { desktopProActive: true, desktopLicenseTier: 'pro_local' } : {}),
+            createdAt: serverTimestamp(),
         }, { merge: true });
     };
 

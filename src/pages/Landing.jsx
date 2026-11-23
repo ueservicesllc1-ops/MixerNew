@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { auth } from '../firebase';
 import AuthModal from '../components/AuthModal';
+import { PAID_PLANS_ENABLED, FREE_LAUNCH_STORAGE_GB } from '../config/features';
 import '../styles/brand.css';
 
 const PLAY_URL = 'https://play.google.com/store/apps/details?id=com.zionstagelive.app';
@@ -267,7 +268,8 @@ export default function Landing() {
 
     return (
         <div className="z-page">
-            {/* Franja promocional ZION99 */}
+            {/* Franja promocional ZION99 (solo cuando los planes de pago están activos) */}
+            {PAID_PLANS_ENABLED && (
             <div className="z-promo-bar">
                 <div className="z-promo-bar-inner">
                     <span>
@@ -288,6 +290,7 @@ export default function Landing() {
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Barra superior blanca y limpia */}
             <header className="z-nav">
@@ -424,9 +427,48 @@ export default function Landing() {
                 </div>
             </section>
 
-            {/* Precios globales: Estándar vs VIP en banda oscura */}
+            {/* Precios: Modo Gratis de lanzamiento (5 GB) o Planes de pago Estándar/VIP */}
             <section id="precios" className="z-section z-section-dark">
                 <div className="z-wrap">
+                    {!PAID_PLANS_ENABLED ? (
+                        <>
+                            <div className="z-section-head-center">
+                                <div className="z-eyebrow">{lang === 'en' ? 'Free Launch Access' : 'Acceso Gratuito de Lanzamiento'}</div>
+                                <h2 className="z-h2">{lang === 'en' ? 'Start 100% free with 5 GB in the cloud' : 'Empieza 100% gratis con 5 GB en la nube'}</h2>
+                                <p className="z-lead">
+                                    {lang === 'en'
+                                        ? 'Create your free account, upload your own multitracks, and use every mixer feature across Web, iOS, Android, and Windows — no credit card required.'
+                                        : 'Crea tu cuenta gratis, sube tus propios multitracks y usa todas las funciones del mixer en Web, iOS, Android y Windows — sin tarjeta de crédito.'}
+                                </p>
+                            </div>
+                            <div style={{ maxWidth: 480, margin: '0 auto' }}>
+                                <div className="z-plan vip">
+                                    <span className="z-plan-tag">{lang === 'en' ? 'Free Account · No card needed' : 'Cuenta Gratis · Sin tarjeta'}</span>
+                                    <h3 className="z-h3" style={{ fontSize: '1.45rem' }}>{lang === 'en' ? 'Zion Stage Free' : 'Plan Gratis'}</h3>
+                                    <p className="z-muted" style={{ margin: '8px 0 0', fontSize: '0.94rem' }}>
+                                        {lang === 'en'
+                                            ? 'Everything you need to upload and run your band’s multitracks live.'
+                                            : 'Todas las herramientas para subir y mezclar los multitracks de tu banda en vivo.'}
+                                    </p>
+                                    <div className="z-plan-price">
+                                        <strong>$0</strong>
+                                        <span className="z-muted" style={{ fontWeight: 600 }}>{lang === 'en' ? '/forever' : '/gratis'}</span>
+                                    </div>
+                                    <ul className="z-list">
+                                        <li><Check size={17} /><span>{lang === 'en' ? `${FREE_LAUNCH_STORAGE_GB} GB free cloud storage` : `${FREE_LAUNCH_STORAGE_GB} GB de almacenamiento gratis en la nube`}</span></li>
+                                        <li><Check size={17} /><span>{lang === 'en' ? 'Unlimited songs & unlimited setlists' : 'Canciones y setlists ilimitados'}</span></li>
+                                        <li><Check size={17} /><span>{lang === 'en' ? 'Upload & mix your own multitracks (.MP3, .WAV, .ZIP)' : 'Sube y mezcla tus propios multitracks (.MP3, .WAV, .ZIP)'}</span></li>
+                                        <li><Check size={17} /><span>{lang === 'en' ? 'All features: Pitch, BPM, Ambient Pads, Lyrics & Chords' : 'Todas las funciones: Tono, BPM, Ambient Pads, Letras y Acordes'}</span></li>
+                                        <li><Check size={17} /><span>{lang === 'en' ? 'Global access: Web, iOS, Android & Windows' : 'Acceso en Web, iOS, Android y Windows'}</span></li>
+                                    </ul>
+                                    <button className="z-btn z-btn-primary z-btn-block" onClick={() => openRegister()}>
+                                        {c.hero.cta} <ArrowRight size={17} />
+                                    </button>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                    <>
                     <div className="z-section-head-center">
                         <div className="z-eyebrow">{c.plans.eyebrow}</div>
                         <h2 className="z-h2">{c.plans.title}</h2>
@@ -496,6 +538,8 @@ export default function Landing() {
                             );
                         })}
                     </div>
+                    </>
+                    )}
                 </div>
             </section>
 
