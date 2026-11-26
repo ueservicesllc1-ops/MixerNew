@@ -282,9 +282,12 @@ class AudioEngine {
         }
 
         if (this.isWASMReady && this.wasm) {
+            const myGen = (this._batchGen = (this._batchGen || 0) + 1);
             this._wasmTrackCount = 0;
             this._trackMeta.clear();
+            let idx = 0;
             for (const t of tracksArray) {
+                if (this._batchGen !== myGen) return;
                 if (t.isVisualOnly) {
                     if (t.audioBuffer) {
                         this._trackMeta.set(t.id, {
@@ -298,6 +301,7 @@ class AudioEngine {
                     continue;
                 }
                 const buffer = await this._loadTrackToWASM(t.id, t.audioBuffer, t.sourceData);
+                if (this._batchGen !== myGen) return;
                 if (buffer) {
                     const chanL = buffer.getChannelData(0);
                     const chanR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chanL;
@@ -317,6 +321,11 @@ class AudioEngine {
                 const isGuideOrClick = isMixerClickStem(stemName) || isMixerGuideStem(stemName);
                 if (buffer && isGuideOrClick) {
                     this.wasm.setTrackIsGuide(t.id, true);
+                }
+                idx++;
+                if (idx % 2 === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                    if (this._batchGen !== myGen) return;
                 }
             }
             return;
@@ -465,6 +474,7 @@ class AudioEngine {
     }
 
     async clear() {
+        this._batchGen = (this._batchGen || 0) + 1;
         this.resetTiming();
         if (IS_DESKTOP) {
             this._trackMeta.clear();

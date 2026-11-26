@@ -195,6 +195,8 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     downloadProgress, onDownloadAdd,
     globalCatalogDocCount,
     canAccessGlobal = false,
+    preloadStatus = {},
+    activeSetlistSongIds = [],
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -300,9 +302,16 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {baseSongs.map(song => {
-                                const isDownloading = downloadProgress.songId === song.id;
+                                const isNativeDownloading = isAppNative && downloadProgress.songId === song.id;
+                                const isWebPreloading = !isAppNative && preloadStatus[song.id] === 'loading';
+                                const isWebReady = !isAppNative && preloadStatus[song.id] === 'ready';
+                                const isInSetlist = activeSetlistSongIds.includes(song.id);
+                                const isDownloading = isNativeDownloading || isWebPreloading;
                                 const isOtherUser = song.userId !== currentUser?.uid;
                                 const listSongKey = getSongMusicalKey(song);
+                                const isButtonDisabled = isAppNative
+                                    ? !!downloadProgress.songId
+                                    : (isInSetlist || isWebPreloading);
                                 return (
                                     <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
                                         <div>
@@ -313,19 +322,38 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                                 {listSongKey && `${listSongKey} • `}
                                                 {song.tempo && `${song.tempo} BPM`}
                                             </div>
-                                            {isDownloading && (
+                                            {isNativeDownloading && (
                                                 <div style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
                                                     {downloadProgress.text}
                                                 </div>
                                             )}
+                                            {isWebPreloading && (
+                                                <div style={{ color: '#00a8b5', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                                    Descargando en segundo plano...
+                                                </div>
+                                            )}
                                         </div>
                                         <button
-                                            style={{ background: isDownloading ? '#f39c12' : (downloadProgress.songId ? '#ccc' : '#2ecc71'), color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px', cursor: (isDownloading || downloadProgress.songId) ? 'not-allowed' : 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
-                                            title="Añadir a Setlist y Guardar Local"
-                                            onClick={() => !downloadProgress.songId && onDownloadAdd(song)}
-                                            disabled={!!downloadProgress.songId}
+                                            style={{
+                                                background: isDownloading ? '#f39c12' : (isInSetlist ? (isWebReady ? '#10b981' : '#3b82f6') : (isAppNative && downloadProgress.songId ? '#ccc' : '#2ecc71')),
+                                                color: 'white',
+                                                border: 'none',
+                                                padding: '8px 10px',
+                                                borderRadius: '4px',
+                                                cursor: isButtonDisabled ? 'default' : 'pointer',
+                                                fontSize: '0.8rem',
+                                                fontWeight: 'bold',
+                                                whiteSpace: 'nowrap'
+                                            }}
+                                            title={isInSetlist ? 'Ya está en el setlist' : 'Añadir a Setlist y descargar en segundo plano'}
+                                            onClick={() => !isButtonDisabled && onDownloadAdd(song)}
+                                            disabled={isButtonDisabled}
                                         >
-                                            {isDownloading ? '⏳ Bajando...' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
+                                            {isDownloading
+                                                ? '⏳ Bajando...'
+                                                : isInSetlist
+                                                    ? (isWebReady ? '✓ Ready' : '✓ En setlist')
+                                                    : (isAppNative && downloadProgress.songId ? 'Espere...' : '➕ Añadir')}
                                         </button>
                                     </div>
                                 );
@@ -1253,79 +1281,107 @@ export default function Multitrack() {
     }, [activeSetlist?.songs, activeSongId]);
 
 
-    // Precarga solo en web (IndexedDB + AudioBuffers). En APK desactivado: llenaba memoria y C++ colas → cierres en 4.º tema.
+    const inFlightPreloadsRef = useRef(new Set());
+
+    // Precarga silenciosa y simultánea en web (IndexedDB + AudioBuffers + Letras/Acordes).
+    // Nunca bloquea la UI: hasta 2 canciones descargando a la vez y 3 stems en paralelo por canción.
+    const preloadSingleSongWeb = async (song) => {
+        if (!song?.id) return;
+        if (preloadCache.current.has(song.id)) {
+            touchLRU(song.id);
+            setPreloadStatus(prev => (prev[song.id] === 'ready' ? prev : { ...prev, [song.id]: 'ready' }));
+            return;
+        }
+        if (inFlightPreloadsRef.current.has(song.id)) return;
+        inFlightPreloadsRef.current.add(song.id);
+
+        evictOldestIfNeeded();
+        setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
+
+        try {
+            const trackBuffers = new Map();
+            const tracksData = song.tracks || [];
+
+            for (let i = 0; i < tracksData.length; i += 3) {
+                const batch = tracksData.slice(i, i + 3);
+                await Promise.all(batch.map(async (tr) => {
+                    if (!tr.url || tr.url === 'undefined') return;
+
+                    const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
+                    let rawBuf = useFlacWeb
+                        ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
+                        : await LocalFileManager.getTrackLocal(song.id, tr.name);
+
+                    if (!rawBuf) {
+                        const downloadUrl = useFlacWeb ? tr.normalizedUrl
+                            : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
+                        const res = await fetch(downloadUrl);
+                        if (!res.ok) return;
+                        rawBuf = await res.blob();
+                        if (rawBuf) {
+                            if (useFlacWeb) {
+                                await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
+                                await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                            } else {
+                                await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
+                            }
+                        }
+                    }
+
+                    try {
+                        const arrayBuf = await rawBuf.arrayBuffer();
+                        if (arrayBuf.byteLength < 500) {
+                            throw new Error("Contenido no válido (demasiado pequeño)");
+                        }
+                        const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
+                        trackBuffers.set(tr.name, { audioBuf });
+                    } catch (e) {
+                        console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
+                        if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
+                        else await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                    }
+                }));
+            }
+
+            // Guardar letras y acordes offline silenciosamente en paralelo
+            try {
+                const [lyricsSnap, chordsSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'lyrics'), where('songId', '==', song.id))),
+                    getDocs(query(collection(db, 'chords'), where('songId', '==', song.id))),
+                ]);
+                const lyricsText = !lyricsSnap.empty ? (lyricsSnap.docs[0].data().text || '') : (song.lyrics || '');
+                const chordsText = !chordsSnap.empty ? (chordsSnap.docs[0].data().text || '') : (song.chords || '');
+                if (lyricsText) await LocalFileManager.saveTextLocal(song.id, 'lyrics', lyricsText);
+                if (chordsText) await LocalFileManager.saveTextLocal(song.id, 'chords', chordsText);
+            } catch { /* non-blocking offline text cache */ }
+
+            preloadCache.current.set(song.id, trackBuffers);
+            touchLRU(song.id);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
+            console.log(`[PRELOAD] "${song.name}" READY in Cache. Size: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
+        } catch (e) {
+            console.warn(`[PRELOAD] Failed "${song.name}":`, e);
+            setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
+        } finally {
+            inFlightPreloadsRef.current.delete(song.id);
+        }
+    };
+
     const preloadSetlistSongs = async (songs) => {
         if (typeof window !== 'undefined' && isAppNative) return;
+        const queue = (songs || []).filter(s => s?.id && !preloadCache.current.has(s.id) && !inFlightPreloadsRef.current.has(s.id));
+        if (queue.length === 0) return;
 
-        for (const song of songs) {
-            if (preloadCache.current.has(song.id)) {
-                touchLRU(song.id); // Already cached ΓÇö refresh recency
-                continue;
+        // Pool de hasta 2 canciones descargando simultáneamente en segundo plano
+        const CONCURRENT_SONGS = 2;
+        let cursor = 0;
+        const worker = async () => {
+            while (cursor < queue.length) {
+                const nextSong = queue[cursor++];
+                await preloadSingleSongWeb(nextSong);
             }
-
-            // Evict oldest song if we're at the RAM limit
-            evictOldestIfNeeded();
-
-            setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
-            try {
-                const trackBuffers = new Map();
-                const tracksData = song.tracks || [];
-
-                // Carga secuencial o en batches pequeños para evitar picos de RAM
-                // En lugar de Promise.all, usamos un loop simple o batches
-                for (let i = 0; i < tracksData.length; i += 3) {
-                    const batch = tracksData.slice(i, i + 3);
-                    await Promise.all(batch.map(async (tr) => {
-                        if (!tr.url || tr.url === 'undefined') return;
-
-                        // Web: prefer FLAC v2 when server has normalized the track
-                        const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
-                        let rawBuf = useFlacWeb
-                            ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
-                            : await LocalFileManager.getTrackLocal(song.id, tr.name);
-
-                        if (!rawBuf) {
-                            const downloadUrl = useFlacWeb ? tr.normalizedUrl
-                                : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
-                            const res = await fetch(downloadUrl);
-                            if (!res.ok) return;
-                            rawBuf = await res.blob();
-                            if (rawBuf) {
-                                if (useFlacWeb) {
-                                    await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
-                                    // Remove stale v1 entry if present
-                                    await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                                } else {
-                                    await LocalFileManager.saveTrackLocal(song.id, tr.name, rawBuf);
-                                }
-                            }
-                        }
-
-                        try {
-                            const arrayBuf = await rawBuf.arrayBuffer();
-                            if (arrayBuf.byteLength < 500) {
-                                throw new Error("Contenido no válido (demasiado pequeño)");
-                            }
-                            const audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
-                            trackBuffers.set(tr.name, { audioBuf });
-                        } catch (e) {
-                            console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
-                            if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
-                            else await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                            // No guardar entradas fallidas en caché: así la próxima carga reintenta la descarga
-                            console.warn(`[PRE-CARGA] ${tr.name} no se pudo decodificar; se reintentará al cargar la canción.`);
-                        }
-                    }));
-                }
-                preloadCache.current.set(song.id, trackBuffers);
-                touchLRU(song.id);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'ready' }));
-                console.log(`[PRELOAD] "${song.name}" in Cache. Size: ${preloadCache.current.size}/${MAX_DECODED_SONGS}`);
-            } catch (e) {
-                console.warn(`[PRELOAD] Failed "${song.name}":`, e);
-                setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
-            }
-        }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENT_SONGS, queue.length) }, () => worker()));
     };
 
 
@@ -1382,7 +1438,29 @@ export default function Multitrack() {
 
     const handleDownloadAndAdd = async (song) => {
         if (!activeSetlist) {
-            return alert("Por favor, selecciona un setlist primero antes de a├▒adir canciones.");
+            return alert("Por favor, selecciona un setlist primero antes de añadir canciones.");
+        }
+
+        // En Web: añadir al setlist de inmediato (sin bloquear la UI ni cerrar el modal)
+        // y descargar + decodificar silenciosamente en segundo plano (simultáneo) hasta quedar READY.
+        if (!isAppNative) {
+            try {
+                await updateDoc(doc(db, 'setlists', activeSetlist.id), {
+                    songs: arrayUnion(song)
+                });
+                // Descarga silenciosa en segundo plano sin await bloqueante
+                preloadSingleSongWeb(song);
+            } catch (error) {
+                if (isFirestoreDocMissing(error)) {
+                    setActiveSetlist(null);
+                    clearMixerLastSetlistId();
+                    alert('Este setlist ya no existe en la nube. Creá o elegí otro setlist e intentá de nuevo.');
+                    return;
+                }
+                console.error(error);
+                alert("No se pudo añadir la canción al setlist.");
+            }
+            return;
         }
 
         setDownloadProgress({ songId: song.id, text: 'Iniciando descarga B2...' });
@@ -1532,18 +1610,16 @@ export default function Multitrack() {
         }
     };
 
+    const loadGenRef = useRef(0);
+    const loadAbortRef = useRef(null);
+
     const handleLoadSong = async (song) => {
-        // Evitar carga duplicada si ya está en progreso (ej. de handleDownloadAndAdd)
-        if (downloadProgress.songId === song.id) {
+        // Evitar carga duplicada si ya está en progreso (ej. de handleDownloadAndAdd en nativo)
+        if (isAppNative && downloadProgress.songId === song.id) {
             console.log("[SELECT] Canción ya se está descargando/cargando.");
             setActiveSongId(song.id);
             return;
         }
-
-        // Detener el audio actual antes de cambiar (con un breve anti-pop interno en AudioEngine)
-        await audioEngine.stop();
-        setIsPlaying(false);
-        progressRef.current = 0;
 
         const isAppNativeLoad = typeof window !== 'undefined' && !!isAppNative;
 
@@ -1551,6 +1627,22 @@ export default function Multitrack() {
             console.log('[PREPARE] ignored, already running');
             return;
         }
+
+        // Token de cancelación para prueba de estrés (cambiar rápido de canción A -> B -> C):
+        // Aborta descargas y descarta resultados obsoletos de la canción anterior sin colgar el WASM/UI.
+        const myLoadGen = ++loadGenRef.current;
+        const isStale = () => loadGenRef.current !== myLoadGen;
+        if (!isAppNativeLoad) {
+            try { loadAbortRef.current?.abort(); } catch { /* ignore */ }
+            loadAbortRef.current = new AbortController();
+        }
+        const activeSignal = loadAbortRef.current?.signal;
+
+        // Detener el audio actual antes de cambiar (con un breve anti-pop interno en AudioEngine)
+        await audioEngine.stop();
+        if (isStale()) return;
+        setIsPlaying(false);
+        progressRef.current = 0;
 
 
         // Nativo: primero cortar polling y audio (antes de setState/render) para no acumular callbacks al bridge.
@@ -1579,6 +1671,7 @@ export default function Multitrack() {
             if (!isAppNativeLoad) {
                 await audioEngine.stop();
                 await audioEngine.clear();
+                if (isStale()) return;
             }
 
             const skeleton = (song.tracks || [])
@@ -1664,6 +1757,7 @@ export default function Multitrack() {
                     await prepareYield();
                 }
                 await audioEngine.addTracksBatch(batch);
+                if (isStale()) return;
                 if (isAppNativeLoad) {
                     await prepareYield();
                     console.log('[LOAD] ready');
@@ -1783,22 +1877,25 @@ export default function Multitrack() {
                 } else {
                     const batchSize = 3;
                     for (let i = 0; i < tracksData.length; i += batchSize) {
+                        if (isStale()) return;
                         const batchChunk = tracksData.slice(i, i + batchSize);
                         await Promise.all(batchChunk.map(async (tr) => {
-                            if (!tr.url || tr.url === 'undefined') return;
+                            if (isStale() || !tr.url || tr.url === 'undefined') return;
 
                             const useFlacWeb = tr.normalizedReady === true && tr.normalizedUrl;
                             let rawBuf = useFlacWeb
                                 ? await LocalFileManager.getTrackLocalV2(song.id, tr.name)
                                 : await LocalFileManager.getTrackLocal(song.id, tr.name);
+                            if (isStale()) return;
 
                             if (!rawBuf) {
                                 try {
                                     const downloadUrl = useFlacWeb ? tr.normalizedUrl
                                         : `${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`;
-                                    const res = await fetch(downloadUrl);
+                                    const res = await fetch(downloadUrl, activeSignal ? { signal: activeSignal } : undefined);
                                     if (res.ok) rawBuf = await res.blob();
-                                } catch { /* ignore */ }
+                                } catch { /* ignore abort/network */ }
+                                if (isStale()) return;
                                 if (rawBuf) {
                                     if (useFlacWeb) {
                                         await LocalFileManager.saveTrackLocalV2(song.id, tr.name, rawBuf);
@@ -1808,22 +1905,28 @@ export default function Multitrack() {
                                     }
                                 }
                             }
+                            if (isStale()) return;
 
                             let audioBuf = null;
                             if (rawBuf) {
                                 try {
                                     const arrayBuf = await rawBuf.arrayBuffer();
+                                    if (isStale()) return;
                                     audioBuf = await audioEngine.ctx.decodeAudioData(arrayBuf);
                                 } catch {
-                                    if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
-                                    else await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                    if (!isStale()) {
+                                        if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
+                                        else await LocalFileManager.removeTrackLocal(song.id, tr.name);
+                                    }
                                 }
                             }
+                            if (isStale()) return;
                             if (!audioBuf && !rawBuf) failedStemNames.push(tr.name);
                             trackBuffers.set(tr.name, { rawBuf, audioBuf });
                         }));
                     }
                 }
+                if (isStale()) return;
 
                 preloadCache.current.set(song.id, trackBuffers);
                 if (!isAppNativeLoad) touchLRU(song.id);
@@ -1856,6 +1959,7 @@ export default function Multitrack() {
                     await prepareYield();
                 }
                 await audioEngine.addTracksBatch(batchMove);
+                if (isStale()) return;
                 if (isAppNativeLoad) {
                     await prepareYield();
                     console.log('[LOAD] ready');
@@ -1880,6 +1984,7 @@ export default function Multitrack() {
                 setAudioReady(prev => prev + 1);
 
             } catch (err) {
+                if (isStale()) return;
                 console.error(`[ERROR] No se pudo cargar "${song.name}":`, err);
                 setPreloadStatus(prev => ({ ...prev, [song.id]: 'error' }));
             }
@@ -2490,8 +2595,12 @@ export default function Multitrack() {
         lockOrientation();
     }, [currentUser]);
 
-    // Trigger preloader whenever preloading starts (setlist is loaded with songs)
+    // Trigger preloader whenever preloading starts (solo nativo; en Web las descargas son silenciosas y NO bloquean la pantalla)
     useEffect(() => {
+        if (!isAppNative) {
+            setShowPreloader(false);
+            return;
+        }
         const hasSongs = (activeSetlist?.songs || []).length > 0;
         const hasAnythingLoading = Object.values(preloadStatus).some(s => s === 'loading');
         if (hasSongs && hasAnythingLoading) {
@@ -4087,6 +4196,8 @@ export default function Multitrack() {
                 onDownloadAdd={handleDownloadAndAdd}
                 globalCatalogDocCount={globalSongs.length}
                 canAccessGlobal={hasVipCatalogAccess}
+                preloadStatus={preloadStatus}
+                activeSetlistSongIds={(activeSetlist?.songs || []).map(s => s.id)}
             />
             {/* PARTITURA FULLSCREEN OVERLAY */}
             {pvFullscreen && selectedPartitura && (
