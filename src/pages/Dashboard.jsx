@@ -69,7 +69,7 @@ const StripeCheckoutForm = ({ planName, onPaymentSuccess }) => {
 
 const FREE_GB = PAID_PLANS_ENABLED ? 1 : FREE_LAUNCH_STORAGE_GB;
 const STORAGE_PLANS = [
-    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: FREE_GB, storageMB: FREE_GB * 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: false },
+    { id: 'free', name: 'Gratis', type: 'Gratis', storageGB: FREE_GB, storageMB: FREE_GB * 1000, price: 0, annualPrice: 0, originalAnnualPrice: 0, isVIP: !PAID_PLANS_ENABLED },
     { id: 'std1', name: 'Básico', type: 'Estándar', storageGB: 10, storageMB: 10000, price: 4.99, annualPrice: 41.92, originalAnnualPrice: 59.88, isVIP: false },
     { id: 'std2', name: 'Estándar', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 6.99, annualPrice: 58.72, originalAnnualPrice: 83.88, isVIP: false },
     { id: 'std3', name: 'Plus', type: 'Estándar', storageGB: 50, storageMB: 50000, price: 9.99, annualPrice: 83.92, originalAnnualPrice: 119.88, isVIP: false },
@@ -1647,7 +1647,7 @@ function Dashboard() {
                                         <p style={{ color: '#5a6670', fontSize: '1rem', maxWidth: '520px', margin: '0 auto 28px', lineHeight: '1.6' }}>
                                             {PAID_PLANS_ENABLED
                                                 ? 'El plan VIP incluye 300 GB en la nube y acceso a todos los multitracks de nuestra base de datos VIP.'
-                                                : 'Por ahora disfrutas de tu cuenta gratuita con 5 GB en la nube para subir y mezclar tus propios multitracks en todos tus dispositivos. Muy pronto abriremos el acceso al catálogo VIP.'}
+                                                : `Por ahora disfrutas de tu cuenta gratuita con ${FREE_LAUNCH_STORAGE_GB} GB en la nube para subir y mezclar tus propios multitracks en todos tus dispositivos. Muy pronto abriremos el acceso al catálogo VIP.`}
                                         </p>
                                         {PAID_PLANS_ENABLED && (
                                             <button onClick={() => setIsPricingModalOpen(true)} className="btn-teal" style={{ padding: '13px 30px', fontSize: '0.96rem', fontWeight: '800' }}>Ver Plan VIP</button>

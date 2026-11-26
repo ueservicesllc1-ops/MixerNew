@@ -2,11 +2,13 @@ import SwiftUI
 
 struct SetlistsView: View {
     @ObservedObject var dataStore: DataStore
+    @ObservedObject var engine = AudioEngineViewModel.shared
     @ObservedObject var downloader = DownloadManager.shared
     @ObservedObject var themeManager = ThemeManager.shared
     @ObservedObject var padPlayer = ZionPadPlayer.shared
     
     var compact: Bool = false
+    var canAccessGlobal: Bool = false
     var onOpenLibrary: (() -> Void)? = nil
     var onOpenPads: (() -> Void)? = nil
     @State private var showLibraryDrawer = false
@@ -15,11 +17,13 @@ struct SetlistsView: View {
     init(
         dataStore: DataStore = DataStore(),
         compact: Bool = false,
+        canAccessGlobal: Bool = false,
         onOpenLibrary: (() -> Void)? = nil,
         onOpenPads: (() -> Void)? = nil
     ) {
         self.dataStore = dataStore
         self.compact = compact
+        self.canAccessGlobal = canAccessGlobal
         self.onOpenLibrary = onOpenLibrary
         self.onOpenPads = onOpenPads
     }
@@ -84,16 +88,19 @@ struct SetlistsView: View {
             .padding(.vertical, compact ? 7 : 10)
             .background(Color.zionPanel)
             .sheet(isPresented: $showLibraryDrawer) {
-                LibraryDrawerSheet(onAddSongToSetlist: { song in
-                    dataStore.addSongToSetlist(song: song)
-                })
+                LibraryDrawerSheet(
+                    canAccessGlobal: canAccessGlobal,
+                    onAddSongToSetlist: { song in
+                        dataStore.addSongToSetlist(song: song)
+                    }
+                )
             }
             .sheet(isPresented: $showSetlistsDrawer) {
                 SetlistsDrawerSheet(dataStore: dataStore)
             }
             
             // List
-            if dataStore.isLoading {
+            if dataStore.isLoading && dataStore.setlists.isEmpty {
                 VStack {
                     Spacer()
                     ProgressView()
@@ -131,16 +138,13 @@ struct SetlistsView: View {
                                 let keyText = song.key ?? "C"
                                 let bpmText = song.bpm != nil ? "\(Int(song.bpm!))" : "120"
                                 let subtitle = "\(artistText) • \(keyText) • \(bpmText) BPM"
-                                let isSelected = AudioEngineViewModel.shared.currentSong?.id == song.id
+                                let isSelected = engine.currentSong?.id == song.id
                                 let totalTracks = song.tracks?.count ?? 0
                                 let downloadedTracks = song.tracks?.filter { downloader.isTrackDownloaded($0) }.count ?? 0
                                 
                                 HStack(spacing: 6) {
                                     Button(action: {
-                                        if let tracks = song.tracks {
-                                            AudioEngineViewModel.shared.currentSong = song
-                                            AudioEngineViewModel.shared.loadTracks(tracks)
-                                        }
+                                        engine.loadSong(song, inSetlist: activeSetlist)
                                     }) {
                                         HStack(spacing: 6) {
                                             Text(songNumber)
@@ -164,22 +168,22 @@ struct SetlistsView: View {
                                             HStack(spacing: 3) {
                                                 if downloader.downloadingSongIds.contains(song.id) {
                                                     ProgressView()
-                                                        .progressViewStyle(CircularProgressViewStyle(tint: downloadedTracks == 0 ? .red : Color.zionCyan))
+                                                        .progressViewStyle(CircularProgressViewStyle(tint: downloadedTracks == 0 ? .orange : Color.zionCyan))
                                                         .scaleEffect(0.55)
                                                     Text("\(downloadedTracks)/\(totalTracks)")
                                                         .font(.system(size: 10, weight: .bold))
-                                                        .foregroundColor(downloadedTracks == 0 ? .red : Color.zionCyan)
+                                                        .foregroundColor(Color.zionCyan)
                                                 } else if downloadedTracks == totalTracks && totalTracks > 0 {
-                                                    Image(systemName: "checkmark.icloud.fill")
+                                                    Image(systemName: "checkmark.circle.fill")
                                                         .foregroundColor(.green)
                                                         .font(.system(size: 10, weight: .bold))
-                                                    Text("\(totalTracks)/\(totalTracks)")
-                                                        .font(.system(size: 10, weight: .bold))
+                                                    Text("OK")
+                                                        .font(.system(size: 9.5, weight: .bold))
                                                         .foregroundColor(.green)
                                                 } else {
                                                     Text("\(downloadedTracks)/\(totalTracks)")
                                                         .font(.system(size: 10, weight: .bold))
-                                                        .foregroundColor(downloadedTracks == 0 ? .red : Color.zionTextSecondary)
+                                                        .foregroundColor(downloadedTracks == 0 ? .orange : Color.zionTextSecondary)
                                                 }
                                             }
                                         }
@@ -187,6 +191,11 @@ struct SetlistsView: View {
                                     .buttonStyle(PlainButtonStyle())
                                     
                                     Menu {
+                                        Button(action: {
+                                            downloader.downloadSongStems(song: song)
+                                        }) {
+                                            Label("Descargar / Precargar ahora", systemImage: "arrow.down.circle")
+                                        }
                                         Button(role: .destructive, action: {
                                             dataStore.removeSongFromSetlist(songId: song.id)
                                         }) {
@@ -231,13 +240,12 @@ struct SetlistsView: View {
             
             // Ambient Pads Section Below Song List
             if compact {
-                // Compact 1-line Ambient Pad quick bar for iPhone landscape so song list has full room
                 HStack(spacing: 6) {
                     Button(action: {
                         if padPlayer.activeKey != nil {
                             padPlayer.stop()
                         } else {
-                            let defaultKey = AudioEngineViewModel.shared.currentSong?.key?
+                            let defaultKey = engine.currentSong?.key?
                                 .replacingOccurrences(of: "m", with: "")
                                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? "C"
                             padPlayer.start(key: defaultKey)

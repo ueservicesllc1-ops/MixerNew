@@ -427,14 +427,14 @@ export default function Landing() {
                 </div>
             </section>
 
-            {/* Precios: Modo Gratis de lanzamiento (5 GB) o Planes de pago Estándar/VIP */}
+            {/* Precios: Modo Gratis de lanzamiento (100 GB) o Planes de pago Estándar/VIP */}
             <section id="precios" className="z-section z-section-dark">
                 <div className="z-wrap">
                     {!PAID_PLANS_ENABLED ? (
                         <>
                             <div className="z-section-head-center">
                                 <div className="z-eyebrow">{lang === 'en' ? 'Free Launch Access' : 'Acceso Gratuito de Lanzamiento'}</div>
-                                <h2 className="z-h2">{lang === 'en' ? 'Start 100% free with 5 GB in the cloud' : 'Empieza 100% gratis con 5 GB en la nube'}</h2>
+                                <h2 className="z-h2">{lang === 'en' ? `Start 100% free with ${FREE_LAUNCH_STORAGE_GB} GB in the cloud` : `Empieza 100% gratis con ${FREE_LAUNCH_STORAGE_GB} GB en la nube`}</h2>
                                 <p className="z-lead">
                                     {lang === 'en'
                                         ? 'Create your free account, upload your own multitracks, and use every mixer feature across Web, iOS, Android, and Windows — no credit card required.'
@@ -456,6 +456,7 @@ export default function Landing() {
                                     </div>
                                     <ul className="z-list">
                                         <li><Check size={17} /><span>{lang === 'en' ? `${FREE_LAUNCH_STORAGE_GB} GB free cloud storage` : `${FREE_LAUNCH_STORAGE_GB} GB de almacenamiento gratis en la nube`}</span></li>
+                                        <li><Check size={17} /><span>{lang === 'en' ? 'Full access to Global VIP catalog (all multitracks)' : 'Acceso total al catálogo Global VIP (todos los multitracks)'}</span></li>
                                         <li><Check size={17} /><span>{lang === 'en' ? 'Unlimited songs & unlimited setlists' : 'Canciones y setlists ilimitados'}</span></li>
                                         <li><Check size={17} /><span>{lang === 'en' ? 'Upload & mix your own multitracks (.MP3, .WAV, .ZIP)' : 'Sube y mezcla tus propios multitracks (.MP3, .WAV, .ZIP)'}</span></li>
                                         <li><Check size={17} /><span>{lang === 'en' ? 'All features: Pitch, BPM, Ambient Pads, Lyrics & Chords' : 'Todas las funciones: Tono, BPM, Ambient Pads, Letras y Acordes'}</span></li>

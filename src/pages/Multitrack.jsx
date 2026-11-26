@@ -11,6 +11,9 @@ import ProgressBar from '../components/ProgressBar'
 import Metronome from '../components/Metronome';
 import { Play, Pause, Square, SkipBack, SkipForward, Settings, Menu, RefreshCw, Trash2, LogIn, LogOut, Moon, Sun, Headphones, Type, Drum, X, Check, Power, GripVertical, ListMusic, Library as LibraryIcon, Search, ArrowRight, QrCode, Save } from 'lucide-react'
 import { db, auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail } from '../firebase'
+import { sendEmailVerification } from 'firebase/auth'
+import { PAID_PLANS_ENABLED, FREE_LAUNCH_STORAGE_GB } from '../config/features'
+import { getMixerApiBase } from '../mixerApiBase'
 import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, serverTimestamp, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, or } from 'firebase/firestore'
 import { getSongMusicalKey } from '../utils/transposer.js'
 import { trackUserUsage } from '../utils/usageMetrics'
@@ -166,8 +169,8 @@ function pickNewerMeta(a, b) {
 const DEFAULT_PROXY_FOR_UPDATES = 'https://mixernew-production.up.railway.app';
 
 // ─── KEY TRANSPOSITION ────────────────────────────────────────────────────────
-const CHROMATIC = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const FLAT_TO_SHARP = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
+const CHROMATIC = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const FLAT_TO_SHARP = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' };
 function transposeKey(baseKey, semitones) {
     if (!baseKey || semitones === 0) return baseKey;
     const isMinor = baseKey.endsWith('m');
@@ -231,12 +234,12 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                         🎵 Mi Librería ({librarySongs.length})
                     </button>
                     {canAccessGlobal && (
-                    <button
-                        onClick={() => onTabChange('global')}
-                        style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
-                    >
-                        🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
-                    </button>
+                        <button
+                            onClick={() => onTabChange('global')}
+                            style={{ flex: 1, padding: '9px', background: libraryTab === 'global' ? '#9b59b6' : 'transparent', color: libraryTab === 'global' ? 'white' : '#555', border: 'none', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', transition: '0.2s' }}
+                        >
+                            🌐 Global ({globalSongs.filter(s => Array.isArray(s.tracks) && s.tracks.length > 0 && !shouldHideFromVipGlobal(s)).length})
+                        </button>
                     )}
                 </div>
 
@@ -348,7 +351,7 @@ export default function Multitrack() {
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [userPlanId, setUserPlanId] = useState(null);
-    const hasVipCatalogAccess = ['vip1', 'vip2', 'vip3', 'zion_desktop_pro_online', 'universal_pro'].includes(userPlanId || '');
+    const hasVipCatalogAccess = !PAID_PLANS_ENABLED || ['vip1', 'vip2', 'vip3', 'zion_desktop_pro_online', 'universal_pro'].includes(userPlanId || '');
     const [proxyUrl, setProxyUrl] = useState(() => {
         const saved = localStorage.getItem('mixer_proxyUrl');
         if (saved) return saved;
@@ -555,6 +558,71 @@ export default function Multitrack() {
     const [loginError, setLoginError] = useState('');
     const [loginSuccess, setLoginSuccess] = useState('');
 
+    // Email verification gate (Android + Web Multitrack)
+    const [emailVerifiedState, setEmailVerifiedState] = useState(true);
+    const [verifyChecking, setVerifyChecking] = useState(false);
+    const [verifyResending, setVerifyResending] = useState(false);
+    const [verifyFeedback, setVerifyFeedback] = useState('');
+
+    useEffect(() => {
+        if (!currentUser) {
+            setEmailVerifiedState(true);
+            return;
+        }
+        setEmailVerifiedState(!!currentUser.emailVerified);
+    }, [currentUser]);
+
+    const EXEMPT_VERIFY_EMAILS = new Set(['ueservicesllc1@gmail.com', '123@gmail.com']);
+    const hasPasswordProvider = Boolean(
+        currentUser?.providerData?.some(p => p?.providerId === 'password')
+    );
+    const needsEmailVerification = Boolean(
+        currentUser &&
+        hasPasswordProvider &&
+        !emailVerifiedState &&
+        !EXEMPT_VERIFY_EMAILS.has(String(currentUser.email || '').trim().toLowerCase())
+    );
+
+    const handleCheckEmailVerified = async () => {
+        if (!auth.currentUser) return;
+        setVerifyChecking(true);
+        setVerifyFeedback('');
+        try {
+            await auth.currentUser.reload();
+            if (auth.currentUser.emailVerified) {
+                setEmailVerifiedState(true);
+            } else {
+                setVerifyFeedback('Todavía no aparece verificado. Abre el enlace en tu correo y vuelve a intentar.');
+            }
+        } catch (err) {
+            setVerifyFeedback(err?.message || 'Error al comprobar la verificación.');
+        } finally {
+            setVerifyChecking(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        if (!auth.currentUser) return;
+        setVerifyResending(true);
+        setVerifyFeedback('');
+        try {
+            const idToken = await auth.currentUser.getIdToken();
+            const resp = await fetch(`${getMixerApiBase()}/api/auth/send-verification`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok || data.fallbackToFirebase) {
+                await sendEmailVerification(auth.currentUser);
+            }
+            setVerifyFeedback(`Listo. Enviamos un nuevo enlace a ${auth.currentUser.email}. Revisa tu bandeja o Spam.`);
+        } catch (err) {
+            setVerifyFeedback(err?.message || 'Espera un minuto antes de reenviar el correo.');
+        } finally {
+            setVerifyResending(false);
+        }
+    };
+
     // ΓöÇΓöÇ SETTINGS PANEL STATES ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isPadsOpen, setIsPadsOpen] = useState(false);
@@ -649,9 +717,9 @@ export default function Multitrack() {
                 /* no romper React.lazy / reconciliación si console recibe tipos raros */
             }
         };
-        console.log = (...a) => { try { origLog(...a); } catch (_) {} try { push('log', a); } catch (_) {} };
-        console.error = (...a) => { try { origErr(...a); } catch (_) {} try { push('err', a); } catch (_) {} };
-        console.warn = (...a) => { try { origWarn(...a); } catch (_) {} try { push('warn', a); } catch (_) {} };
+        console.log = (...a) => { try { origLog(...a); } catch (_) { } try { push('log', a); } catch (_) { } };
+        console.error = (...a) => { try { origErr(...a); } catch (_) { } try { push('err', a); } catch (_) { } };
+        console.warn = (...a) => { try { origWarn(...a); } catch (_) { } try { push('warn', a); } catch (_) { } };
         return () => { console.log = origLog; console.error = origErr; console.warn = origWarn; };
     }, []);
 
@@ -1028,7 +1096,7 @@ export default function Multitrack() {
                 });
 
                 // Global VIP: ahora se carga SOLO si el usuario tiene plan VIP activo (en el useEffect dedicado abajo).
-                const unsubGlobal = () => {};
+                const unsubGlobal = () => { };
 
                 // ΓöÇΓöÇ Setlists: SOLO los del usuario autenticado ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
                 // SECURITY FIX: filtrar por userId para que nadie vea setlists ajenos
@@ -1244,7 +1312,8 @@ export default function Multitrack() {
                             console.error(`[PRE-CARGA] Corrupción en ${tr.name} para ${song.name}:`, e.message);
                             if (useFlacWeb) await LocalFileManager.removeTrackLocalV2(song.id, tr.name);
                             else await LocalFileManager.removeTrackLocal(song.id, tr.name);
-                            trackBuffers.set(tr.name, { error: true });
+                            // No guardar entradas fallidas en caché: así la próxima carga reintenta la descarga
+                            console.warn(`[PRE-CARGA] ${tr.name} no se pudo decodificar; se reintentará al cargar la canción.`);
                         }
                     }));
                 }
@@ -1475,7 +1544,7 @@ export default function Multitrack() {
         await audioEngine.stop();
         setIsPlaying(false);
         progressRef.current = 0;
-        
+
         const isAppNativeLoad = typeof window !== 'undefined' && !!isAppNative;
 
         if (isAppNativeLoad && isPreparingSong) {
@@ -1554,6 +1623,15 @@ export default function Multitrack() {
                 }
             }
 
+            if (cachedBuffers && !isAppNativeLoad && cachedBuffers.size > 0) {
+                // Caché incompleta (alguna pista falló antes): descartarla para volver a descargar las faltantes
+                const incomplete = [...cachedBuffers.values()].some(v => !v || (!v.audioBuf && !v.rawBuf && !v.path));
+                if (incomplete) {
+                    preloadCache.current.delete(song.id);
+                    cachedBuffers = null;
+                }
+            }
+
             if (cachedBuffers && cachedBuffers.size > 0) {
                 if (!isAppNativeLoad) touchLRU(song.id);
 
@@ -1561,6 +1639,7 @@ export default function Multitrack() {
                 const newTracks = [];
                 for (const [trackName, cached] of cachedBuffers.entries()) {
                     if (isAppNativeLoad && trackName === PREVIEW_TRACK_NAME) continue;
+                    if (!isAppNativeLoad && !cached.audioBuf && !cached.rawBuf) continue; // pista que falló: no mostrar canal sin audio
                     const trackId = `${song.id}_${trackName}`;
                     const isVisual = trackName === PREVIEW_TRACK_NAME;
                     batch.push({
@@ -1621,6 +1700,7 @@ export default function Multitrack() {
             try {
                 if (!isAppNativeLoad) evictOldestIfNeeded();
                 const trackBuffers = new Map();
+                const failedStemNames = [];
                 const tracksData = song.tracks || [];
 
                 const downloadableTracks = isAppNativeLoad
@@ -1739,6 +1819,7 @@ export default function Multitrack() {
                                     else await LocalFileManager.removeTrackLocal(song.id, tr.name);
                                 }
                             }
+                            if (!audioBuf && !rawBuf) failedStemNames.push(tr.name);
                             trackBuffers.set(tr.name, { rawBuf, audioBuf });
                         }));
                     }
@@ -1747,10 +1828,17 @@ export default function Multitrack() {
                 preloadCache.current.set(song.id, trackBuffers);
                 if (!isAppNativeLoad) touchLRU(song.id);
 
+                if (!isAppNativeLoad && typeof failedStemNames !== 'undefined' && failedStemNames.length > 0) {
+                    preloadCache.current.delete(song.id); // reintentar descarga completa la próxima vez
+                    console.warn('[LOAD] Pistas que no se pudieron descargar:', failedStemNames);
+                    alert(`No se pudieron cargar ${failedStemNames.length} pista(s): ${failedStemNames.join(', ')}.\n\nRevisa tu conexión y vuelve a seleccionar la canción para reintentar.`);
+                }
+
                 const batchMove = [];
                 const newTracksList = [];
                 for (const [trackName, cached] of trackBuffers.entries()) {
                     if (isAppNativeLoad && trackName === PREVIEW_TRACK_NAME) continue;
+                    if (!isAppNativeLoad && !cached.audioBuf && !cached.rawBuf) continue; // pista que falló: no mostrar canal sin audio
                     const trackId = `${song.id}_${trackName}`;
                     const isVisual = trackName === PREVIEW_TRACK_NAME;
                     batchMove.push({
@@ -1890,10 +1978,10 @@ export default function Multitrack() {
     /** Misma idea que la onda nativa: `ready`, motor libre, stems reales cargados. */
     const canStartPlayback = Boolean(
         activeSongId &&
-            tracksReadyForEngine &&
-            preloadStatus[activeSongId] === 'ready' &&
-            !nativePrepareBusy &&
-            !loadBlockingPlayback,
+        tracksReadyForEngine &&
+        preloadStatus[activeSongId] === 'ready' &&
+        !nativePrepareBusy &&
+        !loadBlockingPlayback,
     );
 
     const handlePlay = async () => {
@@ -2099,6 +2187,15 @@ export default function Multitrack() {
         rafId = requestAnimationFrame(tick);
         return () => cancelAnimationFrame(rafId);
     }, [totalDuration]);
+    // Fin de canción detectado por el motor (WASM se detiene solo): sincronizar el botón Play/Pausa
+    useEffect(() => {
+        audioEngine.onEnded = () => {
+            setIsPlaying(false);
+            progressRef.current = 0;
+        };
+        return () => { audioEngine.onEnded = null; };
+    }, []);
+
     // AUTO-STOP when song finishes — interval-based so it doesn't depend on progress state (avoids 60fps re-renders)
     useEffect(() => {
         const isNative = typeof window !== 'undefined' && !!isAppNative;
@@ -2436,42 +2533,94 @@ export default function Multitrack() {
 
             {/* ── ALERTS / LOGIN SYSTEM ────────────────────────────────────────────────── */}
 
+            {needsEmailVerification && (
+                <div style={{ position: 'fixed', inset: 0, zIndex: 100001, background: 'rgba(0,0,0,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)', padding: '20px' }}>
+                    <div style={{ background: '#1c1c1e', padding: '28px', borderRadius: '14px', width: '100%', maxWidth: '400px', border: '1px solid rgba(0,210,211,0.35)', textAlign: 'center', boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '16px' }}>
+                            <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '32px' }} />
+                        </div>
+                        <h2 style={{ color: 'white', margin: '0 0 10px', fontSize: '1.25rem', fontWeight: '800' }}>Confirma tu correo electrónico</h2>
+                        <p style={{ color: '#cbd5e1', fontSize: '0.88rem', lineHeight: 1.5, margin: '0 0 16px' }}>
+                            Enviamos un enlace de verificación a <strong style={{ color: '#00d2d3' }}>{currentUser?.email}</strong>. Ábrelo para activar tu cuenta y entrar al mixer.
+                        </p>
+                        {verifyFeedback && (
+                            <div style={{ background: 'rgba(0,210,211,0.12)', border: '1px solid rgba(0,210,211,0.3)', color: '#7dd3fc', padding: '9px 12px', borderRadius: '8px', fontSize: '0.82rem', marginBottom: '14px' }}>
+                                {verifyFeedback}
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <button type="button" onClick={handleCheckEmailVerified} disabled={verifyChecking} style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: '#000', fontWeight: '800', fontSize: '0.95rem', cursor: 'pointer' }}>
+                                {verifyChecking ? 'Comprobando...' : 'Ya confirmé mi correo'}
+                            </button>
+                            <button type="button" onClick={handleResendVerification} disabled={verifyResending} style={{ padding: '11px', background: '#2a2a2c', border: '1px solid #444', borderRadius: '8px', color: 'white', fontWeight: '700', fontSize: '0.88rem', cursor: 'pointer' }}>
+                                {verifyResending ? 'Enviando...' : 'Reenviar enlace de confirmación'}
+                            </button>
+                            <button type="button" onClick={handleLogout} style={{ padding: '8px', background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '0.82rem', cursor: 'pointer' }}>
+                                Cerrar sesión
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {(!currentUser || showLoginModal) && (
                 <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-                    <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '320px', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
+                    <div style={{ background: '#1c1c1e', padding: '30px', borderRadius: '12px', width: '340px', maxWidth: '92vw', border: '1px solid #333', position: 'relative', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}>
                         {currentUser && (
                             <button onClick={() => setShowLoginModal(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '1.2rem' }}><X size={20} /></button>
                         )}
-                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
                             <img src="/logo2blanco.png" alt="Zion Stage" style={{ height: '36px' }} />
                         </div>
-                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '20px', textAlign: 'center', fontWeight: '800' }}>{loginIsRegister ? 'Crear Cuenta' : 'Iniciar Sesión'}</h2>
-                        <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                        <h2 style={{ color: 'white', marginTop: 0, marginBottom: '18px', textAlign: 'center', fontWeight: '800' }}>Iniciar Sesión</h2>
+                        <form onSubmit={handleEmailAuthSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                             <input type="email" placeholder="Correo electrónico" value={loginEmail} onChange={e => setLoginEmail(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                 <input type="password" placeholder="Contraseña" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} required style={{ padding: '12px', borderRadius: '8px', border: '1px solid #444', background: '#2a2a2c', color: 'white', fontSize: '1rem', outline: 'none' }} />
-                                {!loginIsRegister && (
-                                    <div style={{ textAlign: 'right' }}>
-                                        <span 
-                                            onClick={handleForgotPasswordMultitrack} 
-                                            style={{ fontSize: '0.75rem', color: '#00d2d3', cursor: 'pointer', textDecoration: 'underline' }}
-                                        >
-                                            ¿Olvidaste tu contraseña?
-                                        </span>
-                                    </div>
-                                )}
+                                <div style={{ textAlign: 'right' }}>
+                                    <span
+                                        onClick={handleForgotPasswordMultitrack}
+                                        style={{ fontSize: '0.75rem', color: '#00d2d3', cursor: 'pointer', textDecoration: 'underline' }}
+                                    >
+                                        ¿Olvidaste tu contraseña?
+                                    </span>
+                                </div>
                             </div>
                             {loginError && <div style={{ color: '#ff5252', fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '6px', background: 'rgba(255,82,82,0.1)' }}>{loginError}</div>}
                             {loginSuccess && <div style={{ color: '#4ade80', fontSize: '0.82rem', textAlign: 'center', padding: '10px', borderRadius: '6px', background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.25)', lineHeight: '1.4' }}>{loginSuccess}</div>}
-                            <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', marginTop: '10px' }}>{loginIsRegister ? 'Registrarse' : 'Entrar'}</button>
+                            <button type="submit" style={{ padding: '12px', background: '#00d2d3', border: 'none', borderRadius: '8px', color: '#000', fontWeight: '800', fontSize: '1rem', cursor: 'pointer', marginTop: '6px' }}>INICIAR SESIÓN</button>
                         </form>
 
-
-
-                        <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                            <span onClick={() => { setLoginIsRegister(!loginIsRegister); setLoginError(''); setLoginSuccess(''); }} style={{ color: '#aaa', fontSize: '0.85rem', cursor: 'pointer', textDecoration: 'none' }}>
-                                {loginIsRegister ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? regístrate aquí'}
-                            </span>
+                        <div style={{ marginTop: '18px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <span style={{ color: '#aaa', fontSize: '0.85rem' }}>¿No tienes cuenta?</span>
+                                <a
+                                    href="https://zionstage.live"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '5px',
+                                        padding: '6px 14px',
+                                        borderRadius: '7px',
+                                        background: 'rgba(0, 210, 211, 0.14)',
+                                        border: '1px solid rgba(0, 210, 211, 0.45)',
+                                        color: '#00d2d3',
+                                        fontSize: '0.85rem',
+                                        fontWeight: '800',
+                                        textDecoration: 'none',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    Unirte ↗
+                                </a>
+                            </div>
+                            {!PAID_PLANS_ENABLED && (
+                                <span style={{ color: '#4ade80', fontSize: '0.78rem', fontWeight: '600' }}>
+                                    Gratis con {FREE_LAUNCH_STORAGE_GB} GB en zionstage.live
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -2698,7 +2847,7 @@ export default function Multitrack() {
                 </div>
                 {/* PLAN BADGE — reemplaza las 3 rallitas y botones de navegación web */}
                 {(() => {
-                    const VIP_IDS = ['vip1','vip2','vip3','zion_desktop_pro_online','universal_pro'];
+                    const VIP_IDS = ['vip1', 'vip2', 'vip3', 'zion_desktop_pro_online', 'universal_pro'];
                     const isVip = VIP_IDS.includes(userPlanId);
                     const planLabels = {
                         'vip1': 'VIP', 'vip2': 'VIP', 'vip3': 'VIP',
@@ -2708,11 +2857,13 @@ export default function Multitrack() {
                         'std3': 'ESTÁNDAR', 'zion_desktop_pro_local': 'ESTÁNDAR',
                         'seller': 'ESTÁNDAR',
                     };
-                    const label = planLabels[userPlanId] || (userPlanId ? userPlanId.toUpperCase() : 'FREE');
+                    const label = (!PAID_PLANS_ENABLED && !isVip)
+                        ? `GRATIS ${FREE_LAUNCH_STORAGE_GB}GB`
+                        : (planLabels[userPlanId] || (userPlanId ? userPlanId.toUpperCase() : 'FREE'));
                     return (
                         <div
-                            onClick={() => navigate('/dashboard')}
-                            title="Ver mi plan"
+                            onClick={() => { if (!isAppNative) navigate('/dashboard'); }}
+                            title={isAppNative ? 'Cuenta Zion Stage' : 'Ver mi plan'}
                             style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -3092,14 +3243,14 @@ export default function Multitrack() {
                         markers={localMarkerOverrides[activeSong?.id] || activeSong?.markers || (() => { try { return JSON.parse(localStorage.getItem(`markers_${activeSong?.id}`) || '[]'); } catch { return []; } })()}
                         onUpdateMarkers={async (newMarkers) => {
                             if (!activeSong?.id) return;
-                            
+
                             // Optimistic UI Update 
                             setLocalMarkerOverrides(prev => ({ ...prev, [activeSong.id]: newMarkers }));
-                            
+
                             // Always save to local cache as fallback for global / read-only tracks
                             try {
                                 localStorage.setItem(`markers_${activeSong.id}`, JSON.stringify(newMarkers));
-                            } catch (e) {}
+                            } catch (e) { }
 
                             try {
                                 // Attempt cloud sync (will fail if user isn't owner of the track)
@@ -3226,14 +3377,14 @@ export default function Multitrack() {
                                                 {activeTab === 'chords' && activeChords === 'loading' && <span style={{ fontSize: '0.8rem', color: '#00bcd4', fontWeight: '700', animation: 'pulse 1.5s infinite' }}>Cargando Acordes...</span>}
                                             </div>
                                         )}
-                                        
+
                                         {(activeTab === 'lyrics' || activeTab === 'chords') && (
                                             <div style={{ position: 'relative', marginTop: '10px', marginBottom: '10px', marginLeft: '2px', marginRight: '10px' }}>
                                                 <div style={{ display: 'flex', gap: '8px' }}>
                                                     <div style={{ position: 'relative', width: '250px', transform: 'translateX(-40px)', marginLeft: '0px' }}>
                                                         <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
-                                                        <input 
-                                                            type="text" 
+                                                        <input
+                                                            type="text"
                                                             placeholder={`Buscar otra ${activeTab === 'lyrics' ? 'letra' : 'progresion'}...`}
                                                             value={quickTextSearch}
                                                             onChange={(e) => setQuickTextSearch(e.target.value)}
@@ -3250,7 +3401,7 @@ export default function Multitrack() {
                                                         />
                                                     </div>
                                                     {viewedSongId !== activeSongId && (
-                                                        <button 
+                                                        <button
                                                             onClick={() => { setViewedSongId(activeSongId); setQuickTextSearch(''); setIsSearchingTexts(false); }}
                                                             style={{ padding: '0 15px', background: 'rgba(0,188,212,0.1)', color: '#00bcd4', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', fontSize: '0.8rem', fontWeight: '800', cursor: 'pointer' }}
                                                         >
@@ -3261,18 +3412,18 @@ export default function Multitrack() {
 
                                                 {/* Resultados rápidos del buscador */}
                                                 {isSearchingTexts && quickTextSearch && (
-                                                    <div style={{ 
-                                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, 
-                                                        background: '#1c1c1e', border: '1px solid #333', borderRadius: '8px', 
-                                                        marginTop: '5px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', 
-                                                        maxHeight: '250px', overflowY: 'auto' 
+                                                    <div style={{
+                                                        position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
+                                                        background: '#1c1c1e', border: '1px solid #333', borderRadius: '8px',
+                                                        marginTop: '5px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)',
+                                                        maxHeight: '250px', overflowY: 'auto'
                                                     }}>
                                                         {[...globalSongs, ...librarySongs]
                                                             .filter(s => s.name.toLowerCase().includes(quickTextSearch.toLowerCase()) || (s.artist || '').toLowerCase().includes(quickTextSearch.toLowerCase()))
                                                             .slice(0, 10)
                                                             .map(song => (
-                                                                <div 
-                                                                    key={song.id} 
+                                                                <div
+                                                                    key={song.id}
                                                                     onClick={() => { setViewedSongId(song.id); setQuickTextSearch(''); setIsSearchingTexts(false); }}
                                                                     style={{ padding: '12px 15px', borderBottom: '1px solid #333', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
                                                                     onMouseEnter={e => e.currentTarget.style.background = '#2c2c2e'}
@@ -3376,7 +3527,7 @@ export default function Multitrack() {
                                                 <div style={{ width: '180px', flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', overflowY: 'auto', padding: '16px 10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                                     <div style={{ fontSize: '0.7rem', fontWeight: '800', color: '#64748b', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: '6px', paddingLeft: '6px' }}>Instrumento</div>
                                                     {activePartituras.length === 0 ? (
-                                                        <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 6px', lineHeight: 1.5 }}>No hay partituras para esta canción.<br/>Súbelas desde el Dashboard.</div>
+                                                        <div style={{ color: '#555', fontSize: '0.85rem', padding: '12px 6px', lineHeight: 1.5 }}>No hay partituras para esta canción.<br />Súbelas desde el Dashboard.</div>
                                                     ) : (
                                                         activePartituras.map(p => (
                                                             <button
@@ -3415,27 +3566,27 @@ export default function Multitrack() {
                                                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                                                     {selectedPartitura ? (
                                                         <>
-                                                        {/* Toolbar bar above PDF */}
-                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#111', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                                                            <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '700' }}>
-                                                                {selectedPartitura.instrument}
-                                                            </span>
-                                                            <button
-                                                                onClick={() => setPvFullscreen(true)}
-                                                                title="Pantalla completa"
-                                                                style={{ background: 'rgba(0,188,212,0.15)', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', color: '#00bcd4', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
-                                                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,188,212,0.3)'}
-                                                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,188,212,0.15)'}
-                                                            >
-                                                                ⛶ Pantalla Completa
-                                                            </button>
-                                                        </div>
-                                                        <iframe
-                                                            key={selectedPartitura.id}
-                                                            src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0'}
-                                                            title={`Partitura ${selectedPartitura.instrument}`}
-                                                            style={{ flex: 1, border: 'none', width: '100%', height: '100%', background: 'white' }}
-                                                        />
+                                                            {/* Toolbar bar above PDF */}
+                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', background: '#111', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                                                                <span style={{ color: '#94a3b8', fontSize: '0.8rem', fontWeight: '700' }}>
+                                                                    {selectedPartitura.instrument}
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => setPvFullscreen(true)}
+                                                                    title="Pantalla completa"
+                                                                    style={{ background: 'rgba(0,188,212,0.15)', border: '1px solid rgba(0,188,212,0.3)', borderRadius: '8px', color: '#00bcd4', padding: '5px 12px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '5px', transition: 'all 0.15s' }}
+                                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,188,212,0.3)'}
+                                                                    onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,188,212,0.15)'}
+                                                                >
+                                                                    ⛶ Pantalla Completa
+                                                                </button>
+                                                            </div>
+                                                            <iframe
+                                                                key={selectedPartitura.id}
+                                                                src={selectedPartitura.pdfUrl + '#toolbar=1&navpanes=0'}
+                                                                title={`Partitura ${selectedPartitura.instrument}`}
+                                                                style={{ flex: 1, border: 'none', width: '100%', height: '100%', background: 'white' }}
+                                                            />
                                                         </>
                                                     ) : (
                                                         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#444', flexDirection: 'column', gap: '12px' }}>
@@ -3452,8 +3603,8 @@ export default function Multitrack() {
                                 </div>
                             ) : (
                                 <div className="mixer-wrapper">
-                                    <Mixer 
-                                        tracks={tracks} 
+                                    <Mixer
+                                        tracks={tracks}
                                         mixSettings={activeSetlist?.mixSettings?.[activeSongId] || {}}
                                         onStateChange={(id, state) => {
                                             currentMixState.current[id] = state;
@@ -3979,8 +4130,8 @@ export default function Multitrack() {
                 </div>
             )}
         </div>
-        );
-    }
+    );
+}
 
 const SortableSongItem = React.memo(function SortableSongItem({ song, idx, isActive, pStatus, loadProgress, onSelect, onRemove }) {
     const {

@@ -1449,10 +1449,11 @@ export default function Admin() {
                 updates.desktopLicenseTier = null;
                 updates.desktopProActive = false;
             } else {
-                updates.desktopLicenseTier = null;
-                updates.desktopProActive = false;
+                updates.desktopLicenseTier = 'pro_local';
+                updates.desktopProActive = true;
                 if (newPlanId === 'free') {
                     updates.stripeSubscriptionStatus = null;
+                    updates.customStorageGB = 100;
                     updates.customStorageGB = 5;
                 } else {
                     updates.stripeSubscriptionStatus = 'active';
@@ -2545,7 +2546,7 @@ export default function Admin() {
                                             onChange={(e) => updateUserPlan(u.id, e.target.value)} 
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
-                                            <option value="free">Gratis (5 GB)</option>
+                                            <option value="free">Gratis (100 GB)</option>
                                             <option value="std2">Estándar (50 GB · Global)</option>
                                             <option value="vip2">VIP (300 GB · Global + Base VIP)</option>
                                             <option value="universal_pro">VIP (Legacy Universal PRO · 300 GB)</option>
@@ -2714,7 +2715,7 @@ export default function Admin() {
                                             onChange={(e) => updateUserPlan(u.id, e.target.value)} 
                                             style={{ padding: '6px', borderRadius: '6px', border: '1px solid #cbd5e1', background: 'white', color: 'black', fontSize: '0.8rem', fontWeight: '700' }}
                                         >
-                                            <option value="free">Gratis (5 GB)</option>
+                                            <option value="free">Gratis (100 GB)</option>
                                             <option value="std2">Estándar (50 GB · Global)</option>
                                             <option value="vip2">VIP (300 GB · Global + Base VIP)</option>
                                             <option value="universal_pro">VIP (Legacy Universal PRO · 300 GB)</option>

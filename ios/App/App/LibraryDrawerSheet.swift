@@ -14,12 +14,13 @@ struct LibraryDrawerSheet: View {
     @State private var addedSongIds: Set<String> = []
     
     var isEmbedded: Bool = false
+    var canAccessGlobal: Bool = false
     var onAddSongToSetlist: ((Song) -> Void)? = nil
     
     private let db = Firestore.firestore()
     
     var filteredSongs: [Song] {
-        let base = libraryTab == "mine" ? mySongs : globalSongs
+        let base = (libraryTab == "global" && canAccessGlobal) ? globalSongs : mySongs
         guard !searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
         let q = searchQuery.lowercased()
         return base.filter {
@@ -48,7 +49,7 @@ struct LibraryDrawerSheet: View {
             .padding(.vertical, 8)
             .background(Color.zionPanel)
             
-            // Tabs: Mi Librería vs Global (VIP) + Search Input on same row when compact
+            // Tabs: Mi Librería vs Global (VIP only) + Search Input
             HStack(spacing: 8) {
                 Button(action: { libraryTab = "mine" }) {
                     HStack(spacing: 4) {
@@ -63,17 +64,19 @@ struct LibraryDrawerSheet: View {
                     .cornerRadius(6)
                 }
                 
-                Button(action: { libraryTab = "global" }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "globe")
-                        Text("Global VIP (\(globalSongs.count))")
+                if canAccessGlobal {
+                    Button(action: { libraryTab = "global" }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "globe")
+                            Text("Global VIP (\(globalSongs.count))")
+                        }
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(libraryTab == "global" ? Color.purple : Color.zionPanelLight)
+                        .foregroundColor(libraryTab == "global" ? .white : Color.zionTextSecondary)
+                        .cornerRadius(6)
                     }
-                    .font(.system(size: 12, weight: .bold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(libraryTab == "global" ? Color.purple : Color.zionPanelLight)
-                    .foregroundColor(libraryTab == "global" ? .white : Color.zionTextSecondary)
-                    .cornerRadius(6)
                 }
                 
                 // Search Input
@@ -157,8 +160,7 @@ struct LibraryDrawerSheet: View {
                                 
                                 Button(action: {
                                     if let tracks = song.tracks, !tracks.isEmpty {
-                                        AudioEngineViewModel.shared.currentSong = song
-                                        AudioEngineViewModel.shared.loadTracks(tracks)
+                                        AudioEngineViewModel.shared.loadSong(song)
                                     }
                                     addedSongIds.insert(song.id)
                                     onAddSongToSetlist?(song)
@@ -190,6 +192,9 @@ struct LibraryDrawerSheet: View {
         .background(Color.zionBackground.ignoresSafeArea())
         .preferredColorScheme(.dark)
         .onAppear {
+            if !canAccessGlobal {
+                libraryTab = "mine"
+            }
             fetchSongs()
         }
     }
@@ -205,52 +210,21 @@ struct LibraryDrawerSheet: View {
                     self.mySongs = docs.compactMap { self.parseSong(doc: $0) }
                 }
                 
+                guard self.canAccessGlobal else {
+                    self.globalSongs = []
+                    self.isLoading = false
+                    return
+                }
+                
                 self.db.collection("songs")
                     .whereField("isGlobal", isEqualTo: true)
+                    .limit(to: 400)
                     .getDocuments { globalSnap, _ in
-                        
-                        self.db.collection("songs")
-                            .whereField("forSale", isEqualTo: true)
-                            .getDocuments { saleSnap, _ in
-                                
-                                self.db.collection("songs")
-                                    .whereField("tracks", isNotEqualTo: NSNull())
-                                    .limit(to: 800)
-                                    .getDocuments { tracksSnap, _ in
-                                        self.isLoading = false
-                                        
-                                        var allDocs = globalSnap?.documents ?? []
-                                        if let sDocs = saleSnap?.documents {
-                                            allDocs.append(contentsOf: sDocs)
-                                        }
-                                        if let tDocs = tracksSnap?.documents {
-                                            allDocs.append(contentsOf: tDocs)
-                                        }
-                                        
-                                        var uniqueDocs: [QueryDocumentSnapshot] = []
-                                        var seen = Set<String>()
-                                        for doc in allDocs {
-                                            if !seen.contains(doc.documentID) {
-                                                seen.insert(doc.documentID)
-                                                uniqueDocs.append(doc)
-                                            }
-                                        }
-                                        
-                                        let allParsed = uniqueDocs.compactMap { self.parseSong(doc: $0) }
-                                        
-                                        self.globalSongs = allParsed.filter { song in
-                                            let songUserId = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["userId"] as? String
-                                            if songUserId == uid {
-                                                let isGlob = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["isGlobal"] as? Bool ?? false
-                                                let forSale = uniqueDocs.first(where: { $0.documentID == song.id })?.data()["forSale"] as? Bool ?? false
-                                                if !isGlob && !forSale {
-                                                    return false
-                                                }
-                                            }
-                                            return (song.tracks?.count ?? 0) > 0
-                                        }
-                                    }
-                            }
+                        self.isLoading = false
+                        let allDocs = globalSnap?.documents ?? []
+                        self.globalSongs = allDocs
+                            .compactMap { self.parseSong(doc: $0) }
+                            .filter { ($0.tracks?.count ?? 0) > 0 }
                     }
             }
     }
@@ -261,23 +235,26 @@ struct LibraryDrawerSheet: View {
         let sName = data["name"] as? String ?? (data["title"] as? String ?? "Canción")
         let sArtist = data["artist"] as? String
         let sKey = data["key"] as? String
-        let sBpm = data["bpm"] as? Double ?? (data["tempo"] as? Double)
+        let sBpm: Double? = (data["bpm"] as? Double)
+            ?? (data["tempo"] as? Double)
+            ?? (data["bpm"] as? Int).map { Double($0) }
+            ?? (data["bpm"] as? String).flatMap { Double($0) }
         
         var parsedTracks: [SongTrack] = []
         
-        let rawArray = (data["tracks"] as? [[String: Any]]) ?? 
-                       (data["stems"] as? [[String: Any]]) ?? 
-                       (data["audioFiles"] as? [[String: Any]]) ?? 
+        let rawArray = (data["tracks"] as? [[String: Any]]) ??
+                       (data["stems"] as? [[String: Any]]) ??
+                       (data["audioFiles"] as? [[String: Any]]) ??
                        (data["files"] as? [[String: Any]]) ?? []
         
         for tData in rawArray {
             let tId = tData["id"] as? String ?? UUID().uuidString
-            let tPath = tData["path"] as? String ?? 
-                        (tData["url"] as? String ?? 
-                        (tData["fileUrl"] as? String ?? 
+            let tPath = tData["path"] as? String ??
+                        (tData["url"] as? String ??
+                        (tData["fileUrl"] as? String ??
                         (tData["downloadUrl"] as? String ?? "")))
-            let tName = tData["name"] as? String ?? 
-                        (tData["title"] as? String ?? 
+            let tName = tData["name"] as? String ??
+                        (tData["title"] as? String ??
                         (tData["type"] as? String ?? "Track"))
             let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedPath.isEmpty {
@@ -290,9 +267,9 @@ struct LibraryDrawerSheet: View {
             for (key, val) in rawDict {
                 if let tData = val as? [String: Any] {
                     let tId = tData["id"] as? String ?? key
-                    let tPath = tData["path"] as? String ?? 
-                                (tData["url"] as? String ?? 
-                                (tData["fileUrl"] as? String ?? 
+                    let tPath = tData["path"] as? String ??
+                                (tData["url"] as? String ??
+                                (tData["fileUrl"] as? String ??
                                 (tData["downloadUrl"] as? String ?? "")))
                     let tName = tData["name"] as? String ?? (tData["title"] as? String ?? key)
                     let trimmedPath = tPath.trimmingCharacters(in: .whitespacesAndNewlines)

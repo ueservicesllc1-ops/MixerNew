@@ -41,6 +41,9 @@ class AudioEngine {
         this.lastFetchTime = 0;
         this.isDragging = false;
         this.dragTime = 0;
+        /** Callback cuando el motor termina la canción por sí solo (fin de pista). */
+        this.onEnded = null;
+        this._wasmPlayIssued = false;
         this._lastNotifyTime = 0;
         this._NOTIFY_INTERVAL = 66;
         this.workletLoaded = false;
@@ -102,7 +105,7 @@ class AudioEngine {
     _startWASMProcessor() {
         if (!this.wasm || !this.ctx || this._wasmScriptProcessor) return;
 
-        const BLOCK_SIZE = 2048;
+        const BLOCK_SIZE = 4096; // bloque mayor = menos cortes/crujidos cuando el hilo principal está ocupado (iPad / equipos lentos)
         // 4 output channels: [MusicL, MusicR, GuideL, GuideR]
         const proc = this.ctx.createScriptProcessor(BLOCK_SIZE, 0, 4);
 
@@ -361,11 +364,16 @@ class AudioEngine {
             const chanL = buffer.getChannelData(0);
             const chanR = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : chanL;
 
-            // Allocate in WASM heap and copy
-            const ptrL = this.wasm.allocateBuffer(length);
-            const ptrR = this.wasm.allocateBuffer(length);
-            new Float32Array(this.wasm.HEAPF32.buffer, ptrL, length).set(chanL);
-            new Float32Array(this.wasm.HEAPF32.buffer, ptrR, length).set(chanR);
+            // IMPORTANTE: allocateBuffer() del WASM devuelve SIEMPRE el mismo scratch buffer compartido.
+            // Antes se llamaba dos veces (L y R) y ambos punteros apuntaban a la misma memoria, por lo que
+            // el canal R sobrescribía al L (todos los stems sonaban dual-mono del canal derecho).
+            // Ahora se reserva un solo bloque de 2*length floats y se usa la 1.ª mitad para L y la 2.ª para R.
+            const base = this.wasm.allocateBuffer(length * 2);
+            const ptrL = base;
+            const ptrR = base + length * 4; // punteros en bytes (Float32 = 4 bytes)
+            const heap = this.wasm.HEAPF32.buffer;
+            new Float32Array(heap, ptrL, length).set(chanL);
+            new Float32Array(heap, ptrR, length).set(chanR);
             this.wasm.loadTrackData(id, ptrL, ptrR, length);
 
             console.log(`[ZionCore] Track '${id}' loaded: ${(length / (buffer.sampleRate || 44100)).toFixed(1)}s`);
@@ -871,7 +879,10 @@ class AudioEngine {
                 const guidePitch = this.guideSoundTouchNode.parameters.get('pitchSemitones');
                 const gNow = this.ctx.currentTime;
                 if (guideTempo) guideTempo.setValueAtTime(1.0, gNow);
-                if (guidePitch) guidePitch.setValueAtTime(0, gNow); // guía/click sin transpose
+                // Guía/click: sin transposición de tono, pero SÍ compensan el cambio de tempo
+                // (el motor WASM cambia la velocidad por remuestreo, lo que sube el tono de la guía).
+                const guideTempoPitchFix = -12 * Math.log2(this.tempoRatio || 1);
+                if (guidePitch) guidePitch.setValueAtTime(guideTempoPitchFix, gNow);
             }
 
             const tempoParam = this.masterSoundTouchNode.parameters.get('tempo');
@@ -927,6 +938,7 @@ class AudioEngine {
             if (this.ctx?.state === 'suspended') await this.ctx.resume();
             this.wasm.seek(this.pausePosition); // Ensure we start at the seeked position
             this.wasm.play();
+            this._wasmPlayIssued = true;
             this._playStartWall = performance.now();
             this._playStartPos = this.pausePosition;
             this.lastFetchPos = this.pausePosition;
@@ -987,6 +999,8 @@ class AudioEngine {
 
         if (this.isWASMReady && this.wasm) {
             this.pausePosition = this.wasm.getCurrentPosition();
+            this.progress = this.pausePosition;
+            this._wasmPlayIssued = false;
             this.wasm.pause();
             this._stopWasmVuLogging();
             this._stopWasmVuPoll();
@@ -1057,6 +1071,7 @@ class AudioEngine {
         this.isPlaying = false;
 
         if (this.isWASMReady && this.wasm) {
+            this._wasmPlayIssued = false;
             this.wasm.stop();
             this._stopWasmVuLogging();
             this._stopWasmVuPoll();
@@ -1135,6 +1150,23 @@ class AudioEngine {
         }
     }
 
+    _handleEngineEnded() {
+        this.isPlaying = false;
+        this._sessionId += 1;
+        this._wasmPlayIssued = false;
+        this.pausePosition = 0;
+        this.progress = 0;
+        this.lastFetchPos = 0;
+        this.lastFetchTime = performance.now();
+        if (this._updater) cancelAnimationFrame(this._updater);
+        this._stopWasmVuPoll();
+        this._lastNotifyTime = 0;
+        this._notifyProgress();
+        if (typeof this.onEnded === 'function') {
+            try { this.onEnded(); } catch (e) { console.warn('[AudioEngine] onEnded error', e); }
+        }
+    }
+
     _startRAF(sessionId) {
         const update = async () => {
             if (!this.isPlaying || sessionId !== this._sessionId) return;
@@ -1142,6 +1174,11 @@ class AudioEngine {
             try {
                 let currentPos = 0;
                 if (this.isWASMReady && this.wasm) {
+                    // Fin de canción: el motor C++ se detiene solo y vuelve a 0; avisar a la UI
+                    if (this._wasmPlayIssued && typeof this.wasm.isPlaying === 'function' && !this.wasm.isPlaying()) {
+                        this._handleEngineEnded();
+                        return;
+                    }
                     currentPos = this.wasm.getCurrentPosition();
                 } else if (IS_DESKTOP) {
                     currentPos = await DesktopAudioBridge.getPosition();

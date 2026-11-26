@@ -65,36 +65,53 @@ struct SetlistsDrawerSheet: View {
                         ForEach(dataStore.setlists) { setlist in
                             let songCount = setlist.songs?.count ?? 0
                             let isSelected = dataStore.activeSetlistId == setlist.id
-                            Button(action: {
-                                dataStore.activeSetlistId = setlist.id
-                                onSelectSetlist?(setlist)
-                                presentationMode.wrappedValue.dismiss()
-                            }) {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(setlist.name)
-                                            .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(isSelected ? Color.zionCyan : Color.zionTextPrimary)
-                                        Text("\(songCount) canciones en este repertorio")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(Color.zionTextSecondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    if isSelected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(Color.zionCyan)
-                                    } else {
-                                        Image(systemName: "chevron.right")
-                                            .foregroundColor(Color.zionTextSecondary)
+                            HStack(spacing: 8) {
+                                Button(action: {
+                                    dataStore.activeSetlistId = setlist.id
+                                    // Immediately trigger continuous preloading for the newly selected setlist
+                                    DownloadManager.shared.downloadSetlist(setlist: setlist)
+                                    onSelectSetlist?(setlist)
+                                    presentationMode.wrappedValue.dismiss()
+                                }) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(setlist.name)
+                                                .font(.system(size: 14, weight: .bold))
+                                                .foregroundColor(isSelected ? Color.zionCyan : Color.zionTextPrimary)
+                                            Text("\(songCount) canciones en este repertorio")
+                                                .font(.system(size: 11))
+                                                .foregroundColor(Color.zionTextSecondary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        if isSelected {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(Color.zionCyan)
+                                        } else {
+                                            Image(systemName: "chevron.right")
+                                                .foregroundColor(Color.zionTextSecondary)
+                                        }
                                     }
                                 }
-                                .padding(12)
-                                .background(isSelected ? Color.zionPanelLight : Color.zionPanel)
-                                .cornerRadius(8)
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.zionCyan : Color.zionBorderSubtle, lineWidth: 1))
+                                .buttonStyle(PlainButtonStyle())
+                                
+                                Menu {
+                                    Button(role: .destructive, action: {
+                                        dataStore.deleteSetlist(id: setlist.id)
+                                    }) {
+                                        Label("Eliminar Setlist", systemImage: "trash")
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .foregroundColor(Color.zionTextSecondary)
+                                        .padding(6)
+                                }
                             }
+                            .padding(12)
+                            .background(isSelected ? Color.zionPanelLight : Color.zionPanel)
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isSelected ? Color.zionCyan : Color.zionBorderSubtle, lineWidth: 1))
                         }
                     }
                     .padding()

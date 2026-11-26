@@ -9,8 +9,7 @@ struct MixerChannelView: View {
     var faderHeight: CGFloat = 140
     
     var isClickGuide: Bool {
-        let n = (track.name ?? "").lowercased()
-        return n.contains("click") || n.contains("cue") || n.contains("guide") || n.contains("guia")
+        AudioEngineViewModel.isClickOrGuideTrack(track.name)
     }
     
     @State private var customColorIndex: Int = -1
@@ -32,6 +31,22 @@ struct MixerChannelView: View {
             return Color(hex: "#ef4444")
         }
         return Color(hex: "#4a5568")
+    }
+    
+    private var currentPan: Float {
+        engine.stemPans[track.id] ?? (isClickGuide ? 1.0 : -1.0)
+    }
+    
+    private var panLabel: String {
+        if currentPan < -0.3 { return "L (Izq)" }
+        if currentPan > 0.3 { return "R (Der)" }
+        return "C (Estéreo)"
+    }
+    
+    private var panColor: Color {
+        if currentPan < -0.3 { return Color.zionCyan }
+        if currentPan > 0.3 { return Color.zionRed }
+        return Color.green
     }
     
     var body: some View {
@@ -119,11 +134,20 @@ struct MixerChannelView: View {
                 }
             }
             
-            // Stereo Position Tag
-            Text(isClickGuide ? "Canal R (Der)" : "Canal L (Izq)")
-                .font(.system(size: compact ? 7.5 : 9, weight: .bold))
-                .foregroundColor(isClickGuide ? Color.zionRed : Color.zionCyan)
-                .lineLimit(1)
+            // Interactive L / C / R Stereo Routing Button (Android/Web Parity)
+            Button(action: {
+                engine.cycleTrackPan(id: track.id)
+            }) {
+                Text(panLabel)
+                    .font(.system(size: compact ? 7.5 : 9, weight: .bold))
+                    .foregroundColor(panColor)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, compact ? 2 : 3)
+                    .background(panColor.opacity(0.14))
+                    .cornerRadius(4)
+            }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(compact ? 5 : 8)
         .frame(width: channelWidth ?? (compact ? 98 : 148))
