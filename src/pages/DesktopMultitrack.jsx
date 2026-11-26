@@ -2611,6 +2611,9 @@ export default function Multitrack({ session }) {
         }
     };
 
+    const desktopLoadBusyRef = useRef(false);
+    const desktopPendingSongRef = useRef(null);
+
     const handleLoadSong = async (songArg) => {
         let song = songArg;
         if (isDemo && activeSetlist?.songs?.length) {
@@ -2642,11 +2645,19 @@ export default function Multitrack({ session }) {
 
         const isElectronDesktop = isElectronDesktopMixer();
 
-        if (isElectronDesktop && isPreparingSong) {
-            console.log('[DESKTOP NATIVE] ignored, already preparing');
-            return;
-        }
         if (isElectronDesktop) {
+            // Blindaje contra prueba de estrés (clics rápidos A -> B -> C):
+            // NUNCA enviar 2 loadSongFromPaths concurrentes al motor JUCE C++ (causa deadlock).
+            // Si ya hay una carga en curso, guardamos el último clic y lo ejecutamos apenas termine la actual.
+            if (desktopLoadBusyRef.current || isPreparingSong) {
+                console.log('[DESKTOP NATIVE] load busy -> queuing latest song:', song.name);
+                desktopPendingSongRef.current = song;
+                setActiveSongId(song.id);
+                setViewedSongId(song.id);
+                return;
+            }
+            desktopLoadBusyRef.current = true;
+            isPreparingSong = true;
             const tFast0 = performance.now();
             try {
                 const row = await LocalLibraryService.getSong(song.id);
@@ -2662,10 +2673,6 @@ export default function Multitrack({ session }) {
                     previewMixLocalPath: parsed.previewMixLocalPath,
                 };
                 console.log('[DESKTOP NATIVE] using JUCE engine');
-                console.log('[FAST LOAD] local manifest found', song.id);
-                console.log('[FAST LOAD] skipping download');
-                console.log('[FAST LOAD] skipping Firestore');
-                console.log('[FAST LOAD] skipping stem-by-stem delay');
                 setActiveSongId(song.id);
                 setViewedSongId(song.id);
                 setSnapshotDurationSec(0);
@@ -2687,30 +2694,41 @@ export default function Multitrack({ session }) {
                 const { ok } = await loadDesktopNativeFromBatch(batch, mergedSong);
                 if (!ok) throw new Error('[DESKTOP AUDIO] Native JUCE bridge missing');
 
-                const newTracks = batch
-                    .filter((b) => !b.isVisualOnly)
-                    .map((b) => ({ id: b.id, name: b.name }));
-                setTracks(newTracks);
-                setPreloadStatus((prev) => ({ ...prev, [song.id]: 'ready' }));
-                setAudioReady((prev) => prev + 1);
-                setNativeLoadProgress(null);
-                try {
-                    const snap = await window.zionNative.getSnapshot();
-                    const s = JSON.parse(snap);
-                    const d = s.durationSec;
-                    if (Number.isFinite(d) && d > 1) setSnapshotDurationSec(d);
-                } catch { /* ignore */ }
-                console.log('[JUCE] session ready in', Math.round(performance.now() - tFast0), 'ms');
-                console.log('[DESKTOP NATIVE] ready in', Math.round(performance.now() - tFast0), 'ms');
-                loadWaveformInBackground(mergedSong);
+                // Si el usuario ya hizo clic en otra canción mientras cargaba esta, saltar directo a la nueva
+                if (!desktopPendingSongRef.current) {
+                    const newTracks = batch
+                        .filter((b) => !b.isVisualOnly)
+                        .map((b) => ({ id: b.id, name: b.name }));
+                    setTracks(newTracks);
+                    setPreloadStatus((prev) => ({ ...prev, [song.id]: 'ready' }));
+                    setAudioReady((prev) => prev + 1);
+                    setNativeLoadProgress(null);
+                    try {
+                        const snap = await window.zionNative.getSnapshot();
+                        const s = JSON.parse(snap);
+                        const d = s.durationSec;
+                        if (Number.isFinite(d) && d > 1) setSnapshotDurationSec(d);
+                    } catch { /* ignore */ }
+                    console.log('[JUCE] session ready in', Math.round(performance.now() - tFast0), 'ms');
+                    loadWaveformInBackground(mergedSong);
+                }
                 setDownloadProgress({ songId: null, text: '' });
-                return;
             } catch (e) {
                 console.error('[DESKTOP AUDIO] native load failed', e?.message || e);
-                setPreloadStatus((prev) => ({ ...prev, [song.id]: 'error' }));
+                if (!desktopPendingSongRef.current) {
+                    setPreloadStatus((prev) => ({ ...prev, [song.id]: 'error' }));
+                }
                 setDownloadProgress({ songId: null, text: '' });
-                return;
+            } finally {
+                desktopLoadBusyRef.current = false;
+                isPreparingSong = false;
+                const queued = desktopPendingSongRef.current;
+                if (queued) {
+                    desktopPendingSongRef.current = null;
+                    setTimeout(() => handleLoadSong(queued), 20);
+                }
             }
+            return;
         }
 
         const isAppNativeLoad = isAppNative;
