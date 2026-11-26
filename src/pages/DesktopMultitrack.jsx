@@ -221,6 +221,7 @@ import { collection, addDoc, getDocs, onSnapshot, query, where, orderBy, limit, 
 import { getSongMusicalKey } from '../utils/transposer.js'
 import { trackUserUsage } from '../utils/usageMetrics'
 import { DesktopProSubscribeModal } from '../desktop/DesktopProSubscribeModal.jsx'
+import { PAID_PLANS_ENABLED, FREE_LAUNCH_STORAGE_GB } from '../config/features'
 import { LOGO_BLANCO_PNG } from '../utils/publicAssets.js'
 import { songMapService, secondsToBarBeat } from '../utils/SongMapService.js'
 
@@ -983,9 +984,9 @@ export default function Multitrack({ session }) {
         if (saved) return saved;
         return 'https://mixernew-production.up.railway.app';
     });
-    const [isDemo, setIsDemo] = useState(true);
+    const [isDemo, setIsDemo] = useState(PAID_PLANS_ENABLED);
     /** Escritorio: 'demo' | 'pro_local' | 'pro_online' (también legacy `pro` en SQLite → tratado como PC). */
-    const [desktopLicenseTier, setDesktopLicenseTier] = useState(null);
+    const [desktopLicenseTier, setDesktopLicenseTier] = useState(PAID_PLANS_ENABLED ? null : 'pro_online');
     const [showProSubscribeModal, setShowProSubscribeModal] = useState(false);
     const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
     const [authEmail, setAuthEmail] = useState('');
@@ -998,6 +999,11 @@ export default function Multitrack({ session }) {
     useEffect(() => {
         if (typeof window !== 'undefined' && window.zionNative && window.zionNative.getLicense) {
             window.zionNative.getLicense().then((lic) => {
+                if (!PAID_PLANS_ENABLED) {
+                    setDesktopLicenseTier('pro_online');
+                    setIsDemo(false);
+                    return;
+                }
                 const mode = lic?.mode || 'demo';
                 if (mode === 'pro_online') {
                     setDesktopLicenseTier('pro_online');
@@ -2176,6 +2182,14 @@ export default function Multitrack({ session }) {
                 const revoked = data?.desktopProActive === false;
                 const hasTier = tier === 'pro_local' || tier === 'pro_online';
 
+                if (!PAID_PLANS_ENABLED) {
+                    try {
+                        await window.zionNative.saveLicense(currentUser.uid, 'pro_online');
+                    } catch { /* ignore */ }
+                    setDesktopLicenseTier('pro_online');
+                    setIsDemo(false);
+                    return;
+                }
                 if (hasTier && !revoked) {
                     try {
                         await window.zionNative.saveLicense(currentUser.uid, tier);
@@ -2211,7 +2225,7 @@ export default function Multitrack({ session }) {
             setGlobalCatalogLoading(false);
             return;
         }
-        const globalOnlineLocked = typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local';
+        const globalOnlineLocked = PAID_PLANS_ENABLED && typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local';
         if (globalOnlineLocked) {
             setGlobalSongs([]);
             setGlobalCatalogLoading(false);
@@ -4142,7 +4156,7 @@ export default function Multitrack({ session }) {
                     </button>
                 )}
                 
-                {isDemo && (
+                {PAID_PLANS_ENABLED && isDemo && (
                     <button
                         type="button"
                         onClick={() => {
@@ -4178,7 +4192,7 @@ export default function Multitrack({ session }) {
                 )}
                 {!isDemo && desktopLicenseTier && typeof window !== 'undefined' && window.zionNative && (
                     <span
-                        title={desktopLicenseTier === 'pro_online' ? 'Plan PRO Online — catálogo en línea incluido' : 'Plan PRO — multitracks propios en este PC'}
+                        title={!PAID_PLANS_ENABLED ? `Acceso Gratuito (${FREE_LAUNCH_STORAGE_GB} GB + Global VIP + Locales)` : (desktopLicenseTier === 'pro_online' ? 'Plan PRO Online — catálogo en línea incluido' : 'Plan PRO — multitracks propios en este PC')}
                         style={{
                             fontSize: '0.7rem',
                             fontWeight: 900,
@@ -4191,7 +4205,7 @@ export default function Multitrack({ session }) {
                             whiteSpace: 'nowrap',
                         }}
                     >
-                        {desktopLicenseTier === 'pro_online' ? 'PRO Online' : 'PRO'}
+                        {!PAID_PLANS_ENABLED ? `GRATIS ${FREE_LAUNCH_STORAGE_GB}GB · VIP` : (desktopLicenseTier === 'pro_online' ? 'PRO Online' : 'PRO')}
                     </span>
                 )}
 
@@ -5851,7 +5865,7 @@ export default function Multitrack({ session }) {
                 downloadProgress={downloadProgress}
                 onDownloadAdd={handleDownloadAndAdd}
                 globalCatalogDocCount={globalSongs.length}
-                globalOnlineLocked={typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local'}
+                globalOnlineLocked={PAID_PLANS_ENABLED && typeof window !== 'undefined' && !!window.zionNative && desktopLicenseTier === 'pro_local'}
                 canPcImport={isElectronDesktopMixer() && (!!window.zionNative?.pickPcAudioFolder || !!window.zionNative?.pickPcAudioFiles)}
                 onPcImportOpen={handlePcImportModalOpen}
                 onDeleteSong={handleDeleteLibrarySong}
