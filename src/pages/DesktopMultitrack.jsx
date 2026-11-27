@@ -753,6 +753,8 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
     canPcImport = false,
     onPcImportOpen,
     onDeleteSong,
+    preloadStatus = {},
+    activeSetlistSongIds = [],
 }) {
     const shouldHideFromVipGlobal = React.useCallback((song) => (
         song?.forSale === true && Number(song?.price || 0) > 0
@@ -891,10 +893,13 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                             {baseSongs.map(song => {
-                                const isDownloading = downloadProgress.songId === song.id;
+                                const isDownloading = preloadStatus[song.id] === 'loading' || downloadProgress.songId === song.id;
+                                const isReady = preloadStatus[song.id] === 'ready';
+                                const isInSetlist = activeSetlistSongIds.includes(song.id);
                                 const isLocal = librarySongs.some(ls => ls.id === song.id);
                                 const isOtherUser = song.userId !== currentUser?.uid;
                                 const listSongKey = getSongMusicalKey(song);
+                                const isDisabled = isDownloading || isInSetlist;
                                 return (
                                     <div key={song.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px', backgroundColor: 'white', border: `1px solid ${isOtherUser ? '#e8d5f5' : '#eee'}`, borderRadius: '8px' }}>
                                         <div style={{ flex: 1 }}>
@@ -910,23 +915,27 @@ const LibraryDrawer = React.memo(function LibraryDrawer({
                                                 {song.tempo && `${song.tempo} BPM`}
                                             </div>
                                             {isDownloading && (
-                                                <div style={{ color: '#00d2d3', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
-                                                    {downloadProgress.text}
+                                                <div style={{ color: '#00a8b5', fontSize: '0.7rem', fontWeight: 'bold', marginTop: '4px' }}>
+                                                    Descargando en segundo plano...
                                                 </div>
                                             )}
                                         </div>
                                         <button
-                                            style={{ 
-                                                background: isDownloading ? '#f39c12' : (isLocal ? '#3498db' : (downloadProgress.songId ? '#ccc' : '#2ecc71')), 
-                                                color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px', 
-                                                cursor: (isDownloading || (downloadProgress.songId && !isLocal)) ? 'not-allowed' : 'pointer', 
-                                                fontSize: '0.8rem', fontWeight: 'bold', minWidth: '85px' 
+                                            style={{
+                                                background: isDownloading ? '#f39c12' : (isInSetlist ? (isReady || isLocal ? '#10b981' : '#3b82f6') : (isLocal ? '#3498db' : '#2ecc71')),
+                                                color: 'white', border: 'none', padding: '8px 10px', borderRadius: '4px',
+                                                cursor: isDisabled ? 'default' : 'pointer',
+                                                fontSize: '0.8rem', fontWeight: 'bold', minWidth: '85px', whiteSpace: 'nowrap'
                                             }}
-                                            title={isLocal ? "Añadir al Setlist" : "Descargar y Añadir"}
-                                            onClick={() => !isDownloading && onDownloadAdd(song)}
-                                            disabled={isDownloading || (!!downloadProgress.songId && !isLocal)}
+                                            title={isInSetlist ? 'Ya está en tu setlist' : (isLocal ? 'Añadir al Setlist' : 'Añadir y descargar silenciosamente en segundo plano')}
+                                            onClick={() => !isDisabled && onDownloadAdd(song)}
+                                            disabled={isDisabled}
                                         >
-                                            {isDownloading ? '⏳ Bajando...' : (isLocal ? '➕ Añadir' : (downloadProgress.songId ? 'Espere...' : '➕ Añadir'))}
+                                            {isDownloading
+                                                ? '⏳ Bajando...'
+                                                : isInSetlist
+                                                    ? ((isReady || isLocal) ? '✓ Ready' : '✓ En setlist')
+                                                    : '➕ Añadir'}
                                         </button>
                                         {libraryTab === 'mine' && typeof onDeleteSong === 'function' && (
                                             <button
@@ -2013,24 +2022,46 @@ export default function Multitrack({ session }) {
         lruOrder.current.push(songId);
     };
 
-    // Auto-load last active setlist on mount once setlists are fetched
+    const hasAutoLoadedFirstSongRef = useRef(false);
+
+    // Auto-load last active setlist (or first available) on mount once setlists are fetched
     useEffect(() => {
         if (!hasAutoLoaded.current && setlists.length > 0 && !activeSetlist) {
             const lastId = localStorage.getItem('mixer_lastSetlistId');
-            if (lastId) {
-                const found = setlists.find(s => s.id === lastId);
-                if (found) {
-                    console.log("Auto-loading last setlist:", found.name);
-                    setActiveSetlist(found);
-                    // Preload only the start of the setlist
-                    const subset = (found.songs || []).slice(0, 2);
-                    preloadSetlistSongs(subset);
-                }
+            const target = (lastId && setlists.find(s => s.id === lastId)) || setlists[0];
+            if (target) {
+                console.log("Auto-loading setlist:", target.name);
+                try { localStorage.setItem('mixer_lastSetlistId', target.id); } catch { /* ignore */ }
+                setActiveSetlist(target);
+                const subset = (target.songs || []).slice(0, 2);
+                preloadSetlistSongs(subset);
             }
             hasAutoLoaded.current = true;
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [setlists, activeSetlist]);
+
+    // Auto-load the first song of the restored setlist by default on boot
+    useEffect(() => {
+        if (hasAutoLoadedFirstSongRef.current) return;
+        if (!activeSetlist?.songs?.length) return;
+        if (activeSongId) {
+            hasAutoLoadedFirstSongRef.current = true;
+            return;
+        }
+        const pendingSongId = localStorage.getItem('mixer_pendingSongId');
+        if (pendingSongId) {
+            hasAutoLoadedFirstSongRef.current = true;
+            return;
+        }
+        hasAutoLoadedFirstSongRef.current = true;
+        const firstSong = activeSetlist.songs[0];
+        if (firstSong) {
+            console.log('[BOOT] Auto-loading first song of active setlist:', firstSong.name);
+            setTimeout(() => handleLoadSong(firstSong), 120);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeSetlist?.id, activeSetlist?.songs?.length]);
 
     // Preload first 2 songs whenever the active setlist changes (covers manual selection too)
     useEffect(() => {
@@ -2441,121 +2472,125 @@ export default function Multitrack({ session }) {
         }
     };
 
-    const handleDownloadAndAdd = async (song) => {
-        if (downloadProgress.songId) {
-            console.log("[DOWNLOAD LOCK] acquired - already downloading");
-            return;
-        }
+    const desktopDownloadsInFlightRef = useRef(new Set());
 
-        const isDownloaded = await LocalLibraryService.isSongDownloaded(song);
-        if (isDownloaded) {
-            console.log(`[LOAD] source local cache (already downloaded): ${song.id}`);
-            // Si ya está descargada, saltamos el bucle de descarga pero seguimos con la lógica de añadir al setlist
-        }
+    // Descarga silenciosa en segundo plano para Escritorio (sin alert, sin bloquear el mixer ni otras canciones)
+    const downloadSongSilentlyDesktop = async (song) => {
+        if (!song?.id) return;
+        if (desktopDownloadsInFlightRef.current.has(song.id)) return;
+        desktopDownloadsInFlightRef.current.add(song.id);
 
-        console.log(`[GLOBAL DOWNLOAD] start ${song.id}`);
-        console.log("[DOWNLOAD LOCK] acquired for", song.name);
-
+        setPreloadStatus((prev) => ({ ...prev, [song.id]: 'loading' }));
         try {
-            if (!isDownloaded) {
-                setDownloadProgress({ songId: song.id, text: "Descargando..." });
-                const tracks = song.tracks || [];
-                
-                for (let i = 0; i < tracks.length; i++) {
-                    const tr = tracks[i];
-                    if (!tr.url || tr.url === 'undefined' || tr.name === PREVIEW_TRACK_NAME) continue;
-                    if (tr.url === 'local-file' || tr.isPcImportStem) {
-                        const okLocal = await LocalLibraryService.isTrackDownloaded(song.id, tr.name);
-                        if (!okLocal) throw new Error(`Falta archivo local para la pista «${tr.name}». Vuelve a importar la carpeta.`);
-                        continue;
-                    }
+            const tracks = (song.tracks || []).filter(
+                (tr) => tr.url && tr.url !== 'undefined' && tr.name !== PREVIEW_TRACK_NAME
+            );
 
-                    setDownloadProgress({ songId: song.id, text: `Bajando pista ${i + 1}/${tracks.length}: ${tr.name}` });
-
+            // Descargar en lotes de 3 stems en paralelo con micro-yield entre lotes para 0 lag en la app
+            for (let i = 0; i < tracks.length; i += 3) {
+                const batch = tracks.slice(i, i + 3);
+                await Promise.all(batch.map(async (tr) => {
+                    if (tr.url === 'local-file' || tr.isPcImportStem) return;
                     const exists = await LocalLibraryService.isTrackDownloaded(song.id, tr.name);
                     if (!exists) {
                         const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
                         if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
                         const buffer = await r.arrayBuffer();
                         await LocalLibraryService.saveTrack(song.id, tr.name, buffer);
-                    } else {
-                        console.log(`[LOCAL CACHE] track already exists: ${tr.name}`);
                     }
-                }
+                }));
+                await new Promise((r) => setTimeout(r, 0));
             }
-            
-            setDownloadProgress({ songId: song.id, text: "Finalizando..." });
-            
-            if (isAppNative) {
-                const manifestTracks = buildDesktopManifestTrackEntries(song).map((t) => ({ ...t, isDownloaded: true }));
-                const previewMixLocalPath = manifestTracks.find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey || null;
-                const localSong = {
-                    ...song,
-                    isLocal: true,
-                    downloaded: true,
-                    downloadedAt: new Date().toISOString(),
-                    previewMixLocalPath,
+
+            const manifestTracks = buildDesktopManifestTrackEntries(song).map((t) => ({ ...t, isDownloaded: true }));
+            const previewMixLocalPath = manifestTracks.find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey || null;
+            const localSong = {
+                ...song,
+                isLocal: true,
+                downloaded: true,
+                downloadedAt: new Date().toISOString(),
+                previewMixLocalPath,
+                tracks: manifestTracks,
+            };
+
+            if (window.zionNative?.saveSong) {
+                await window.zionNative.saveSong({
+                    id: localSong.id,
+                    name: localSong.name,
+                    artist: localSong.artist,
+                    tempo: localSong.tempo,
+                    key: localSong.key || getSongMusicalKey(localSong),
                     tracks: manifestTracks,
-                };
-
-                if (window.zionNative) {
-                    await window.zionNative.saveSong({
-                        id: localSong.id,
-                        name: localSong.name,
-                        artist: localSong.artist,
-                        tempo: localSong.tempo,
-                        key: localSong.key || getSongMusicalKey(localSong),
-                        tracks: manifestTracks,
-                        downloaded: true,
-                        previewMixLocalPath,
-                    });
-                    console.log(`[LOCAL LIBRARY] saved song ${song.id} tracks count: ${localSong.tracks.length}`);
-                }
-
-                setLibrarySongs((prev) => {
-                    const filtered = prev.filter((s) => s.id !== song.id);
-                    return [...filtered, localSong];
+                    downloaded: true,
+                    previewMixLocalPath,
                 });
-
-                if (activeSetlist) {
-                    const alreadyInSetlist = activeSetlist.songs.some(s => s.id === song.id);
-                    if (alreadyInSetlist) {
-                        alert("Esta canción ya está en tu setlist.");
-                    } else {
-                        const updatedSongs = [...activeSetlist.songs, localSong];
-                        const updatedSetlist = { ...activeSetlist, songs: updatedSongs, synced: 0 };
-                        if (window.zionNative) {
-                            await window.zionNative.saveSetlist(updatedSetlist);
-                            console.log(`[SETLIST] added local song ${song.id} tracks count: ${localSong.tracks.length}`);
-
-                            if (isOnline && auth.currentUser && !auth.currentUser.isAnonymous) {
-                                try {
-                                    console.log("[FIRESTORE] Syncing updated setlist...");
-                                    await setDoc(doc(db, "setlists", updatedSetlist.id), cleanUndefinedForFirestore({
-                                        name: updatedSetlist.name,
-                                        userId: auth.currentUser.uid,
-                                        songs: updatedSongs,
-                                        updatedAt: new Date().toISOString()
-                                    }));
-                                    updatedSetlist.synced = 1;
-                                    await window.zionNative.saveSetlist(updatedSetlist);
-                                } catch(e) { console.warn("[FIRESTORE] Sync falló", e); }
-                            }
-                        }
-                        setActiveSetlist(updatedSetlist);
-                        setSetlists(prev => prev.map(sl => sl.id === updatedSetlist.id ? updatedSetlist : sl));
-                        alert(isDownloaded ? "¡Canción añadida al setlist!" : "¡Canción descargada y añadida al setlist!");
-                    }
-                } else {
-                    alert("Por favor, selecciona o crea un Setlist primero en la pestaña \"Setlists\".");
-                }
             }
+
+            setLibrarySongs((prev) => [...prev.filter((s) => s.id !== song.id), localSong]);
+            setPreloadStatus((prev) => ({ ...prev, [song.id]: 'ready' }));
+            console.log(`[DESKTOP BG DOWNLOAD] "${song.name}" READY`);
         } catch (e) {
-            console.error("[DOWNLOAD] Error:", e);
-            alert("Error en la descarga");
+            console.error('[DESKTOP BG DOWNLOAD] Error:', song.name, e);
+            setPreloadStatus((prev) => ({ ...prev, [song.id]: 'error' }));
         } finally {
-            console.log("[DOWNLOAD LOCK] released");
-            setDownloadProgress({ songId: null, text: "" });
+            desktopDownloadsInFlightRef.current.delete(song.id);
+        }
+    };
+
+    const handleDownloadAndAdd = async (song) => {
+        if (!activeSetlist) {
+            alert('Por favor, selecciona o crea un Setlist primero en la pestaña "Setlists".');
+            return;
+        }
+
+        const alreadyInSetlist = (activeSetlist.songs || []).some((s) => s.id === song.id);
+        const isDownloaded = await LocalLibraryService.isSongDownloaded(song);
+        const manifestTracks = buildDesktopManifestTrackEntries(song).map((t) => ({ ...t, isDownloaded }));
+        const previewMixLocalPath = manifestTracks.find((t) => t.name === PREVIEW_TRACK_NAME)?.cacheKey || null;
+        const songEntry = {
+            ...song,
+            isLocal: isDownloaded,
+            downloaded: isDownloaded,
+            previewMixLocalPath,
+            tracks: manifestTracks,
+        };
+
+        // 1. Añadir al setlist de inmediato (sin bloquear el modal ni la app)
+        if (!alreadyInSetlist) {
+            const updatedSongs = [...(activeSetlist.songs || []), songEntry];
+            const updatedSetlist = { ...activeSetlist, songs: updatedSongs, synced: 0 };
+            setActiveSetlist(updatedSetlist);
+            setSetlists((prev) => prev.map((sl) => (sl.id === updatedSetlist.id ? updatedSetlist : sl)));
+
+            // Persistir en SQLite + Firestore sin bloquear al usuario
+            (async () => {
+                try {
+                    if (window.zionNative?.saveSetlist) {
+                        await window.zionNative.saveSetlist(updatedSetlist);
+                    }
+                    if (isOnline && auth.currentUser && !auth.currentUser.isAnonymous) {
+                        await setDoc(doc(db, 'setlists', updatedSetlist.id), cleanUndefinedForFirestore({
+                            name: updatedSetlist.name,
+                            userId: auth.currentUser.uid,
+                            songs: updatedSongs,
+                            updatedAt: new Date().toISOString()
+                        }));
+                        updatedSetlist.synced = 1;
+                        if (window.zionNative?.saveSetlist) {
+                            await window.zionNative.saveSetlist(updatedSetlist);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[SETLIST BG SAVE]', e);
+                }
+            })();
+        }
+
+        // 2. Si faltan stems, descargar silenciosamente en segundo plano (sin await bloqueante)
+        if (!isDownloaded) {
+            downloadSongSilentlyDesktop(song);
+        } else {
+            setPreloadStatus((prev) => ({ ...prev, [song.id]: 'ready' }));
         }
     };
 
@@ -2646,6 +2681,12 @@ export default function Multitrack({ session }) {
         const isElectronDesktop = isElectronDesktopMixer();
 
         if (isElectronDesktop) {
+            // Si esta canción específica todavía se está descargando en segundo plano, no bloquear JUCE ni colgar:
+            // el usuario puede seguir usando cualquier otra canción ya descargada del setlist.
+            if (desktopDownloadsInFlightRef.current.has(song.id)) {
+                console.log('[DESKTOP NATIVE] song still downloading in background:', song.name);
+                return;
+            }
             // Blindaje contra prueba de estrés (clics rápidos A -> B -> C):
             // NUNCA enviar 2 loadSongFromPaths concurrentes al motor JUCE C++ (causa deadlock).
             // Si ya hay una carga en curso, guardamos el último clic y lo ejecutamos apenas termine la actual.
@@ -3749,27 +3790,10 @@ export default function Multitrack({ session }) {
         const hasSongs = (activeSetlist?.songs || []).length > 0;
         const hasAnythingLoading = Object.values(preloadStatus).some((s) => s === 'loading');
         clearInterval(countdownRef.current);
-        if (anyDrawer) {
-            setShowPreloader(false);
-            return () => clearInterval(countdownRef.current);
-        }
-        if (!(hasSongs && hasAnythingLoading)) {
-            setShowPreloader(false);
-            return undefined;
-        }
-        setShowPreloader(true);
-        setCountdown(10);
-        countdownRef.current = setInterval(() => {
-            setCountdown((prev) => {
-                if (prev <= 1) {
-                    clearInterval(countdownRef.current);
-                    setShowPreloader(false);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-        return () => clearInterval(countdownRef.current);
+        // Escritorio: no mostrar el overlay fullscreen de conteo con logo al cambiar de canción
+        clearInterval(countdownRef.current);
+        setShowPreloader(false);
+        return undefined;
     }, [
         activeSetlist?.id,
         preloadStatus,
@@ -5887,6 +5911,8 @@ export default function Multitrack({ session }) {
                 canPcImport={isElectronDesktopMixer() && (!!window.zionNative?.pickPcAudioFolder || !!window.zionNative?.pickPcAudioFiles)}
                 onPcImportOpen={handlePcImportModalOpen}
                 onDeleteSong={handleDeleteLibrarySong}
+                preloadStatus={preloadStatus}
+                activeSetlistSongIds={(activeSetlist?.songs || []).map(s => s.id)}
             />
             {pcImportOpen && (
                 <div
