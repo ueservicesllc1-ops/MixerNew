@@ -600,17 +600,20 @@ app.whenReady().then(() => {
         }
     });
 
+    let audioLoadGeneration = 0;
+    let isAudioLoading = false;
+
     ipcMain.on('audio:play', () => {
-        if (engine) engine.play();
+        if (engine && !isAudioLoading) engine.play();
     });
     ipcMain.on('audio:pause', () => {
-        if (engine) engine.pause();
+        if (engine && !isAudioLoading) engine.pause();
     });
     ipcMain.on('audio:stop', () => {
-        if (engine) engine.stop();
+        if (engine && !isAudioLoading) engine.stop();
     });
     ipcMain.on('audio:seek', (_e, pos) => {
-        if (engine) engine.seek(typeof pos === 'number' ? pos : 0);
+        if (engine && !isAudioLoading) engine.seek(typeof pos === 'number' ? pos : 0);
     });
     ipcMain.handle('audio:set-pitch', (_e, semi) => {
         try {
@@ -752,19 +755,30 @@ app.whenReady().then(() => {
 
     ipcMain.handle('audio:load', async (_e, tracks) => {
         if (!engine || !Array.isArray(tracks)) return false;
+        const myGen = ++audioLoadGeneration;
         const decryptedTracks = [];
         for (const t of tracks) {
+            if (audioLoadGeneration !== myGen) {
+                console.log('[Zion] audio:load cancelled before decrypting next stem');
+                return false;
+            }
             const resolved = await resolveEncryptedCacheKey(t);
+            if (audioLoadGeneration !== myGen) return false;
             if (!resolved) continue;
             decryptedTracks.push({ ...t, filename: resolved.key, path: resolved.decPath });
+            // Yield event loop so UI/IPC never freezes during decryption
+            await new Promise((r) => setImmediate(r));
         }
+        if (audioLoadGeneration !== myGen) return false;
         if (decryptedTracks.length === 0) {
             console.warn('[Zion] audio:load — sin stems desencriptados (¿faltan archivos en .zionpack?)');
             return false;
         }
+        isAudioLoading = true;
         try {
+            try { engine.stop(); } catch (_) {}
             const ok = engine.loadStemsFromPaths(decryptedTracks);
-            if (ok) {
+            if (ok && audioLoadGeneration === myGen) {
                 loadedTracks = decryptedTracks;
                 applyBusVolumeMuteSolo();
             }
@@ -772,11 +786,13 @@ app.whenReady().then(() => {
         } catch (err) {
             console.error('[Zion] loadStemsFromPaths:', err);
             return false;
+        } finally {
+            isAudioLoading = false;
         }
     });
 
     ipcMain.handle('audio:get-snapshot', () => {
-        if (!engine) return '{"positionSec":0,"durationSec":0}';
+        if (!engine || isAudioLoading) return '{"positionSec":0,"durationSec":0}';
         try {
             return engine.getPlaybackSnapshot();
         } catch (_) {

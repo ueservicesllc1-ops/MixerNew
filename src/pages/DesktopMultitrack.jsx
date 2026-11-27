@@ -2486,20 +2486,19 @@ export default function Multitrack({ session }) {
                 (tr) => tr.url && tr.url !== 'undefined' && tr.name !== PREVIEW_TRACK_NAME
             );
 
-            // Descargar en lotes de 3 stems en paralelo con micro-yield entre lotes para 0 lag en la app
-            for (let i = 0; i < tracks.length; i += 3) {
-                const batch = tracks.slice(i, i + 3);
-                await Promise.all(batch.map(async (tr) => {
-                    if (tr.url === 'local-file' || tr.isPcImportStem) return;
-                    const exists = await LocalLibraryService.isTrackDownloaded(song.id, tr.name);
-                    if (!exists) {
-                        const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
-                        if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
-                        const buffer = await r.arrayBuffer();
-                        await LocalLibraryService.saveTrack(song.id, tr.name, buffer);
-                    }
-                }));
-                await new Promise((r) => setTimeout(r, 0));
+            // Descargar 1 stem a la vez con pausa breve para no saturar el proceso Main de Electron
+            // ni bloquear encriptación/reproducción mientras el usuario usa otras canciones.
+            for (let i = 0; i < tracks.length; i++) {
+                const tr = tracks[i];
+                if (tr.url === 'local-file' || tr.isPcImportStem) continue;
+                const exists = await LocalLibraryService.isTrackDownloaded(song.id, tr.name);
+                if (!exists) {
+                    const r = await fetch(`${proxyUrl}/api/download?url=${encodeURIComponent(tr.url)}`);
+                    if (!r.ok) throw new Error(`Error ${r.status} descargando ${tr.name}`);
+                    const buffer = await r.arrayBuffer();
+                    await LocalLibraryService.saveTrack(song.id, tr.name, buffer);
+                    await new Promise((res) => setTimeout(res, 60));
+                }
             }
 
             const manifestTracks = buildDesktopManifestTrackEntries(song).map((t) => ({ ...t, isDownloaded: true }));
@@ -2673,11 +2672,6 @@ export default function Multitrack({ session }) {
             return;
         }
 
-        // Parar transporte al cambiar de canción (sin espera artificial: retrasa cada cambio ~1s).
-        await audioEngine.stop();
-        setIsPlaying(false);
-        progressRef.current = 0;
-
         const isElectronDesktop = isElectronDesktopMixer();
 
         if (isElectronDesktop) {
@@ -2688,7 +2682,7 @@ export default function Multitrack({ session }) {
                 return;
             }
             // Blindaje contra prueba de estrés (clics rápidos A -> B -> C):
-            // NUNCA enviar 2 loadSongFromPaths concurrentes al motor JUCE C++ (causa deadlock).
+            // NUNCA llamar audioEngine.stop() ni enviar 2 loadSongFromPaths concurrentes al motor JUCE C++.
             // Si ya hay una carga en curso, guardamos el último clic y lo ejecutamos apenas termine la actual.
             if (desktopLoadBusyRef.current || isPreparingSong) {
                 console.log('[DESKTOP NATIVE] load busy -> queuing latest song:', song.name);
@@ -2699,6 +2693,10 @@ export default function Multitrack({ session }) {
             }
             desktopLoadBusyRef.current = true;
             isPreparingSong = true;
+            // Ahora sí es seguro parar el audio actual porque no hay otra carga JUCE en curso
+            await audioEngine.stop();
+            setIsPlaying(false);
+            progressRef.current = 0;
             const tFast0 = performance.now();
             try {
                 const row = await LocalLibraryService.getSong(song.id);
@@ -2713,6 +2711,14 @@ export default function Multitrack({ session }) {
                     downloaded: !!(row && parsed.downloaded),
                     previewMixLocalPath: parsed.previewMixLocalPath,
                 };
+                // Si la canción todavía no está descargada localmente, bajarla silenciosamente en segundo plano
+                // sin bloquear ni pasar archivos inexistentes a JUCE.
+                const hasLocalFiles = await LocalLibraryService.isSongDownloaded(mergedSong);
+                if (!hasLocalFiles) {
+                    console.log('[DESKTOP NATIVE] song not downloaded yet -> starting silent background download:', mergedSong.name);
+                    downloadSongSilentlyDesktop(mergedSong);
+                    return;
+                }
                 console.log('[DESKTOP NATIVE] using JUCE engine');
                 setActiveSongId(song.id);
                 setViewedSongId(song.id);
