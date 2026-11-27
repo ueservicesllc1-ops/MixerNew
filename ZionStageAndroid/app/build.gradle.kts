@@ -7,13 +7,13 @@ plugins {
 
 android {
     namespace = "com.zionstagelive.nativeapp"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.zionstagelive.app"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 141
+        targetSdk = 36
+        versionCode = 142
         versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
