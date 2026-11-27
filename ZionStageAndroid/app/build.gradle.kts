@@ -10,11 +10,11 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.zionstagelive.nativeapp"
+        applicationId = "com.zionstagelive.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "2.0.0-native"
+        versionCode = 141
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -30,9 +30,19 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("mixer-release-key.keystore")
+            storePassword = "mixer123"
+            keyAlias = "mixer"
+            keyPassword = "mixer123"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

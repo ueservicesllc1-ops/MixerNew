@@ -6,7 +6,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 object NativeAudioEngine {
     private const val TAG = "NativeAudioEngine"
@@ -64,6 +66,11 @@ object NativeAudioEngine {
     private val _isSessionLoading = MutableStateFlow(false)
     val isSessionLoading: StateFlow<Boolean> = _isSessionLoading.asStateFlow()
 
+    private val _waveformPeaks = MutableStateFlow(FloatArray(0))
+    val waveformPeaks: StateFlow<FloatArray> = _waveformPeaks.asStateFlow()
+    private var waveformJob: Job? = null
+    private var waveformGeneration: Long = 0L
+
     fun loadSongSession(stems: List<Stem>, onComplete: (() -> Unit)? = null) {
         if (!isLibLoaded || stems.isEmpty()) {
             onComplete?.invoke()
@@ -74,6 +81,9 @@ object NativeAudioEngine {
             onComplete?.invoke()
             return
         }
+
+        // Kick off real waveform extraction (or instant disk cache load) in parallel
+        loadOrComputeWaveform(validStems)
 
         loadSessionJob?.cancel()
         loadSessionJob = engineScope.launch(Dispatchers.IO) {
@@ -89,6 +99,67 @@ object NativeAudioEngine {
                 Log.e(TAG, "Error in loadSongSession", e)
             } finally {
                 _isSessionLoading.value = false
+            }
+        }
+    }
+
+    private fun loadOrComputeWaveform(validStems: List<Stem>) {
+        val gen = ++waveformGeneration
+        waveformJob?.cancel()
+
+        val firstPath = validStems.firstOrNull()?.localPath ?: return
+        val songDir = File(firstPath).parentFile
+        val cacheFile = if (songDir != null && songDir.isDirectory) File(songDir, "waveform_v1.json") else null
+
+        // Clear immediately so we never display the previous song's waveform
+        _waveformPeaks.value = FloatArray(0)
+
+        waveformJob = engineScope.launch(Dispatchers.IO) {
+            // 1. Instant disk cache lookup
+            if (cacheFile != null && cacheFile.exists()) {
+                try {
+                    val arr = JSONArray(cacheFile.readText())
+                    if (arr.length() >= 32) {
+                        val cached = FloatArray(arr.length()) { idx ->
+                            arr.optDouble(idx, 0.04).toFloat().coerceIn(0.03f, 1f)
+                        }
+                        if (isActive && gen == waveformGeneration) {
+                            _waveformPeaks.value = cached
+                        }
+                        return@launch
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // 2. Select up to 4 musical stems (exclude click/guide unless song has nothing else)
+            val musical = validStems.filter { it.role != "click" && it.role != "guide" }
+            val priority = mapOf("drums" to 0, "bass" to 1, "keys" to 2, "guitar" to 3, "vocal" to 4, "instrument" to 5)
+            val chosen = (if (musical.isNotEmpty()) musical else validStems)
+                .sortedBy { priority[it.role] ?: 9 }
+                .take(4)
+                .mapNotNull { it.localPath }
+                .filter { File(it).exists() }
+                .toTypedArray()
+
+            if (chosen.isEmpty()) return@launch
+
+            try {
+                val peaks = nativeComputeWaveformPeaks(chosen, 180)
+                if (isActive && gen == waveformGeneration && peaks != null && peaks.isNotEmpty()) {
+                    _waveformPeaks.value = peaks
+                    // Persist to disk cache for instant loads next time
+                    if (cacheFile != null) {
+                        try {
+                            val jsonArr = JSONArray()
+                            for (p in peaks) {
+                                jsonArr.put(kotlin.math.round(p * 1000f) / 1000.0)
+                            }
+                            cacheFile.writeText(jsonArr.toString())
+                        } catch (_: Exception) {}
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Waveform extraction failed", e)
             }
         }
     }
@@ -228,4 +299,5 @@ object NativeAudioEngine {
     private external fun nativeTempoLabSetActive(on: Boolean)
     private external fun nativeTempoLabSetRatio(ratio: Float)
     private external fun nativeGetSnapshotJson(): String?
+    private external fun nativeComputeWaveformPeaks(paths: Array<String>, binCount: Int): FloatArray?
 }

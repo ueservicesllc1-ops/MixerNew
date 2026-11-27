@@ -288,7 +288,7 @@ class DataStore: ObservableObject {
             "artist": song.artist ?? "",
             "key": song.key ?? "C",
             "bpm": song.bpm ?? 120.0,
-            "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "name": $0.name ?? ""] } ?? []
+            "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "url": $0.path, "name": $0.name ?? ""] } ?? []
         ]
         
         db.collection("setlists").document(targetId).updateData([
@@ -335,7 +335,7 @@ class DataStore: ObservableObject {
                         "artist": song.artist ?? "",
                         "key": song.key ?? "C",
                         "bpm": song.bpm ?? 120.0,
-                        "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "name": $0.name ?? ""] } ?? []
+                        "tracks": song.tracks?.map { ["id": $0.id, "path": $0.path, "url": $0.path, "name": $0.name ?? ""] } ?? []
                     ]
                 }
                 

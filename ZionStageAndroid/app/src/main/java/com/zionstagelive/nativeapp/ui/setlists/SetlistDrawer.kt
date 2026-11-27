@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 import com.zionstagelive.nativeapp.models.Setlist
 import com.zionstagelive.nativeapp.models.Song
 import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 @Composable
@@ -37,6 +39,7 @@ fun SetlistDrawer(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isEn = rememberIsEnglish()
     var selectedSetlist by remember { mutableStateOf<Setlist?>(null) }
     var isCreatingSetlist by remember { mutableStateOf(false) }
     var newSetlistName by remember { mutableStateOf("") }
@@ -100,7 +103,7 @@ fun SetlistDrawer(
                                 }
                             }
                             Text(
-                                text = selectedSetlist?.name ?: "Mis Setlists",
+                                text = selectedSetlist?.name ?: tr(isEn, "Mis Setlists", "My Setlists"),
                                 color = TextPrimary,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
@@ -141,7 +144,7 @@ fun SetlistDrawer(
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
                                     Text(
-                                        text = "Crear Nuevo Setlist",
+                                        text = tr(isEn, "Crear Nuevo Setlist", "Create New Setlist"),
                                         color = TextPrimary,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold
@@ -149,7 +152,7 @@ fun SetlistDrawer(
                                     OutlinedTextField(
                                         value = newSetlistName,
                                         onValueChange = { newSetlistName = it },
-                                        placeholder = { Text("Nombre (Ej: Domingo AM, Ensayo)", color = TextMuted, fontSize = 13.sp) },
+                                        placeholder = { Text(tr(isEn, "Nombre (Ej: Domingo AM, Ensayo)", "Name (e.g. Sunday AM, Rehearsal)"), color = TextMuted, fontSize = 13.sp) },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = OutlinedTextFieldDefaults.colors(
@@ -179,7 +182,7 @@ fun SetlistDrawer(
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
-                                            Text("✔ Guardar", fontWeight = FontWeight.Bold)
+                                            Text(tr(isEn, "✔ Guardar", "✔ Save"), fontWeight = FontWeight.Bold)
                                         }
                                         OutlinedButton(
                                             onClick = {
@@ -191,7 +194,7 @@ fun SetlistDrawer(
                                             colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
                                             border = androidx.compose.foundation.BorderStroke(1.dp, BorderSubtle)
                                         ) {
-                                            Text("Cancelar")
+                                            Text(tr(isEn, "Cancelar", "Cancel"))
                                         }
                                     }
                                 }
@@ -207,7 +210,7 @@ fun SetlistDrawer(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("+ Crear Nuevo Setlist", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(tr(isEn, "+ Crear Nuevo Setlist", "+ Create New Setlist"), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                             }
                         }
 

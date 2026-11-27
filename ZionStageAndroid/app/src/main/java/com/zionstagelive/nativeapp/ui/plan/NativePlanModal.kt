@@ -1,14 +1,15 @@
-﻿package com.zionstagelive.nativeapp.ui.plan
+package com.zionstagelive.nativeapp.ui.plan
 
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -29,16 +30,24 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 
 @Composable
 fun NativePlanModal(
     userPlanId: String,
     userEmail: String?,
+    isMandatoryGate: Boolean = false,
+    needsEmailVerification: Boolean = false,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val isEn = rememberIsEnglish()
+    val paidPlansEnabled = FirebaseService.PAID_PLANS_ENABLED
+    val freeGb = FirebaseService.FREE_LAUNCH_STORAGE_GB
+
     val vipIds = setOf("vip1", "vip2", "vip3", "zion_desktop_pro_online", "universal_pro")
-    val isVip = vipIds.contains(userPlanId)
+    val isVip = !paidPlansEnabled || vipIds.contains(userPlanId)
 
     val planLabels = mapOf(
         "vip1" to "VIP",
@@ -53,22 +62,36 @@ fun NativePlanModal(
         "seller" to "VENDEDOR",
         "universal_pro" to "UP ⭐"
     )
-    val displayLabel = planLabels[userPlanId] ?: (if (userPlanId.isNotBlank()) userPlanId.uppercase() else "FREE")
+    val displayLabel = if (!paidPlansEnabled) {
+        tr(isEn, "GRATIS (${freeGb} GB + GLOBAL VIP)", "FREE (${freeGb} GB + GLOBAL VIP)")
+    } else {
+        planLabels[userPlanId] ?: (if (userPlanId.isNotBlank()) userPlanId.uppercase() else "FREE")
+    }
 
     // Login Form State
-    var emailInput by remember { mutableStateOf(userEmail ?: "123@gmail.com") }
+    var emailInput by remember { mutableStateOf(userEmail ?: "") }
     var passwordInput by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var successMessage by remember { mutableStateOf<String?>(null) }
 
+    // Verification state
+    var isCheckingVerify by remember { mutableStateOf(false) }
+    var isResendingVerify by remember { mutableStateOf(false) }
+    var verifyMessage by remember { mutableStateOf<String?>(null) }
+
     Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        onDismissRequest = { if (!isMandatoryGate) onDismiss() },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = !isMandatoryGate,
+            dismissOnClickOutside = !isMandatoryGate
+        )
     ) {
         Surface(
             modifier = Modifier
+                .widthIn(max = 460.dp)
                 .fillMaxWidth(0.92f)
                 .wrapContentHeight()
                 .clip(RoundedCornerShape(18.dp))
@@ -77,28 +100,137 @@ fun NativePlanModal(
             shadowElevation = 24.dp
         ) {
             Box(modifier = Modifier.padding(24.dp)) {
-                // Boton Cerrar
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(32.dp)
-                        .clip(CircleShape)
-                        .background(Color(0x33FFFFFF))
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cerrar",
-                        tint = Color(0xFF888888),
-                        modifier = Modifier.size(18.dp)
-                    )
+                if (!isMandatoryGate) {
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x33FFFFFF))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = Color(0xFF888888),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (!userEmail.isNullOrBlank()) {
+                    if (needsEmailVerification && !userEmail.isNullOrBlank()) {
+                        // Email verification gate
+                        Box(
+                            modifier = Modifier
+                                .size(54.dp)
+                                .clip(CircleShape)
+                                .background(Color(0x2600D2D3)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MarkEmailRead,
+                                contentDescription = null,
+                                tint = Color(0xFF00D2D3),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = "Confirma tu correo electrónico",
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "Enviamos un enlace de verificación a $userEmail. Ábrelo para activar tu cuenta y entrar al mixer.",
+                            color = Color(0xFFCBD5E1),
+                            fontSize = 12.5.sp,
+                            textAlign = TextAlign.Center
+                        )
+
+                        if (!verifyMessage.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = verifyMessage ?: "",
+                                color = Color(0xFF00D2D3),
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                if (isCheckingVerify) return@Button
+                                isCheckingVerify = true
+                                verifyMessage = null
+                                FirebaseService.checkEmailVerification { ok, msg ->
+                                    isCheckingVerify = false
+                                    if (!ok) verifyMessage = msg
+                                }
+                            },
+                            enabled = !isCheckingVerify,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00D2D3))
+                        ) {
+                            Text(
+                                text = if (isCheckingVerify) "Comprobando..." else "Ya confirmé mi correo",
+                                color = Color.Black,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                if (isResendingVerify) return@OutlinedButton
+                                isResendingVerify = true
+                                verifyMessage = null
+                                FirebaseService.resendVerificationEmail { _, msg ->
+                                    isResendingVerify = false
+                                    verifyMessage = msg
+                                }
+                            },
+                            enabled = !isResendingVerify,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155))
+                        ) {
+                            Text(
+                                text = if (isResendingVerify) "Enviando..." else "Reenviar enlace de confirmación",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        TextButton(onClick = { FirebaseService.signOut() }) {
+                            Text("Usar otra cuenta", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                        }
+                    } else if (!userEmail.isNullOrBlank()) {
                         // Usuario conectado
                         Box(
                             modifier = Modifier
@@ -126,7 +258,6 @@ fun NativePlanModal(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Pill del Plan
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(20.dp))
@@ -145,10 +276,10 @@ fun NativePlanModal(
                                 .padding(horizontal = 16.dp, vertical = 7.dp)
                         ) {
                             Text(
-                                text = "PLAN ACTUAL: $displayLabel",
+                                text = tr(isEn, "PLAN ACTUAL: $displayLabel", "CURRENT PLAN: $displayLabel"),
                                 color = if (isVip) Color(0xFFF1C40F) else Color(0xFF00D2D3),
                                 fontWeight = FontWeight.Black,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 letterSpacing = 0.5.sp
                             )
                         }
@@ -167,24 +298,34 @@ fun NativePlanModal(
                             if (isVip) {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
-                                    Text("Acceso completo al Catálogo Global VIP", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        if (!paidPlansEnabled)
+                                            tr(isEn, "$freeGb GB gratis en la nube + Catálogo Global VIP", "$freeGb GB free cloud storage + Global VIP Catalog")
+                                        else
+                                            tr(isEn, "Acceso completo al Catálogo Global VIP", "Full access to Global VIP Catalog"),
+                                        color = Color(0xFFE2E8F0),
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
-                                    Text("Descargas de stems multitrack en alta calidad", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(tr(isEn, "Descargas de stems multitrack en alta calidad", "High-quality multitrack stem downloads"), color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(16.dp))
-                                    Text("Sincronización de setlists en la nube", color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(tr(isEn, "Sincronización de setlists en la nube", "Cloud setlist synchronization"), color = Color(0xFFE2E8F0), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             } else {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Icon(Icons.Default.Info, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(16.dp))
                                     Text("Tu cuenta está en modalidad Gratuita (Free)", color = Color(0xFFCBD5E1), fontSize = 12.sp)
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Default.Language, contentDescription = null, tint = Color(0xFF00D2D3), modifier = Modifier.size(16.dp))
-                                    Text("Puedes actualizar tu plan en zionstage.live", color = Color(0xFF94A3B8), fontSize = 11.5.sp)
+                                if (paidPlansEnabled) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(Icons.Default.Language, contentDescription = null, tint = Color(0xFF00D2D3), modifier = Modifier.size(16.dp))
+                                        Text("Puedes actualizar tu plan en zionstage.live", color = Color(0xFF94A3B8), fontSize = 11.5.sp)
+                                    }
                                 }
                             }
                         }
@@ -208,7 +349,7 @@ fun NativePlanModal(
                             ) {
                                 Icon(Icons.Default.Logout, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Cerrar Sesión", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(tr(isEn, "Cerrar Sesión", "Sign Out"), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Button(
@@ -221,7 +362,7 @@ fun NativePlanModal(
                             }
                         }
                     } else {
-                        // Usuario no conectado: Formulario de inicio de sesión
+                        // Usuario no conectado: Formulario de inicio de sesión + Botón "Unirte" -> zionstage.live
                         Box(
                             modifier = Modifier
                                 .size(50.dp)
@@ -247,7 +388,7 @@ fun NativePlanModal(
                         )
 
                         Text(
-                            text = "Ingresa con tu correo registrado para activar tu plan y repertorios.",
+                            text = "Ingresa con tu correo registrado en Zion Stage.",
                             color = Color(0xFF94A3B8),
                             fontSize = 12.sp,
                             textAlign = TextAlign.Center,
@@ -362,7 +503,7 @@ fun NativePlanModal(
                                 )
                             } else {
                                 Text(
-                                    text = "Iniciar Sesión",
+                                    text = "INICIAR SESIÓN",
                                     color = Color.Black,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 14.sp
@@ -370,16 +511,46 @@ fun NativePlanModal(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                        TextButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth()
+                        // Unirte -> https://zionstage.live
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Continuar como invitado (Modo Free)",
-                                color = Color(0xFF64748B),
-                                fontSize = 12.sp
+                                text = "¿No tienes cuenta?",
+                                color = Color(0xFF94A3B8),
+                                fontSize = 12.5.sp
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://zionstage.live"))
+                                    context.startActivity(intent)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x8000D2D3)),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = Color(0x1F00D2D3),
+                                    contentColor = Color(0xFF00D2D3)
+                                ),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Unirte ↗",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+
+                        if (!paidPlansEnabled) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Gratis $freeGb GB + Global VIP en zionstage.live",
+                                color = Color(0xFF4ADE80),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }

@@ -29,6 +29,8 @@ import com.zionstagelive.nativeapp.models.Setlist
 import com.zionstagelive.nativeapp.models.Song
 import com.zionstagelive.nativeapp.services.DownloadManager
 import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 @Composable
@@ -44,14 +46,15 @@ fun SidebarRight(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val isEn = rememberIsEnglish()
     val padEngine = remember { PadEngine.getInstance(context) }
 
     val padActiveKey by padEngine.activeKey.collectAsState()
     val isPadPlaying by padEngine.isPlaying.collectAsState()
     val padVolume by padEngine.volume.collectAsState()
     val isPadSolo by padEngine.isSolo.collectAsState()
-    var isPadMuted by remember { mutableStateOf(false) }
-    var padOctave by remember { mutableIntStateOf(0) }
+    val isPadMuted by padEngine.isMuted.collectAsState()
+    val padOctave by padEngine.octave.collectAsState()
     var isPadsCollapsed by remember { mutableStateOf(false) }
 
     val downloadedSongIds by downloadManager.downloadedSongIds.collectAsState()
@@ -140,7 +143,7 @@ fun SidebarRight(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "+Canciones",
+                                text = tr(isEn, "+Canciones", "+Songs"),
                                 color = ZionPurpleLight,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
@@ -188,7 +191,7 @@ fun SidebarRight(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "No hay canciones en este setlist.",
+                                text = tr(isEn, "No hay canciones en este setlist.", "No songs in this setlist."),
                                 color = TextSecondary,
                                 fontSize = 12.sp
                             )
@@ -198,7 +201,7 @@ fun SidebarRight(
                                 shape = RoundedCornerShape(6.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("+ Añadir Canciones", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(tr(isEn, "+ Añadir Canciones", "+ Add Songs"), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -596,38 +599,39 @@ fun SidebarRight(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
-                            Text(text = "Octava:", color = TextSecondary, fontSize = 10.sp)
+                            Text(text = tr(isEn, "Octava:", "Octave:"), color = TextSecondary, fontSize = 10.sp)
 
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .clickable { padOctave = (padOctave - 1).coerceAtLeast(-1) },
+                                    .size(26.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (padOctave > -1) Color(0x2EFFFFFF) else Color(0x11FFFFFF))
+                                    .clickable { padEngine.setOctave(padOctave - 1) },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = "-", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(text = "−", color = if (padOctave > -1) Color.White else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
 
                             Text(
                                 text = if (padOctave > 0) "+$padOctave" else "$padOctave",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.width(16.dp)
+                                color = if (padOctave != 0) ZionTealLight else Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.width(20.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
 
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Color(0x22FFFFFF))
-                                    .clickable { padOctave = (padOctave + 1).coerceAtMost(1) },
+                                    .size(26.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (padOctave < 1) Color(0x2EFFFFFF) else Color(0x11FFFFFF))
+                                    .clickable { padEngine.setOctave(padOctave + 1) },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(text = "+", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text(text = "+", color = if (padOctave < 1) Color.White else TextMuted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -638,13 +642,10 @@ fun SidebarRight(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .size(26.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(if (isPadMuted) Color(0xFFFF5252) else Color(0x22FFFFFF))
-                                    .clickable {
-                                        isPadMuted = !isPadMuted
-                                        padEngine.setVolume(if (isPadMuted) 0f else padVolume)
-                                    },
+                                    .clickable { padEngine.toggleMute() },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -657,8 +658,8 @@ fun SidebarRight(
 
                             Box(
                                 modifier = Modifier
-                                    .size(20.dp)
-                                    .clip(RoundedCornerShape(3.dp))
+                                    .size(26.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(if (isPadSolo) Color(0xFFEAB308) else Color(0x22FFFFFF))
                                     .clickable { padEngine.toggleSolo() },
                                 contentAlignment = Alignment.Center

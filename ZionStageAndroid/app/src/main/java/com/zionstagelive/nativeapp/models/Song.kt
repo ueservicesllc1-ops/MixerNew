@@ -34,8 +34,8 @@ data class Stem(
     companion object {
         fun fromTrack(track: Track, songId: String): Stem {
             val nameLow = track.name.lowercase()
-            val isClick = nameLow.contains("click") || nameLow.contains("clik") || nameLow.contains("metronom")
-            val isGuide = !isClick && (nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("cue"))
+            val isClick = nameLow.contains("click") || nameLow.contains("clik") || nameLow.contains("metronom") || nameLow.contains("metrónom")
+            val isGuide = !isClick && (nameLow.contains("guide") || nameLow.contains("guia") || nameLow.contains("guía") || nameLow.contains("cue"))
             val role = when {
                 isClick -> "click"
                 isGuide -> "guide"
@@ -119,7 +119,7 @@ data class Song(
             "timeSignature" to timeSignature,
             "duration" to duration,
             "coverUrl" to coverUrl,
-            "tracks" to tracks.map { mapOf("name" to it.name, "url" to it.url, "normalizedUrl" to it.normalizedUrl, "normalizedReady" to it.normalizedReady) },
+            "tracks" to tracks.map { mapOf("name" to it.name, "url" to it.url, "path" to it.url, "normalizedUrl" to it.normalizedUrl, "normalizedReady" to it.normalizedReady) },
             "lyrics" to lyrics,
             "chords" to chords,
             "userId" to userId,
@@ -159,7 +159,12 @@ data class Song(
             val tracks = trackMaps.map { tMap ->
                 Track(
                     name = (tMap["name"] as? String) ?: (tMap["title"] as? String) ?: "",
-                    url = (tMap["url"] as? String) ?: (tMap["audioUrl"] as? String) ?: "",
+                    url = (tMap["url"] as? String)
+                        ?: (tMap["path"] as? String)
+                        ?: (tMap["audioUrl"] as? String)
+                        ?: (tMap["fileUrl"] as? String)
+                        ?: (tMap["downloadUrl"] as? String)
+                        ?: "",
                     normalizedUrl = tMap["normalizedUrl"] as? String,
                     normalizedReady = (tMap["normalizedReady"] as? Boolean) ?: false
                 )

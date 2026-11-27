@@ -1135,4 +1135,117 @@ JNIEXPORT jstring JNICALL Java_com_zionstagelive_nativeapp_audio_NativeAudioEngi
     return Java_com_zionstagelive_app_NextGenMixerPlugin_nativeGetSnapshotJson(env, thiz);
 }
 
+JNIEXPORT jfloatArray JNICALL Java_com_zionstagelive_nativeapp_audio_NativeAudioEngine_nativeComputeWaveformPeaks(
+        JNIEnv* env, jobject, jobjectArray jPaths, jint jBinCount) {
+    const int binCount = std::max(16, std::min((int)jBinCount, 512));
+    if (!jPaths) return nullptr;
+
+    const jsize pathCount = env->GetArrayLength(jPaths);
+    if (pathCount <= 0) return nullptr;
+
+    std::vector<std::vector<float>> stemEnvs;
+    stemEnvs.reserve((size_t)pathCount);
+    size_t maxChunks = 0;
+
+    constexpr ma_uint64 kChunkFrames = 2048;
+    std::vector<float> pcmBuf(kChunkFrames);
+
+    for (jsize i = 0; i < pathCount; ++i) {
+        auto jPath = (jstring)env->GetObjectArrayElement(jPaths, i);
+        if (!jPath) continue;
+        const char* cPath = env->GetStringUTFChars(jPath, nullptr);
+        std::string pathStr = cPath ? cPath : "";
+        if (cPath) env->ReleaseStringUTFChars(jPath, cPath);
+        env->DeleteLocalRef(jPath);
+
+        if (pathStr.empty()) continue;
+
+        ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 1, 11025);
+        ma_decoder dec;
+        if (ma_decoder_init_file(pathStr.c_str(), &cfg, &dec) != MA_SUCCESS) {
+            continue;
+        }
+
+        std::vector<float> envChunks;
+        envChunks.reserve(2048);
+
+        while (true) {
+            ma_uint64 framesRead = 0;
+            ma_result res = ma_decoder_read_pcm_frames(&dec, pcmBuf.data(), kChunkFrames, &framesRead);
+            if (framesRead > 0) {
+                double sumSq = 0.0;
+                float peak = 0.0f;
+                for (ma_uint64 f = 0; f < framesRead; ++f) {
+                    const float s = pcmBuf[(size_t)f];
+                    const float a = std::fabs(s);
+                    if (a > peak) peak = a;
+                    sumSq += (double)s * (double)s;
+                }
+                const float rms = (float)std::sqrt(sumSq / (double)framesRead);
+                // Blend RMS and peak so both sustained energy and drum transients read clearly
+                envChunks.push_back(0.65f * rms + 0.35f * peak);
+            }
+            if (res != MA_SUCCESS || framesRead < kChunkFrames) {
+                break;
+            }
+        }
+
+        ma_decoder_uninit(&dec);
+
+        if (!envChunks.empty()) {
+            if (envChunks.size() > maxChunks) maxChunks = envChunks.size();
+            stemEnvs.push_back(std::move(envChunks));
+        }
+    }
+
+    if (stemEnvs.empty() || maxChunks == 0) {
+        return nullptr;
+    }
+
+    std::vector<float> bins((size_t)binCount, 0.0f);
+    float maxVal = 0.0f;
+
+    for (int b = 0; b < binCount; ++b) {
+        const size_t startIdx = (size_t)((uint64_t)b * maxChunks / (uint64_t)binCount);
+        size_t endIdx = (size_t)((uint64_t)(b + 1) * maxChunks / (uint64_t)binCount);
+        if (endIdx <= startIdx) endIdx = std::min(startIdx + 1, maxChunks);
+
+        float binSum = 0.0f;
+        for (const auto& envVec : stemEnvs) {
+            float stemAccum = 0.0f;
+            size_t count = 0;
+            const size_t limit = std::min(endIdx, envVec.size());
+            for (size_t idx = startIdx; idx < limit; ++idx) {
+                stemAccum += envVec[idx];
+                ++count;
+            }
+            if (count > 0) {
+                binSum += (stemAccum / (float)count);
+            }
+        }
+
+        bins[(size_t)b] = binSum;
+        if (binSum > maxVal) maxVal = binSum;
+    }
+
+    if (maxVal > 1e-6f) {
+        for (int b = 0; b < binCount; ++b) {
+            const float norm = bins[(size_t)b] / maxVal;
+            if (norm <= 1e-4f) {
+                bins[(size_t)b] = 0.03f;
+            } else {
+                const float shaped = std::pow(norm, 0.68f);
+                bins[(size_t)b] = std::max(0.04f, std::min(1.0f, shaped));
+            }
+        }
+    } else {
+        std::fill(bins.begin(), bins.end(), 0.03f);
+    }
+
+    jfloatArray out = env->NewFloatArray(binCount);
+    if (!out) return nullptr;
+    env->SetFloatArrayRegion(out, 0, binCount, bins.data());
+    return out;
+}
+
 } // extern "C"

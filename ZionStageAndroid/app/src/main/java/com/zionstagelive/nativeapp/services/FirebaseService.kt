@@ -18,11 +18,21 @@ import kotlinx.coroutines.flow.asStateFlow
 object FirebaseService {
     private const val TAG = "FirebaseService"
 
+    // Interruptor temporal (nada se borra, 100% reversible).
+    // Cambiar a true cuando se quieran reactivar los planes de pago.
+    const val PAID_PLANS_ENABLED = false
+    const val FREE_LAUNCH_STORAGE_GB = 100
+
+    private val EXEMPT_VERIFY_EMAILS = setOf("ueservicesllc1@gmail.com", "123@gmail.com")
+
     private val auth by lazy { FirebaseAuth.getInstance() }
     private val firestore by lazy { FirebaseFirestore.getInstance() }
 
     private val _currentUser = MutableStateFlow<FirebaseUser?>(null)
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
+
+    private val _needsEmailVerification = MutableStateFlow(false)
+    val needsEmailVerification: StateFlow<Boolean> = _needsEmailVerification.asStateFlow()
 
     private val _librarySongs = MutableStateFlow<List<Song>>(emptyList())
     val librarySongs: StateFlow<List<Song>> = _librarySongs.asStateFlow()
@@ -51,14 +61,27 @@ object FirebaseService {
     private var userDocListener: ListenerRegistration? = null
     private var partiturasListener: ListenerRegistration? = null
 
+    private fun isUserEmailVerifiedOrExempt(user: FirebaseUser): Boolean {
+        val email = (user.email ?: "").trim().lowercase()
+        if (EXEMPT_VERIFY_EMAILS.contains(email)) return true
+        return user.isEmailVerified
+    }
+
     init {
         startGlobalListener()
         auth.addAuthStateListener { firebaseAuth ->
             val user = firebaseAuth.currentUser
             _currentUser.value = user
             if (user != null) {
-                startUserListeners(user.uid)
+                val verified = isUserEmailVerifiedOrExempt(user)
+                _needsEmailVerification.value = !verified
+                if (verified) {
+                    startUserListeners(user.uid)
+                } else {
+                    stopUserListeners()
+                }
             } else {
+                _needsEmailVerification.value = false
                 stopUserListeners()
                 _librarySongs.value = emptyList()
                 _setlists.value = emptyList()
@@ -171,33 +194,75 @@ object FirebaseService {
         }
     }
 
+    private val globalSongsCache = linkedMapOf<String, Song>()
+
+    private fun mergeAndPublishGlobalSongs(incoming: List<Song>) {
+        synchronized(globalSongsCache) {
+            for (s in incoming) {
+                if (s.tracks.isNotEmpty()) {
+                    globalSongsCache[s.id] = s
+                }
+            }
+            val merged = globalSongsCache.values.sortedBy { it.title.lowercase() }
+            Log.i(TAG, "Global VIP catalog merged total: ${merged.size}")
+            _globalSongs.value = merged
+
+            if (_activeSetlist.value == null && merged.isNotEmpty()) {
+                val defaultSongs = merged.take(6)
+                val defaultSet = Setlist(
+                    id = "default_setlist",
+                    name = "Setlist Principal",
+                    userId = "guest",
+                    songs = defaultSongs
+                )
+                _activeSetlist.value = defaultSet
+                if (_setlists.value.isEmpty()) {
+                    _setlists.value = listOf(defaultSet)
+                }
+            }
+        }
+    }
+
     fun startGlobalListener() {
         globalListener?.remove()
+
+        // 1. Realtime listener for all isGlobal == true songs
         globalListener = firestore.collection("songs")
+            .whereEqualTo("isGlobal", true)
             .limit(800)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
-                    Log.e(TAG, "Error fetching global songs", error)
+                    Log.e(TAG, "Error fetching isGlobal songs", error)
                     return@addSnapshotListener
                 }
-                val globals = snapshot?.documents?.mapNotNull { parseSong(it) }
-                    ?.filter { it.tracks.isNotEmpty() } ?: emptyList()
-                Log.i(TAG, "Global songs successfully loaded: ${globals.size}")
-                _globalSongs.value = globals
+                val list = snapshot?.documents?.mapNotNull { parseSong(it) } ?: emptyList()
+                mergeAndPublishGlobalSongs(list)
+            }
 
-                if (_activeSetlist.value == null && globals.isNotEmpty()) {
-                    val defaultSongs = globals.take(6)
-                    val defaultSet = Setlist(
-                        id = "default_setlist",
-                        name = "Setlist Principal",
-                        userId = "guest",
-                        songs = defaultSongs
-                    )
-                    _activeSetlist.value = defaultSet
-                    if (_setlists.value.isEmpty()) {
-                        _setlists.value = listOf(defaultSet)
-                    }
-                }
+        // 2. Also fetch forSale == true songs (marketplace/global catalog)
+        firestore.collection("songs")
+            .whereEqualTo("forSale", true)
+            .limit(800)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val list = snapshot.documents.mapNotNull { parseSong(it) }
+                mergeAndPublishGlobalSongs(list)
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Error fetching forSale songs: ${e.message}")
+            }
+
+        // 3. Also fetch songs where tracks != null (matching Web Multitrack.jsx query)
+        firestore.collection("songs")
+            .whereNotEqualTo("tracks", null)
+            .limit(800)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val list = snapshot.documents.mapNotNull { parseSong(it) }
+                mergeAndPublishGlobalSongs(list)
+            }
+            .addOnFailureListener { e ->
+                Log.w(TAG, "Error fetching tracks!=null songs: ${e.message}")
             }
     }
 
@@ -328,7 +393,12 @@ object FirebaseService {
         return maps.map { map ->
             Track(
                 name = (map["name"] as? String) ?: (map["title"] as? String) ?: "",
-                url = (map["url"] as? String) ?: (map["audioUrl"] as? String) ?: "",
+                url = (map["url"] as? String)
+                    ?: (map["path"] as? String)
+                    ?: (map["audioUrl"] as? String)
+                    ?: (map["fileUrl"] as? String)
+                    ?: (map["downloadUrl"] as? String)
+                    ?: "",
                 normalizedUrl = map["normalizedUrl"] as? String,
                 normalizedReady = (map["normalizedReady"] as? Boolean) ?: false
             )
@@ -380,9 +450,22 @@ object FirebaseService {
         }
         auth.signInWithEmailAndPassword(trimmed, pass)
             .addOnSuccessListener { result ->
-                Log.i(TAG, "Inicio de sesión exitoso: ${result.user?.email}")
-                _currentUser.value = result.user
-                onResult(true, null)
+                val user = result.user
+                Log.i(TAG, "Inicio de sesión exitoso: ${user?.email}")
+                if (user != null) {
+                    user.reload().addOnCompleteListener {
+                        val refreshed = auth.currentUser ?: user
+                        _currentUser.value = refreshed
+                        val verified = isUserEmailVerifiedOrExempt(refreshed)
+                        _needsEmailVerification.value = !verified
+                        if (verified) {
+                            startUserListeners(refreshed.uid)
+                        }
+                        onResult(true, null)
+                    }
+                } else {
+                    onResult(true, null)
+                }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Error al iniciar sesión: ${e.message}")
@@ -397,10 +480,49 @@ object FirebaseService {
             }
     }
 
+    fun checkEmailVerification(onResult: (Boolean, String?) -> Unit) {
+        val user = auth.currentUser
+        if (user == null) {
+            onResult(false, "No hay sesión activa.")
+            return
+        }
+        user.reload()
+            .addOnSuccessListener {
+                val refreshed = auth.currentUser ?: user
+                val verified = isUserEmailVerifiedOrExempt(refreshed)
+                _needsEmailVerification.value = !verified
+                if (verified) {
+                    startUserListeners(refreshed.uid)
+                    onResult(true, null)
+                } else {
+                    onResult(false, "Todavía no aparece verificado. Abre el enlace que enviamos a tu correo y vuelve a intentar.")
+                }
+            }
+            .addOnFailureListener { e ->
+                onResult(false, e.localizedMessage ?: "Error al comprobar la verificación.")
+            }
+    }
+
+    fun resendVerificationEmail(onResult: (Boolean, String) -> Unit) {
+        val user = auth.currentUser
+        if (user == null) {
+            onResult(false, "No hay sesión activa.")
+            return
+        }
+        user.sendEmailVerification()
+            .addOnSuccessListener {
+                onResult(true, "Enviamos un nuevo enlace de confirmación a ${user.email}. Revisa tu bandeja o Spam.")
+            }
+            .addOnFailureListener { e ->
+                onResult(false, e.localizedMessage ?: "Espera un minuto antes de reenviar el correo.")
+            }
+    }
+
     fun signOut() {
         auth.signOut()
         stopUserListeners()
         _currentUser.value = null
+        _needsEmailVerification.value = false
         _userPlanId.value = "free"
         _librarySongs.value = emptyList()
         _setlists.value = emptyList()

@@ -656,7 +656,7 @@ export default function Multitrack() {
     const [isPadsOpen, setIsPadsOpen] = useState(false);
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('mixer_darkMode') === 'true');
     const [panMode, setPanMode] = useState(() => localStorage.getItem('mixer_panMode') || 'mono'); // 'L' | 'R' | 'mono'
-    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize_v2') || '18', 10));
+    const [appFontSize, setAppFontSize] = useState(() => parseInt(localStorage.getItem('mixer_appFontSize_v3') || '12', 10));
     const [dynamicClick, setDynamicClick] = useState(false);
     const [debugLogs, setDebugLogs] = useState([]);
 
@@ -1001,7 +1001,7 @@ export default function Multitrack() {
     // Apply appFontSize to root (restaurar al salir del mixer)
     useEffect(() => {
         document.documentElement.style.fontSize = `${appFontSize}px`;
-        localStorage.setItem('mixer_appFontSize_v2', appFontSize);
+        localStorage.setItem('mixer_appFontSize_v3', appFontSize);
         return () => {
             document.documentElement.style.fontSize = '';
         };
@@ -1613,7 +1613,26 @@ export default function Multitrack() {
     const loadGenRef = useRef(0);
     const loadAbortRef = useRef(null);
 
-    const handleLoadSong = async (song) => {
+    const handleLoadSong = async (songArg) => {
+        // Normalizar tracks (compatibilidad cruzada con setlists guardados desde iOS que usan `path` en vez de `url`)
+        let song = songArg;
+        if (song) {
+            let rawTracks = Array.isArray(song.tracks) ? song.tracks : [];
+            if (rawTracks.length === 0) {
+                const full = librarySongs.find(s => s.id === song.id) || globalSongs.find(s => s.id === song.id);
+                if (full && Array.isArray(full.tracks) && full.tracks.length > 0) {
+                    rawTracks = full.tracks;
+                }
+            }
+            const normalizedTracks = rawTracks.map((tr) => ({
+                ...tr,
+                url: tr.url || tr.path || tr.fileUrl || tr.downloadUrl || '',
+                name: tr.name || tr.title || tr.id || 'Track',
+            }));
+            song = { ...song, tracks: normalizedTracks };
+        }
+        if (!song) return;
+
         // Evitar carga duplicada si ya está en progreso (ej. de handleDownloadAndAdd en nativo)
         if (isAppNative && downloadProgress.songId === song.id) {
             console.log("[SELECT] Canción ya se está descargando/cargando.");
@@ -1638,24 +1657,13 @@ export default function Multitrack() {
         }
         const activeSignal = loadAbortRef.current?.signal;
 
-        // Detener el audio actual antes de cambiar (con un breve anti-pop interno en AudioEngine)
-        await audioEngine.stop();
+        // Detener el audio actual antes de cambiar (protegido con try para nunca abortar la carga)
+        try { await audioEngine.stop(); } catch (e) { console.warn('[SELECT] stop warning:', e); }
         if (isStale()) return;
         setIsPlaying(false);
         progressRef.current = 0;
 
-
-        // Nativo: primero cortar polling y audio (antes de setState/render) para no acumular callbacks al bridge.
-        if (isAppNativeLoad) {
-            isPreparingSong = true;
-            audioEngine.setSongPreparationActive(true);
-            await audioEngine.stop();
-            console.log('[SELECT] native stop (inmediato, antes de UI)');
-            setNativePrepareBusy(true);
-        }
-
-        console.log(`[SELECT] start "${song.name}" (${song.id})`);
-        console.log(`[SELECT] Seleccionando "${song.name}"...`);
+        console.log(`[SELECT] start "${song.name}" (${song.id}) tracks=${song.tracks?.length || 0}`);
         setActiveSongId(song.id);
         setViewedSongId(song.id);
         setTracks([]);
@@ -1665,6 +1673,14 @@ export default function Multitrack() {
         setPreloadStatus(prev => ({ ...prev, [song.id]: 'loading' }));
 
         try {
+            // Nativo: dentro de try/finally para que isPreparingSong jamás quede atascado en true
+            if (isAppNativeLoad) {
+                isPreparingSong = true;
+                audioEngine.setSongPreparationActive(true);
+                try { await audioEngine.stop(); } catch { /* ignore */ }
+                console.log('[SELECT] native stop (inmediato, antes de UI)');
+                setNativePrepareBusy(true);
+            }
             // Web: igual que antes (p. ej. 2edda95): solo parar/limpiar el motor — no vaciar preloadCache.
             // Vaciar el Map borraba stems de otras canciones del setlist; al volver a una canción ya
             // precargada parecía "cargar de nuevo". LRU + evictOldestIfNeeded ya limitan RAM.
@@ -3998,7 +4014,7 @@ export default function Multitrack() {
                         onClick={() => {
                             setDarkMode(false);
                             setPanMode('mono');
-                            setAppFontSize(14);
+                            setAppFontSize(12);
                             setDynamicClick(false);
                             stopDynamicClick();
                         }}

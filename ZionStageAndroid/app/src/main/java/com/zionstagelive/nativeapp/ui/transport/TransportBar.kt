@@ -22,11 +22,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zionstagelive.nativeapp.models.Song
+import com.zionstagelive.nativeapp.services.AppLanguage
+import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 @Composable
 fun TransportBar(
     currentSong: Song?,
+    waveformPeaks: FloatArray = FloatArray(0),
     isPlaying: Boolean,
     playbackPosition: Double,
     duration: Double,
@@ -57,6 +62,7 @@ fun TransportBar(
     onOpenPlanModal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isEn = rememberIsEnglish()
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = Color(0xFF0F172A),
@@ -81,7 +87,7 @@ fun TransportBar(
                 ) {
                     // User Plan Pill Badge (matches Capacitor App Multitrack.jsx)
                     val vipIds = remember { setOf("vip1", "vip2", "vip3", "zion_desktop_pro_online", "universal_pro") }
-                    val isVip = vipIds.contains(userPlanId)
+                    val isVip = !FirebaseService.PAID_PLANS_ENABLED || vipIds.contains(userPlanId)
                     val planLabels = remember {
                         mapOf(
                             "vip1" to "VIP", "vip2" to "VIP", "vip3" to "VIP ⭐",
@@ -92,7 +98,11 @@ fun TransportBar(
                             "universal_pro" to "UP ⭐"
                         )
                     }
-                    val planLabel = planLabels[userPlanId] ?: (if (userPlanId.isNotBlank()) userPlanId.uppercase() else "FREE")
+                    val planLabel = if (!FirebaseService.PAID_PLANS_ENABLED) {
+                        tr(isEn, "GRATIS ${FirebaseService.FREE_LAUNCH_STORAGE_GB}GB · VIP", "FREE ${FirebaseService.FREE_LAUNCH_STORAGE_GB}GB · VIP")
+                    } else {
+                        planLabels[userPlanId] ?: (if (userPlanId.isNotBlank()) userPlanId.uppercase() else "FREE")
+                    }
 
                     Box(
                         modifier = Modifier
@@ -368,7 +378,7 @@ fun TransportBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Dual-pill ES | EN
+                    // Dual-pill ES | EN (interactive language switcher)
                     Row(
                         modifier = Modifier
                             .height(44.dp)
@@ -381,19 +391,32 @@ fun TransportBar(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(5.dp))
-                                .background(ZionTeal)
+                                .background(if (!isEn) ZionTeal else Color.Transparent)
+                                .clickable { AppLanguage.setEnglish(false) }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "ES", color = Color(0xFF020617), fontSize = 11.sp, fontWeight = FontWeight.Black)
+                            Text(
+                                text = "ES",
+                                color = if (!isEn) Color(0xFF020617) else TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (!isEn) FontWeight.Black else FontWeight.Bold
+                            )
                         }
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(5.dp))
+                                .background(if (isEn) ZionTeal else Color.Transparent)
+                                .clickable { AppLanguage.setEnglish(true) }
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = "EN", color = TextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "EN",
+                                color = if (isEn) Color(0xFF020617) else TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = if (isEn) FontWeight.Black else FontWeight.Bold
+                            )
                         }
                     }
 
@@ -492,6 +515,7 @@ fun TransportBar(
                 // Waveform Audio Scrubber (56dp tall DAW waveform)
                 WaveformScrubber(
                     songId = currentSong?.id,
+                    waveformPeaks = waveformPeaks,
                     playbackPosition = playbackPosition,
                     duration = duration,
                     onSeek = onSeek,
@@ -520,7 +544,7 @@ fun TransportBar(
                             tint = ZionTealLight,
                             modifier = Modifier.size(18.dp)
                         )
-                        Text(text = "Tiempo", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(text = tr(isEn, "Tiempo", "Time"), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -534,17 +558,17 @@ fun TransportBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val tabs = listOf(
-                    "Lista" to Icons.Default.ViewColumn,
-                    "Biblioteca" to Icons.Default.LibraryMusic,
-                    "Pads" to Icons.Default.GridOn,
-                    "🎼 Partituras" to Icons.Default.MenuBook,
-                    "Lyrics" to Icons.Default.Description,
-                    "Acordes" to Icons.Default.MusicNote,
-                    "Metrónomo" to Icons.Default.Speed
+                    Triple("Lista", tr(isEn, "Lista", "Mixer"), Icons.Default.ViewColumn),
+                    Triple("Biblioteca", tr(isEn, "Biblioteca", "Library"), Icons.Default.LibraryMusic),
+                    Triple("Pads", "Pads", Icons.Default.GridOn),
+                    Triple("🎼 Partituras", tr(isEn, "🎼 Partituras", "🎼 Charts"), Icons.Default.MenuBook),
+                    Triple("Lyrics", "Lyrics", Icons.Default.Description),
+                    Triple("Acordes", tr(isEn, "Acordes", "Chords"), Icons.Default.MusicNote),
+                    Triple("Metrónomo", tr(isEn, "Metrónomo", "Metronome"), Icons.Default.Speed)
                 )
 
-                tabs.forEach { (tabName, _) ->
-                    val isSelected = activeTab == tabName
+                tabs.forEach { (tabId, tabLabel, _) ->
+                    val isSelected = activeTab == tabId
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -560,12 +584,12 @@ fun TransportBar(
                                 shape = RoundedCornerShape(8.dp)
                             )
                             .clickable {
-                                when (tabName) {
+                                when (tabId) {
                                     "Biblioteca" -> onOpenLibrary()
                                     "Pads" -> onOpenPads()
                                     else -> {
                                         // Toggle active tab or revert to Lista (Mixer)
-                                        val next = if (isSelected) "Lista" else tabName
+                                        val next = if (isSelected) "Lista" else tabId
                                         onTabSelected(next)
                                     }
                                 }
@@ -573,7 +597,7 @@ fun TransportBar(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = tabName,
+                            text = tabLabel,
                             color = if (isSelected) ZionTealLight else TextSecondary,
                             fontSize = 11.sp,
                             fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium

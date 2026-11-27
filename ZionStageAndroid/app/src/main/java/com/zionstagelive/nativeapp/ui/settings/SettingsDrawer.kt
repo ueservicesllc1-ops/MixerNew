@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.sp
 import com.zionstagelive.nativeapp.audio.NativeAudioEngine
 import com.zionstagelive.nativeapp.models.Stem
 import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 enum class AudioRoutingMode {
@@ -40,6 +42,7 @@ fun SettingsDrawer(
     onUpdateStemsPan: (List<Stem>) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val isEn = rememberIsEnglish()
     var darkMode by remember { mutableStateOf(true) }
     var routingMode by remember { mutableStateOf(AudioRoutingMode.STEREO) }
     var dynamicClickActive by remember { mutableStateOf(false) }
@@ -97,13 +100,13 @@ fun SettingsDrawer(
                             }
                             Column {
                                 Text(
-                                    text = "Ajustes",
+                                    text = tr(isEn, "Ajustes", "Settings"),
                                     color = TextPrimary,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "Personaliza tu experiencia",
+                                    text = tr(isEn, "Personaliza tu experiencia", "Customize your experience"),
                                     color = TextSecondary,
                                     fontSize = 11.sp
                                 )
@@ -152,8 +155,8 @@ fun SettingsDrawer(
                                     Icon(Icons.Default.DarkMode, contentDescription = null, tint = Color(0xFFA0AEC0), modifier = Modifier.size(18.dp))
                                 }
                                 Column {
-                                    Text("Modo Oscuro", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Text("Tema oscuro para escenario activo", color = TextSecondary, fontSize = 10.sp)
+                                    Text(tr(isEn, "Modo Oscuro", "Dark Mode"), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(tr(isEn, "Tema oscuro para escenario activo", "Stage dark theme active"), color = TextSecondary, fontSize = 10.sp)
                                 }
                             }
                             Switch(
@@ -195,8 +198,8 @@ fun SettingsDrawer(
                                     Icon(Icons.Default.Headphones, contentDescription = null, tint = Color(0xFF60A5FA), modifier = Modifier.size(18.dp))
                                 }
                                 Column {
-                                    Text("Salida de Audio y Paneo", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    Text("Enrutamiento para consola / monitores", color = TextSecondary, fontSize = 10.sp)
+                                    Text(tr(isEn, "Salida de Audio y Paneo", "Audio Output & Panning"), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Text(tr(isEn, "Enrutamiento para consola / monitores", "Routing for FOH / monitors"), color = TextSecondary, fontSize = 10.sp)
                                 }
                             }
 
@@ -206,9 +209,9 @@ fun SettingsDrawer(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 val options = listOf(
-                                    Triple(AudioRoutingMode.SPLIT, "L Click / R Pistas", "Click/Guía L, Pistas R"),
-                                    Triple(AudioRoutingMode.STEREO, "Estéreo", "Estéreo natural"),
-                                    Triple(AudioRoutingMode.MONO, "Mono", "Todo al centro")
+                                    Triple(AudioRoutingMode.SPLIT, tr(isEn, "L Click / R Pistas", "L Click / R Tracks"), tr(isEn, "Click/Guía L, Pistas R", "Click/Guide L, Tracks R")),
+                                    Triple(AudioRoutingMode.STEREO, tr(isEn, "Estéreo", "Stereo"), tr(isEn, "Estéreo natural", "Natural stereo")),
+                                    Triple(AudioRoutingMode.MONO, "Mono", tr(isEn, "Todo al centro", "All centered"))
                                 )
 
                                 options.forEach { (mode, label, desc) ->

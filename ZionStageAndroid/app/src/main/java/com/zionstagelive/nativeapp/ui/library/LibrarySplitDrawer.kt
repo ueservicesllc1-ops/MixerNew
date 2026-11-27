@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zionstagelive.nativeapp.models.Song
 import com.zionstagelive.nativeapp.services.DownloadManager
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 enum class LibraryTab {
@@ -42,6 +44,7 @@ fun LibrarySplitDrawer(
 ) {
     if (!isOpen) return
 
+    val isEn = rememberIsEnglish()
     val downloadedSongIds by downloadManager.downloadedSongIds.collectAsState()
     val cachedSongs by downloadManager.cachedSongs.collectAsState()
 
@@ -134,7 +137,7 @@ fun LibrarySplitDrawer(
                     ) {
                         Icon(Icons.Default.LibraryMusic, contentDescription = null, tint = ZionTeal)
                         Text(
-                            text = "BIBLIOTECA",
+                            text = tr(isEn, "BIBLIOTECA", "LIBRARY"),
                             color = TextPrimary,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Black
@@ -176,7 +179,7 @@ fun LibrarySplitDrawer(
                                 modifier = Modifier.size(13.dp)
                             )
                             Text(
-                                text = "Descargadas (${downloadedList.size})",
+                                text = tr(isEn, "Descargadas (${downloadedList.size})", "Downloaded (${downloadedList.size})"),
                                 color = if (selectedTab == LibraryTab.DOWNLOADED) Color.Black else TextSecondary,
                                 fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Bold,
@@ -196,7 +199,7 @@ fun LibrarySplitDrawer(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Mías (${userSongs.size})",
+                            text = tr(isEn, "Mías (${userSongs.size})", "Mine (${userSongs.size})"),
                             color = if (selectedTab == LibraryTab.USER_SONGS) Color.Black else TextSecondary,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -232,9 +235,9 @@ fun LibrarySplitDrawer(
                     placeholder = {
                         Text(
                             text = when (selectedTab) {
-                                LibraryTab.DOWNLOADED -> "Buscar en descargadas..."
-                                LibraryTab.USER_SONGS -> "Buscar en tus canciones..."
-                                LibraryTab.GLOBAL_VIP -> "Buscar en catálogo global..."
+                                LibraryTab.DOWNLOADED -> tr(isEn, "Buscar en descargadas...", "Search downloaded...")
+                                LibraryTab.USER_SONGS -> tr(isEn, "Buscar en tus canciones...", "Search your songs...")
+                                LibraryTab.GLOBAL_VIP -> tr(isEn, "Buscar en catálogo global...", "Search global catalog...")
                             },
                             color = TextMuted,
                             fontSize = 12.5.sp
@@ -278,7 +281,10 @@ fun LibrarySplitDrawer(
                         ) {
                             Icon(Icons.Default.Info, contentDescription = null, tint = ZionTeal, modifier = Modifier.size(14.dp))
                             Text(
-                                text = if (selectedTab == LibraryTab.DOWNLOADED) "Listo para tocar" else "Acceso en la nube",
+                                text = if (selectedTab == LibraryTab.DOWNLOADED)
+                                    tr(isEn, "Listo para tocar", "Ready to play")
+                                else
+                                    tr(isEn, "Acceso en la nube", "Cloud access"),
                                 color = TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold
@@ -286,9 +292,9 @@ fun LibrarySplitDrawer(
                         }
                         Text(
                             text = if (selectedTab == LibraryTab.DOWNLOADED)
-                                "Las canciones descargadas se cargan de inmediato al setlist sin esperas de red ni consumo de datos."
+                                tr(isEn, "Las canciones descargadas se cargan de inmediato al setlist sin esperas de red ni consumo de datos.", "Downloaded songs load into your setlist instantly offline with zero wait.")
                             else
-                                "Al seleccionar una canción de la nube se añadirá a tu setlist y se descargará en segundo plano.",
+                                tr(isEn, "Al seleccionar una canción de la nube se añadirá a tu setlist y se descargará en segundo plano.", "Selecting a cloud song adds it to your setlist and downloads it in the background."),
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp

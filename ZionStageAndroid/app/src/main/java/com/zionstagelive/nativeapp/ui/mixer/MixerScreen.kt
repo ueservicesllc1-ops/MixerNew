@@ -25,6 +25,8 @@ import com.zionstagelive.nativeapp.models.Song
 import com.zionstagelive.nativeapp.models.Stem
 import com.zionstagelive.nativeapp.services.DownloadManager
 import com.zionstagelive.nativeapp.services.FirebaseService
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 import com.zionstagelive.nativeapp.ui.bandsync.BandSyncDialog
 import com.zionstagelive.nativeapp.ui.library.LibrarySplitDrawer
@@ -42,6 +44,7 @@ import com.zionstagelive.nativeapp.ui.transport.TransportBar
 @Composable
 fun MixerScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val isEn = rememberIsEnglish()
     val downloadManager = remember { DownloadManager.getInstance(context) }
 
     // Audio Engine State
@@ -52,6 +55,7 @@ fun MixerScreen(modifier: Modifier = Modifier) {
     val tempoRatio by NativeAudioEngine.tempoRatio.collectAsState()
     val trackLevels by NativeAudioEngine.trackLevels.collectAsState()
     val isSessionLoading by NativeAudioEngine.isSessionLoading.collectAsState()
+    val waveformPeaks by NativeAudioEngine.waveformPeaks.collectAsState()
 
     // Download state
     val downloadProgress by downloadManager.progress.collectAsState()
@@ -64,6 +68,7 @@ fun MixerScreen(modifier: Modifier = Modifier) {
     val activeSetlist by FirebaseService.activeSetlist.collectAsState()
     val userPlanId by FirebaseService.userPlanId.collectAsState()
     val currentUser by FirebaseService.currentUser.collectAsState()
+    val needsEmailVerification by FirebaseService.needsEmailVerification.collectAsState()
 
     // Sync downloaded song metadata with global and user catalogs
     LaunchedEffect(userSongs, globalSongs) {
@@ -96,9 +101,11 @@ fun MixerScreen(modifier: Modifier = Modifier) {
             val localStems = downloadManager.getLocalStems(song)
             activeStems = localStems
             NativeAudioEngine.loadSongSession(localStems) {
-                localStems.forEach { stem ->
+                activeStems.forEach { stem ->
                     NativeAudioEngine.setTrackPan(stem.id, stem.pan)
                     NativeAudioEngine.setTrackVolume(stem.id, stem.volume)
+                    NativeAudioEngine.setTrackMute(stem.id, stem.isMuted)
+                    NativeAudioEngine.setTrackSolo(stem.id, stem.isSolo)
                 }
             }
         } else {
@@ -107,9 +114,11 @@ fun MixerScreen(modifier: Modifier = Modifier) {
                 onComplete = { readyStems ->
                     activeStems = readyStems
                     NativeAudioEngine.loadSongSession(readyStems) {
-                        readyStems.forEach { stem ->
+                        activeStems.forEach { stem ->
                             NativeAudioEngine.setTrackPan(stem.id, stem.pan)
                             NativeAudioEngine.setTrackVolume(stem.id, stem.volume)
+                            NativeAudioEngine.setTrackMute(stem.id, stem.isMuted)
+                            NativeAudioEngine.setTrackSolo(stem.id, stem.isSolo)
                         }
                     }
                 },
@@ -158,6 +167,7 @@ fun MixerScreen(modifier: Modifier = Modifier) {
             // TOP THREE-TIER TRANSPORT & NAV BAR
             TransportBar(
                 currentSong = currentSong,
+                waveformPeaks = waveformPeaks,
                 isPlaying = isPlaying,
                 playbackPosition = position,
                 duration = if (duration > 0) duration else (currentSong?.duration ?: 0.0),
@@ -253,40 +263,57 @@ fun MixerScreen(modifier: Modifier = Modifier) {
                                         PlaceholderChannelStrip(name = stemName, color = stemColor)
                                     }
                                 } else {
+                                    val anySolo = activeStems.any { it.isSolo }
                                     items(activeStems, key = { it.id }) { stem ->
-                                        val stemLevel = if (!stem.isMuted) (trackLevels[stem.id] ?: 0f) else 0f
+                                        val isSilenced = stem.isMuted || (anySolo && !stem.isSolo)
+                                        val stemLevel = if (!isSilenced) (trackLevels[stem.id] ?: 0f) else 0f
                                         ChannelStrip(
                                             stem = stem,
                                             level = stemLevel,
+                                            isSilencedBySolo = anySolo && !stem.isSolo,
                                             onVolumeChange = { newVol ->
-                                                stem.volume = newVol
                                                 NativeAudioEngine.setTrackVolume(stem.id, newVol)
-                                                activeStems = activeStems.toList()
+                                                activeStems = activeStems.map { s ->
+                                                    if (s.id == stem.id) s.copy(volume = newVol) else s
+                                                }
                                             },
                                             onMuteToggle = {
-                                                stem.isMuted = !stem.isMuted
-                                                NativeAudioEngine.setTrackMute(stem.id, stem.isMuted)
-                                                activeStems = activeStems.toList()
+                                                val newMuted = !stem.isMuted
+                                                val newSolo = if (newMuted) false else stem.isSolo
+                                                NativeAudioEngine.setTrackMute(stem.id, newMuted)
+                                                if (newSolo != stem.isSolo) {
+                                                    NativeAudioEngine.setTrackSolo(stem.id, newSolo)
+                                                }
+                                                activeStems = activeStems.map { s ->
+                                                    if (s.id == stem.id) s.copy(isMuted = newMuted, isSolo = newSolo) else s
+                                                }
                                             },
                                             onSoloToggle = {
-                                                stem.isSolo = !stem.isSolo
-                                                NativeAudioEngine.setTrackSolo(stem.id, stem.isSolo)
-                                                activeStems = activeStems.toList()
+                                                val newSolo = !stem.isSolo
+                                                val newMuted = if (newSolo) false else stem.isMuted
+                                                NativeAudioEngine.setTrackSolo(stem.id, newSolo)
+                                                if (newMuted != stem.isMuted) {
+                                                    NativeAudioEngine.setTrackMute(stem.id, newMuted)
+                                                }
+                                                activeStems = activeStems.map { s ->
+                                                    if (s.id == stem.id) s.copy(isSolo = newSolo, isMuted = newMuted) else s
+                                                }
                                             },
                                             onRouteToggle = { routeL, routeR ->
-                                                stem.routeL = routeL
-                                                stem.routeR = routeR
                                                 val pan = when {
                                                     routeL && !routeR -> -1.0f
                                                     !routeL && routeR -> 1.0f
                                                     else -> 0.0f
                                                 }
-                                                stem.pan = pan
                                                 NativeAudioEngine.setTrackPan(stem.id, pan)
-                                                activeStems = activeStems.toList()
+                                                activeStems = activeStems.map { s ->
+                                                    if (s.id == stem.id) s.copy(routeL = routeL, routeR = routeR, pan = pan) else s
+                                                }
                                             },
-                                            onColorChange = {
-                                                activeStems = activeStems.toList()
+                                            onColorChange = { newColor ->
+                                                activeStems = activeStems.map { s ->
+                                                    if (s.id == stem.id) s.copy(customColor = newColor.value.toLong()) else s
+                                                }
                                             }
                                         )
                                     }
@@ -343,7 +370,11 @@ fun MixerScreen(modifier: Modifier = Modifier) {
                                 strokeWidth = 2.5.dp
                             )
                             Text(
-                                text = "Descargando stems: ${downloadProgress!!.trackName} (${downloadProgress!!.currentIndex}/${downloadProgress!!.totalTracks})",
+                                text = tr(
+                                    isEn,
+                                    "Descargando stems: ${downloadProgress!!.trackName} (${downloadProgress!!.currentIndex}/${downloadProgress!!.totalTracks})",
+                                    "Downloading stems: ${downloadProgress!!.trackName} (${downloadProgress!!.currentIndex}/${downloadProgress!!.totalTracks})"
+                                ),
                                 color = TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -355,7 +386,7 @@ fun MixerScreen(modifier: Modifier = Modifier) {
                                 strokeWidth = 2.5.dp
                             )
                             Text(
-                                text = "Cargando sesión multitrack...",
+                                text = tr(isEn, "Cargando sesión multitrack...", "Loading multitrack session..."),
                                 color = TextPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -444,12 +475,19 @@ fun MixerScreen(modifier: Modifier = Modifier) {
             BandSyncDialog(onDismiss = { isBandSyncOpen = false })
         }
 
-        // Native Subscription / Plan Modal (matches Capacitor Multitrack.jsx)
-        if (isPlanModalOpen) {
+        // Native Login / Email Verification / Plan Modal
+        val mustShowAuthGate = (currentUser == null) || needsEmailVerification
+        if (mustShowAuthGate || isPlanModalOpen) {
             NativePlanModal(
                 userPlanId = userPlanId,
                 userEmail = currentUser?.email,
-                onDismiss = { isPlanModalOpen = false }
+                isMandatoryGate = mustShowAuthGate,
+                needsEmailVerification = needsEmailVerification,
+                onDismiss = {
+                    if (!mustShowAuthGate) {
+                        isPlanModalOpen = false
+                    }
+                }
             )
         }
     }
@@ -538,50 +576,31 @@ fun PlaceholderChannelStrip(name: String, color: Color) {
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val isClickOrGuide = name == "CLICK" || name == "GUIA"
             Box(
                 modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(if (isClickOrGuide) BtnActiveBlue else Color(0xFF131D2E))
-                    .border(1.dp, if (isClickOrGuide) BtnActiveBlue else Color(0x33FFFFFF), RoundedCornerShape(5.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "L", color = if (isClickOrGuide) Color.White else Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Black)
-            }
-            Box(
-                modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
+                    .weight(1f)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF131D2E))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp)),
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "M", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(text = "M", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
             Box(
                 modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
+                    .weight(1f)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color(0xFF131D2E))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp)),
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(6.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "S", color = Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Black)
-            }
-            Box(
-                modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(if (!isClickOrGuide) BtnActiveRed else Color(0xFF131D2E))
-                    .border(1.dp, if (!isClickOrGuide) BtnActiveRed else Color(0x33FFFFFF), RoundedCornerShape(5.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "R", color = if (!isClickOrGuide) Color.White else Color(0xFF64748B), fontSize = 10.sp, fontWeight = FontWeight.Black)
+                Text(text = "S", color = Color(0xFF64748B), fontSize = 11.sp, fontWeight = FontWeight.Black)
             }
         }
     }

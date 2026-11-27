@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.zionstagelive.nativeapp.services.BandSyncService
 import com.zionstagelive.nativeapp.services.QRCodeGenerator
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.SurfaceDark
 import com.zionstagelive.nativeapp.theme.TextPrimary
 import com.zionstagelive.nativeapp.theme.TextSecondary
@@ -32,6 +34,7 @@ fun BandSyncDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val isEn = rememberIsEnglish()
     val clientsCount by BandSyncService.connectedClients.collectAsState()
 
     val syncUrl = remember {
@@ -121,21 +124,25 @@ fun BandSyncDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Escanea para entrar",
+                            text = tr(isEn, "Escanea para entrar", "Scan to join"),
                             color = TextPrimary,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
                         )
 
                         Text(
-                            text = "Clientes conectados: $clientsCount",
+                            text = tr(isEn, "Clientes conectados: $clientsCount", "Connected devices: $clientsCount"),
                             color = Color(0xFF10B981),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold
                         )
 
                         Text(
-                            text = "Misma red Wi‑Fi que este dispositivo. Si no escanea, abre la URL en el móvil.",
+                            text = tr(
+                                isEn,
+                                "Misma red Wi‑Fi que este dispositivo. Si no escanea, abre la URL en el móvil.",
+                                "Same Wi‑Fi network as this device. If scan fails, open the URL on your phone."
+                            ),
                             color = TextSecondary,
                             fontSize = 11.sp,
                             lineHeight = 15.sp

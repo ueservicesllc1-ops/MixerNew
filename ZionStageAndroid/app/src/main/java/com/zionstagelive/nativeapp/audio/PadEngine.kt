@@ -33,12 +33,37 @@ class PadEngine private constructor(private val context: Context) {
     private val _volume = MutableStateFlow(0.8f)
     val volume: StateFlow<Float> = _volume.asStateFlow()
 
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted: StateFlow<Boolean> = _isMuted.asStateFlow()
+
+    private val _octave = MutableStateFlow(0)
+    val octave: StateFlow<Int> = _octave.asStateFlow()
+
     private val _isSolo = MutableStateFlow(false)
     val isSolo: StateFlow<Boolean> = _isSolo.asStateFlow()
 
     private var activePlayer: MediaPlayer? = null
     private var fadeJob: Job? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    private fun effectiveVolume(): Float = if (_isMuted.value) 0f else _volume.value
+
+    private fun applyOctaveToPlayer(player: MediaPlayer?, oct: Int) {
+        if (player == null) return
+        val ratio = when {
+            oct < 0 -> 0.5f
+            oct > 0 -> 2.0f
+            else -> 1.0f
+        }
+        try {
+            val params = player.playbackParams
+            params.speed = ratio
+            params.pitch = ratio
+            player.playbackParams = params
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not apply pad octave $oct", e)
+        }
+    }
 
     fun toggleKey(key: String) {
         if (_activeKey.value == key && _isPlaying.value) {
@@ -70,12 +95,13 @@ class PadEngine private constructor(private val context: Context) {
                 // Crossfade over 1500ms
                 val steps = 30
                 val stepDelay = 50L
-                val targetVol = _volume.value
 
                 newPlayer.setVolume(0f, 0f)
                 newPlayer.start()
+                applyOctaveToPlayer(newPlayer, _octave.value)
 
                 for (i in 1..steps) {
+                    val targetVol = effectiveVolume()
                     val progress = i.toFloat() / steps
                     val newVol = progress * targetVol
                     val oldVol = (1f - progress) * targetVol
@@ -129,7 +155,22 @@ class PadEngine private constructor(private val context: Context) {
     fun setVolume(vol: Float) {
         val clamped = vol.coerceIn(0f, 1f)
         _volume.value = clamped
-        activePlayer?.setVolume(clamped, clamped)
+        val eff = effectiveVolume()
+        activePlayer?.setVolume(eff, eff)
+    }
+
+    fun toggleMute() {
+        _isMuted.value = !_isMuted.value
+        val eff = effectiveVolume()
+        activePlayer?.setVolume(eff, eff)
+    }
+
+    fun setOctave(oct: Int) {
+        val clamped = oct.coerceIn(-1, 1)
+        _octave.value = clamped
+        if (_isPlaying.value) {
+            applyOctaveToPlayer(activePlayer, clamped)
+        }
     }
 
     fun toggleSolo() {

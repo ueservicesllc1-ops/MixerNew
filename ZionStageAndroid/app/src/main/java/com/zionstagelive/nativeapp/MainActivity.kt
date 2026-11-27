@@ -8,12 +8,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
+import com.zionstagelive.nativeapp.services.AppLanguage
 import com.zionstagelive.nativeapp.theme.ZionStageTheme
 import com.zionstagelive.nativeapp.ui.mixer.MixerScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppLanguage.init(this)
         enableEdgeToEdge()
         
         // Keep screen on during live stage performance

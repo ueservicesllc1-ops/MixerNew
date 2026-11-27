@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.zionstagelive.nativeapp.models.Stem
+import com.zionstagelive.nativeapp.services.rememberIsEnglish
+import com.zionstagelive.nativeapp.services.tr
 import com.zionstagelive.nativeapp.theme.*
 
 private val TRACK_PALETTE_COLORS = listOf(
@@ -38,6 +40,7 @@ private val TRACK_PALETTE_COLORS = listOf(
 fun ChannelStrip(
     stem: Stem,
     level: Float,
+    isSilencedBySolo: Boolean = false,
     onVolumeChange: (Float) -> Unit,
     onMuteToggle: () -> Unit,
     onSoloToggle: () -> Unit,
@@ -45,6 +48,7 @@ fun ChannelStrip(
     onColorChange: (Color) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isEn = rememberIsEnglish()
     val isClickGuideStem = stem.role == "click" || stem.role == "guide"
     var showColorPicker by remember { mutableStateOf(false) }
 
@@ -132,7 +136,7 @@ fun ChannelStrip(
             ) {
                 VUMeterView(
                     level = level,
-                    isMuted = stem.isMuted,
+                    isMuted = stem.isMuted || isSilencedBySolo,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -144,51 +148,30 @@ fun ChannelStrip(
                 value = stem.volume,
                 onValueChange = onVolumeChange,
                 accentColor = activeTrackColor,
-                isMuted = stem.isMuted,
+                isMuted = stem.isMuted || isSilencedBySolo,
                 modifier = Modifier.width(46.dp)
             )
         }
 
-        // BOTTOM: [ L ] [ M ] [ S ] [ R ]
+        // BOTTOM: [ M ] [ S ] (Click & Guide are always routed Left, Instruments always Right)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // L Button (In-Ear Monitor routing) - Blue when active
-            Box(
-                modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(if (stem.routeL) BtnActiveBlue else Color(0xFF131D2E))
-                    .border(
-                        width = 1.dp,
-                        color = if (stem.routeL) BtnActiveBlue else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(5.dp)
-                    )
-                    .clickable { onRouteToggle(!stem.routeL, stem.routeR) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "L",
-                    color = if (stem.routeL) Color.White else Color(0xFF64748B),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
-
             // M Button (Mute) - Red when active
             Box(
                 modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
+                    .weight(1f)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(if (stem.isMuted) BtnMuteRed else Color(0xFF131D2E))
                     .border(
                         width = 1.dp,
                         color = if (stem.isMuted) BtnMuteRed else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(5.dp)
+                        shape = RoundedCornerShape(6.dp)
                     )
                     .clickable { onMuteToggle() },
                 contentAlignment = Alignment.Center
@@ -196,7 +179,7 @@ fun ChannelStrip(
                 Text(
                     text = "M",
                     color = if (stem.isMuted) Color.White else Color(0xFF64748B),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black
                 )
             }
@@ -204,13 +187,14 @@ fun ChannelStrip(
             // S Button (Solo) - Yellow when active
             Box(
                 modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
+                    .weight(1f)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(if (stem.isSolo) BtnSoloYellow else Color(0xFF131D2E))
                     .border(
                         width = 1.dp,
                         color = if (stem.isSolo) BtnSoloYellow else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(5.dp)
+                        shape = RoundedCornerShape(6.dp)
                     )
                     .clickable { onSoloToggle() },
                 contentAlignment = Alignment.Center
@@ -218,29 +202,7 @@ fun ChannelStrip(
                 Text(
                     text = "S",
                     color = if (stem.isSolo) Color.Black else Color(0xFF64748B),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
-
-            // R Button (PA FOH routing) - Red when active
-            Box(
-                modifier = Modifier
-                    .size(width = 24.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(5.dp))
-                    .background(if (stem.routeR) BtnActiveRed else Color(0xFF131D2E))
-                    .border(
-                        width = 1.dp,
-                        color = if (stem.routeR) BtnActiveRed else Color(0x33FFFFFF),
-                        shape = RoundedCornerShape(5.dp)
-                    )
-                    .clickable { onRouteToggle(stem.routeL, !stem.routeR) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "R",
-                    color = if (stem.routeR) Color.White else Color(0xFF64748B),
-                    fontSize = 10.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Black
                 )
             }
@@ -262,7 +224,7 @@ fun ChannelStrip(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Text(
-                        text = "Color del Track: ${stem.displayName}",
+                        text = tr(isEn, "Color del Track: ${stem.displayName}", "Track Color: ${stem.displayName}"),
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.ExtraBold
@@ -283,7 +245,6 @@ fun ChannelStrip(
                                             shape = CircleShape
                                         )
                                         .clickable {
-                                            stem.customColor = c.value.toLong()
                                             onColorChange(c)
                                             showColorPicker = false
                                         }
@@ -303,7 +264,6 @@ fun ChannelStrip(
                                             shape = CircleShape
                                         )
                                         .clickable {
-                                            stem.customColor = c.value.toLong()
                                             onColorChange(c)
                                             showColorPicker = false
                                         }
@@ -313,7 +273,7 @@ fun ChannelStrip(
                     }
 
                     TextButton(onClick = { showColorPicker = false }) {
-                        Text(text = "Cerrar", color = ZionTealLight, fontWeight = FontWeight.Bold)
+                        Text(text = tr(isEn, "Cerrar", "Close"), color = ZionTealLight, fontWeight = FontWeight.Bold)
                     }
                 }
             }
